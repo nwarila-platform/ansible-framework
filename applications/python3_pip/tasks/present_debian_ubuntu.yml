@@ -1,0 +1,177 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_debian_ubuntu.yml'                                    #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# OS-specific task file for Debian-family hosts (Ubuntu, Debian, etc.) — state: present.                          #
+#                                                                                             #
+# Execution order:                                                                            #
+#   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #
+#   1. Install the python3-pip package via the system package manager (apt)                   #
+#   2. Optionally self-upgrade pip to a pinned or latest version                              #
+#   3. Deploy pip.conf and any other configuration templates                                  #
+#   4. Validate that pip is installed and functional                                          #
+#                                                                                             #
+# This file is included by the shared role loader (tasks/main.yml) which passes the          #
+# merged running configuration as 'config'.                                                   #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (present_debian_ubuntu)'
+
+  block:
+
+    #region ------ [ Preflight ] --------------------------------------------------------------- #
+
+    - name: 'INFO | Entering Preflight Stage'
+      block:
+
+        #region ------ [ Preflight: Checking Installed Packages ] --------------------------------- #
+
+        # ansible.builtin.apt requires the python3-apt Python bindings to be installed on
+        # the managed host. Ubuntu minimal installs typically include python3-apt, but
+        # custom or stripped images may omit it.
+        #
+        # ansible_facts.packages is populated by the shared loader (tasks/main.yml) before
+        # this file is included. The assert fails immediately with a clear remediation message
+        # rather than producing a cryptic Python import error from inside ansible.builtin.apt.
+        - name: 'PREFLIGHT | Verify Required Packages Are Installed'
+          ansible.builtin.assert:
+            that:
+              - "'python3-apt' in ansible_facts.packages"
+            fail_msg: >-
+              The 'python3-apt' package is required by ansible.builtin.apt but is not
+              installed on this host. Install it before running this role:
+                apt-get install -y python3-apt
+            quiet: true
+
+        #endregion --- [ Preflight: Checking Installed Packages ] --------------------------------- #
+
+    #endregion --- [ Preflight ] --------------------------------------------------------------- #
+
+    #region ------ [ Main ] -------------------------------------------------------------------- #
+
+    - name: 'INFO | Entering Main Stage'
+      become: true
+      block:
+
+      #region ------ [ MAIN: Installing the 'Python3-pip' Package ] -------------------------------- #
+
+      # Install python3-pip via apt. package_manager is a dict keyed by os_family so we access
+      # the correct platform entry directly — no loop or filter needed. All parameters fall back
+      # to secure defaults via | default() so the task is safe even if an overlay only partially
+      # overrides the platform block.
+      - name: "MAIN | Installing the 'Python3-pip' Package"
+        when: ansible_facts.os_family in config.package_manager
+        vars:
+          __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
+
+        ansible.builtin.apt:
+          allow_change_held_packages: "{{ __package__.allow_change_held_packages | default(false) }}"
+          allow_downgrade: "{{ __package__.allow_downgrade | default(false) }}"
+          allow_unauthenticated: "{{ __package__.allow_unauthenticated | default(false) }}"
+          autoclean: "{{ __package__.autoclean | default(false) }}"
+          autoremove: "{{ __package__.autoremove | default(false) }}"
+          cache_valid_time: "{{ __package__.cache_valid_time | default(0) }}"
+          clean: "{{ __package__.clean | default(false) }}"
+          default_release: "{{ __package__.default_release | default(omit) }}"
+          dpkg_options: "{{ __package__.dpkg_options | default(['force-confold', 'force-confdef']) | join(',') }}"
+          fail_on_autoremove: "{{ __package__.fail_on_autoremove | default(false) }}"
+          force: "{{ __package__.force | default(false) }}"
+          force_apt_get: "{{ __package__.force_apt_get | default(false) }}"
+          install_recommends: "{{ __package__.install_recommends | default(true) }}"
+          lock_timeout: "{{ __package__.lock_timeout | default(60) }}"
+          name: "{{ __package__.name }}"
+          only_upgrade: "{{ __package__.only_upgrade | default(false) }}"
+          policy_rc_d: "{{ __package__.policy_rc_d | default(omit) }}"
+          purge: "{{ __package__.purge | default(false) }}"
+          state: "{{ __package__.state | default('present') }}"
+          update_cache: "{{ __package__.update_cache | default(false) }}"
+          update_cache_retries: "{{ __package__.update_cache_retries | default(5) }}"
+          update_cache_retry_max_delay: "{{ __package__.update_cache_retry_max_delay | default(12) }}"
+          upgrade: "{{ __package__.upgrade | default('no') }}"
+
+      #endregion --- [ MAIN: Installing the 'Python3-pip' Package ] -------------------------------- #
+
+      #region ------ [ MAIN: Self Upgrade ] -------------------------------------------------------- #
+
+      # The apt-packaged pip is typically outdated. This task upgrades pip to the version
+      # specified in config.self_upgrade.version. Set to 'latest' for the newest release,
+      # or pin to a specific version (e.g., '24.3.1') for reproducibility.
+      #
+      # Runs before template deployment so pip.conf is applied to the final pip version.
+      # Guarded by config.self_upgrade.enabled — disable per-environment via overlay vars.
+      # umask '0022' ensures installed files are world-readable regardless of system defaults.
+      - name: 'MAIN | Upgrading PIP To {{ __pip_version__ }}'
+        become: true
+        when: config.self_upgrade.enabled | default(true) | bool
+        vars:
+          __pip_version__: "{{ config.self_upgrade.version | default('latest') }}"
+          __is_latest__: "{{ (__pip_version__ == 'latest') | bool }}"
+
+        ansible.builtin.pip:
+          executable: 'pip3'
+          name: 'pip'
+          state: "{{ 'latest' if __is_latest__ else 'present' }}"
+          umask: '0022'
+          version: "{{ omit if __is_latest__ else __pip_version__ }}"
+
+      #endregion --- [ MAIN: Self Upgrade ] -------------------------------------------------------- #
+
+      #region ------ [ MAIN: Templates ] ---------------------------------------------------------- #
+
+      # Deploy configuration file templates defined in config.templates. Each entry specifies
+      # the Jinja2 source template, destination path, file ownership, permissions, and the
+      # settings dict that populates the template content.
+      #
+      # SELinux parameters are omitted on Debian-family hosts — the | default(omit) guards
+      # ensure the template module does not fail when selinux context keys are absent.
+      - name: 'MAIN | Deploy Configuration Templates'
+        loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
+        loop_control: { loop_var: '__template__' }
+
+        ansible.builtin.template:
+          src: "{{ __template__.template }}"
+          dest: "{{ __template__.file.path }}"
+          owner: "{{ __template__.file.owner | default('root') }}"
+          group: "{{ __template__.file.group | default('root') }}"
+          mode: "{{ __template__.file.mode | default('0644') }}"
+          selevel: "{{ __template__.file.selinux.level | default(omit) }}"
+          serole: "{{ __template__.file.selinux.role | default(omit) }}"
+          setype: "{{ __template__.file.selinux.type | default(omit) }}"
+          seuser: "{{ __template__.file.selinux.user | default(omit) }}"
+
+      #endregion --- [ MAIN: Templates ] ---------------------------------------------------------- #
+
+      #region ------ [ MAIN: Validation ] --------------------------------------------------------- #
+
+      # Smoke test: run 'pip3 --version' to verify the installation is functional.
+      # failed_when: false prevents Ansible from halting on a non-zero exit code,
+      # allowing the assert task below to provide a meaningful error message instead.
+      - name: 'MAIN | Verifying PIP Installation'
+        changed_when: false
+        failed_when: false
+        register: __pip_check__
+
+        ansible.builtin.command:
+          argv:
+            - 'pip3'
+            - '--version'
+
+      # Assert that pip returned successfully and the output contains 'pip' to guard
+      # against edge cases like a broken symlink or wrapper script masking a real failure.
+      - name: 'MAIN | Validate PIP Is Functional'
+        ansible.builtin.assert:
+          that:
+            - __pip_check__.rc == 0
+            - "'pip' in __pip_check__.stdout"
+          fail_msg: >-
+            PIP validation failed. Expected 'pip3 --version' to return successfully.
+            stdout: {{ __pip_check__.stdout | default('') }}
+            stderr: {{ __pip_check__.stderr | default('') }}
+          success_msg: "{{ __pip_check__.stdout }}"
+
+      #endregion --- [ MAIN: Validation ] --------------------------------------------------------- #
+
+    #endregion --- [ Main ] -------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

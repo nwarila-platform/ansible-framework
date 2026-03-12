@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# ansible-lint Configuration
+# =============================================================================
+# Profile: safety — enforces critical security and correctness rules without
+# blocking on stylistic preferences. Upgrade to 'production' once all roles
+# are stable and molecule tests are in place.
+#
+# Docs: https://ansible.readthedocs.io/projects/lint/configuring/
+# =============================================================================
+
+profile: safety
+
+# -----------------------------------------------------------------------------
+# Exclude Paths
+# -----------------------------------------------------------------------------
+# Avoid linting stub/placeholder files and test fixtures that are not yet
+# implemented. molecule/ and tests/ will be re-enabled when populated.
+# -----------------------------------------------------------------------------
+exclude_paths:
+  - .git/
+  - .github/
+  - operating_systems/RedHat_Rocky_8/
+  - operating_systems/RedHat_Rocky_9/
+
+# -----------------------------------------------------------------------------
+# Warnings (non-blocking)
+# -----------------------------------------------------------------------------
+# Rules that should surface as warnings rather than errors during the
+# current development phase. Remove entries as gaps are closed.
+# -----------------------------------------------------------------------------
+warn_list:
+  - experimental              # Rules still being stabilized in ansible-lint
+  - yaml[line-length]         # Already warned by yamllint; avoid double noise
+
+# -----------------------------------------------------------------------------
+# Skip List
+# -----------------------------------------------------------------------------
+# Rules intentionally disabled with documented rationale. Keep this list
+# short — each entry represents a debt to revisit.
+# -----------------------------------------------------------------------------
+skip_list:
+  # no-free-form: Our task names use the 'name: value\n  module:' style
+  # which older ansible-lint versions flag. Acceptable until upgrading baseline.
+  # - no-free-form
+
+# -----------------------------------------------------------------------------
+# Offline Mode
+# -----------------------------------------------------------------------------
+# Disable Galaxy resolution in CI to avoid network calls during lint.
+# Set to false if roles have Galaxy dependencies that need resolving.
+# -----------------------------------------------------------------------------
+offline: true
+
+# -----------------------------------------------------------------------------
+# Loop Variable Prefix
+# -----------------------------------------------------------------------------
+# Enforce the __dunder__ naming convention for loop variables to prevent
+# variable shadowing. Matches the pattern used throughout this framework.
+# -----------------------------------------------------------------------------
+loop_var_prefix: ^__.*__$
+
+# -----------------------------------------------------------------------------
+# Mock Roles
+# -----------------------------------------------------------------------------
+# Roles referenced in tasks but not present in this repo (e.g., prerequisites
+# pulled from Galaxy at runtime). List them here to suppress resolution errors.
+# -----------------------------------------------------------------------------
+mock_roles: []
+
+# -----------------------------------------------------------------------------
+# Mock Modules
+# -----------------------------------------------------------------------------
+mock_modules: []
