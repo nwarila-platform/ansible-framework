@@ -1,0 +1,76 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/clean_redhat.yml'                                             #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# OS-specific task file for all RedHat-family hosts — state: clean.                          #
+#                                                                                             #
+# Removes pip cache and build artefacts without uninstalling pip or its configuration.        #
+# Safe to run during Packer image builds, CI teardown, or golden image preparation.          #
+#                                                                                             #
+# Execution order:                                                                            #
+#   1. Remove the pip HTTP cache directory (/root/.cache/pip)                     #
+#   2. Remove pip build artefacts left in /tmp                                                #
+#                                                                                             #
+# This file is included by the shared role loader (tasks/main.yml) which passes the          #
+# merged running configuration as 'config'.                                                   #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (clean_redhat)'
+
+  block:
+
+    #region ------ [ Main ] -------------------------------------------------------------------- #
+
+    - name: 'INFO | Entering Main Stage'
+      become: true
+      block:
+
+      #region ------ [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
+
+      # Remove the pip HTTP cache directory directly. The role runs as root (become: true),
+      # so the cache resides at /root/.cache/pip. Using file: state: absent is idempotent —
+      # no error if the directory does not exist — and requires no pip3 executable.
+      # Safe to run after state: absent.
+      - name: 'MAIN | Remove pip Cache Directories'
+        loop:
+          - '/root/.cache/pip'
+        loop_control: { loop_var: '__cache_path__' }
+
+        ansible.builtin.file:
+          path: "{{ __cache_path__ }}"
+          state: 'absent'
+
+      #endregion --- [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
+
+      #region ------ [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
+
+      # Find pip build and requirement artefact directories left in /tmp.
+      # These are created during pip install operations and are normally cleaned up on
+      # completion, but persist on interrupted installs or in long-lived environments.
+      - name: 'MAIN | Find pip Build Artefacts in /tmp'
+        changed_when: false
+
+        ansible.builtin.find:
+          paths: '/tmp'
+          patterns:
+            - 'pip-build-*'
+            - 'pip-req-*'
+            - 'pip-tmp-*'
+            - 'pip-unpack-*'
+          file_type: 'directory'
+        register: __pip_tmp_dirs__
+
+      - name: 'MAIN | Remove pip Build Artefacts in /tmp'
+        loop: "{{ __pip_tmp_dirs__.files | map(attribute='path') | list }}"
+        loop_control: { loop_var: '__artefact_path__' }
+
+        ansible.builtin.file:
+          path: "{{ __artefact_path__ }}"
+          state: 'absent'
+
+      #endregion --- [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
+
+    #endregion --- [ Main ] -------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

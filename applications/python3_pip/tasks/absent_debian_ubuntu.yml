@@ -1,0 +1,89 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/absent_debian_ubuntu.yml'                                     #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# OS-specific task file for Debian-family hosts (Ubuntu, Debian, etc.) — state: absent.                           #
+#                                                                                             #
+# Execution order:                                                                            #
+#   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #
+#   1. Remove the python3-pip package via apt                                                 #
+#   2. Remove configuration files deployed by state: present                                  #
+#                                                                                             #
+# This file is included by the shared role loader (tasks/main.yml) which passes the          #
+# merged running configuration as 'config'.                                                   #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (absent_debian_ubuntu)'
+
+  block:
+
+    #region ------ [ Preflight ] --------------------------------------------------------------- #
+
+    - name: 'INFO | Entering Preflight Stage'
+      block:
+
+        #region ------ [ Preflight: Checking Installed Packages ] --------------------------------- #
+
+        # ansible.builtin.apt requires python3-apt Python bindings even for removal.
+        # ansible_facts.packages is populated by the shared loader before this file is included.
+        - name: 'PREFLIGHT | Verify Required Packages Are Installed'
+          ansible.builtin.assert:
+            that:
+              - "'python3-apt' in ansible_facts.packages"
+            fail_msg: >-
+              The 'python3-apt' package is required by ansible.builtin.apt but is not
+              installed on this host. Install it before running this role:
+                apt-get install -y python3-apt
+            quiet: true
+
+        #endregion --- [ Preflight: Checking Installed Packages ] --------------------------------- #
+
+    #endregion --- [ Preflight ] --------------------------------------------------------------- #
+
+    #region ------ [ Main ] -------------------------------------------------------------------- #
+
+    - name: 'INFO | Entering Main Stage'
+      become: true
+      block:
+
+      #region ------ [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+
+      # Remove python3-pip via apt. Only parameters relevant to removal are passed.
+      # purge is respected from config — set to true to also remove configuration files
+      # managed by dpkg (distinct from the config.templates files removed below).
+      - name: "MAIN | Removing the 'Python3-pip' Package"
+        when: ansible_facts.os_family in config.package_manager
+        vars:
+          __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
+
+        ansible.builtin.apt:
+          autoremove: "{{ __package__.autoremove | default(false) }}"
+          dpkg_options: "{{ __package__.dpkg_options | default(['force-confold', 'force-confdef']) | join(',') }}"
+          fail_on_autoremove: "{{ __package__.fail_on_autoremove | default(false) }}"
+          force_apt_get: "{{ __package__.force_apt_get | default(false) }}"
+          lock_timeout: "{{ __package__.lock_timeout | default(60) }}"
+          name: "{{ __package__.name }}"
+          purge: "{{ __package__.purge | default(false) }}"
+          state: 'absent'
+
+      #endregion --- [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+
+      #region ------ [ MAIN: Removing Configuration Files ] --------------------------------------- #
+
+      # Remove all configuration files deployed by state: present. Loops over the same
+      # config.templates dict used during installation so the set of files removed matches
+      # exactly what was deployed. Idempotent — missing files are silently skipped.
+      - name: 'MAIN | Remove Configuration Files'
+        loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
+        loop_control: { loop_var: '__template__' }
+
+        ansible.builtin.file:
+          path: "{{ __template__.file.path }}"
+          state: 'absent'
+
+      #endregion --- [ MAIN: Removing Configuration Files ] --------------------------------------- #
+
+    #endregion --- [ Main ] -------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

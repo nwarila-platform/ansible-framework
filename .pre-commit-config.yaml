@@ -1,0 +1,99 @@
+---
+# =============================================================================
+# Pre-Commit Hook Configuration
+# =============================================================================
+# Run locally:  pre-commit run --all-files
+# Install hook: pre-commit install
+# Update revs:  pre-commit autoupdate
+#
+# Stages: commit (default), push, manual
+# =============================================================================
+
+# Minimum pre-commit version required
+minimum_pre_commit_version: '3.0.0'
+
+repos:
+
+  # ---------------------------------------------------------------------------
+  # General Hygiene (pre-commit-hooks)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Remove trailing whitespace on all lines
+      - id: trailing-whitespace
+        args: ['--markdown-linebreak-ext=md']
+
+      # Ensure files end with a single newline
+      - id: end-of-file-fixer
+
+      # Normalize line endings to LF
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+      # Validate YAML syntax
+      # --unsafe: allows !vault and !unsafe Ansible tags
+      - id: check-yaml
+        args: ['--unsafe']
+
+      # Block commits with unresolved merge conflict markers
+      - id: check-merge-conflict
+
+      # Prevent accidentally committing large binaries
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+
+      # Detect private keys before they leave the workstation
+      - id: detect-private-key
+
+      # Ensure JSON files are valid and consistently formatted
+      - id: check-json
+
+      # Prevent committing directly to the main branch
+      - id: no-commit-to-branch
+        args: ['--branch=PROD']
+
+  # ---------------------------------------------------------------------------
+  # YAML Linting
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: ['--config-file=.yamllint.yml']
+
+  # ---------------------------------------------------------------------------
+  # Ansible Linting
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.1.3
+    hooks:
+      - id: ansible-lint
+        # Pass the ansible.cfg explicitly so roles_path is resolved correctly
+        additional_dependencies:
+          - ansible-core>=2.17
+
+  # ---------------------------------------------------------------------------
+  # Conventional Commits
+  # ---------------------------------------------------------------------------
+  # Enforces commit message format: <type>(<scope>): <description>
+  # Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+  # Scope: role name (e.g., python3_pip, RedHat_Rocky_10) or 'framework'
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - test
+          - chore
+          - perf
+          - ci
+          - build
+          - revert

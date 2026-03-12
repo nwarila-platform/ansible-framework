@@ -1,0 +1,219 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/main.yml'                                      | Version 2.2.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+#                                                                                             #
+#                        NO ROLE CUSTOMIZATIONS SHOULD HAPPEN IN THIS FILE                    #
+#                                                                                             #
+# Reusable role loader shared across all roles. Handles pre-execution boilerplate:            #
+#   1. Validates required inputs (ENV)                                                        #
+#   2. Gathers OS facts if not already available                                              #
+#   3. Builds the role's running configuration by merging layers in precedence order:         #
+#      defaults -> environment overlay -> OS overlay -> combined overlay -> user overrides    #
+#   4. Creates a secure temp directory for the role to use during execution                   #
+#   5. Includes the OS-specific task file (e.g., rocky_10.yml) to perform actual work         #
+#   6. Cleans up the temp directory regardless of success or failure                          #
+#                                                                                             #
+#                        NO ROLE CUSTOMIZATIONS SHOULD HAPPEN IN THIS FILE                    #
+#                                                                                             #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering Role'
+  block:
+
+    #region ------ [ Initialization ] ------------------------------------------------------- #
+
+    - name: 'INFO | Entering Initialization Stage'
+      block:
+
+        #region ------ [ Initialization: Validating Required Input(s) ] ------------------------------ #
+
+        # Fail immediately if 'ENV' is missing, not a string, or empty. ENV determines which
+        # environment-specific overlay files are loaded (e.g., vars/prod.yml, vars/rocky_10_prod.yml).
+        # Must be set by the caller via group_vars, host_vars, extra-vars, or inventory.
+        - name: 'INIT | Validating Required Input(s)'
+          ansible.builtin.assert:
+            that:
+              - ENV is defined
+              - ENV is string
+              - ENV | trim | length > 0
+            fail_msg: >-
+              The 'ENV' variable is required but was {{ 'not defined' if ENV is undefined else 'empty' }}.
+              Set it via group_vars, host_vars, extra-vars, or inventory
+              (e.g., -e "ENV=prod").
+            quiet: true
+
+        #endregion --- [ Initialization: Validating Required Input(s) ] ------------------------------ #
+
+        #region ------ [ Initialization: Loading Required Operating System (OS) Facts ] ------------ #
+
+        # Gather only the 'distribution' fact subset to populate ansible_distribution and
+        # ansible_distribution_major_version. Skipped if these facts already exist (e.g.,
+        # from gather_facts: true in the playbook or a prior role).
+        - name: "INIT | Loading Required Operating System (OS) Facts"
+          when: ansible_distribution is undefined or ansible_distribution_major_version is undefined
+
+          ansible.builtin.setup:
+            gather_subset:
+              - '!all'
+              - '!min'
+              - 'distribution'
+
+        #endregion --- [ Initialization: Loading Required Operating System (OS) Facts ] ------------ #
+
+        #region ------ [ Initialization: Declaring Variables ] ------------------------------------- #
+
+        # Build a normalized OS identifier used for file lookups throughout this loader.
+        # Format: <distribution>_<major_version> (e.g., rocky_10, ubuntu_22, redhat_9).
+        # Drives overlay file selection (vars/<OS_NAME_VER>.yml) and OS-specific task
+        # inclusion (tasks/<OS_NAME_VER>.yml). Skipped if already set by the caller.
+        - name: 'INIT | Setting Well Known Fact(s)'
+          when: ( OS_NAME_VER is not defined )
+          ansible.builtin.set_fact:
+            OS_NAME_VER: "{{ ansible_distribution | lower }}_{{ ansible_distribution_major_version }}"
+
+        #endregion --- [ Initialization: Declaring Variables ] ------------------------------------- #
+
+        #region ------ [ Initialization: Loading Overlay(s): Defaults ] ---------------------------- #
+
+        # Seed '<role_name>_running' with the role's default values from defaults/main.yml.
+        # These are the lowest-precedence settings; overlays and overrides merge on top.
+        # Falls back to an empty dict if no defaults are defined for this role.
+        - name: 'INIT | Initialize running configuration'
+          ansible.builtin.set_fact:
+            "{{ role_name }}_running": "{{ lookup('vars', role_name ~ '_defaults', default={}) }}"
+
+        #endregion --- [ Initialization: Loading Overlay(s): Defaults ] ---------------------------- #
+
+        #region ------ [ Initialization: Loading Overlay(s): Vars ] -------------------------------- #
+
+        # Merge overlay files into the running config in ascending precedence order.
+        # Each file is optional — missing or empty files are silently skipped.
+        #   1. vars/<ENV>.yml              — environment-wide settings (e.g., vars/prod.yml)
+        #   2. vars/<OS_NAME_VER>.yml      — OS-specific settings (e.g., vars/rocky_10.yml)
+        #   3. vars/<OS_NAME_VER>_<ENV>.yml — OS + environment combo (e.g., vars/rocky_10_prod.yml)
+        # Later files override earlier ones via recursive dict merge.
+        - name: 'INIT | Loading Default Overlay(s)'
+          loop:
+            - "{{ role_path }}/vars/{{ (ENV | default('', true)) | lower }}.yml"
+            - "{{ role_path }}/vars/{{ OS_NAME_VER }}.yml"
+            - "{{ role_path }}/vars/{{ OS_NAME_VER }}_{{ (ENV | default('', true)) | lower }}.yml"
+          loop_control: { loop_var: 'variables_file' }
+          vars:
+            current_config: "{{ lookup('vars', role_name ~ '_running', default={}) }}"
+            CONTENT: "{{ lookup('file', variables_file, errors='ignore') | from_yaml | default({}, true) }}"
+          when:
+            - CONTENT is mapping
+            - CONTENT | length > 0
+
+          ansible.builtin.set_fact:
+            "{{ role_name }}_running": "{{ current_config | combine(CONTENT, recursive=True) }}"
+
+        #endregion --- [ Initialization: Loading Overlay(s): Vars ] -------------------------------- #
+
+        #region ------ [ Initialization: Loading Overlay(s): Override ] ---------------------------- #
+
+        # Apply user-provided overrides as the highest-precedence layer. The variable
+        # '<role_name>' (e.g., firewall: { port: 8080 }) is set by the playbook author
+        # in group_vars, host_vars, or extra-vars. Merged recursively so individual
+        # nested keys can be overridden without replacing the entire dict.
+        - name: 'INIT | Loading Overrides'
+          ansible.builtin.set_fact:
+            "{{ role_name }}_running": "{{ base_config | combine(user_overrides, recursive=True) }}"
+          vars:
+            base_config: "{{ lookup('vars', role_name ~ '_running', default={}) }}"
+            user_overrides: "{{ lookup('vars', role_name, default={}) }}"
+
+        #endregion --- [ Initialization: Loading Overlay(s): Override ] ---------------------------- #
+
+        #region ------ [ Initialization: Creating Temp Directory ] --------------------------------- #
+
+        # Create a temporary directory on the remote host for staging files during role
+        # execution (e.g., downloaded packages, generated configs). Automatically cleaned
+        # up in the 'always' block. Disable by setting '<role_name>.temp_dir: false'.
+        # The path is stored in '_temp_dir_.path' for use in OS-specific task files.
+        - name: 'INIT | Creating Temporary Directory'
+          become: true
+          changed_when: false
+          register: '_temp_dir_'
+          when: (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
+
+          ansible.builtin.tempfile:
+            state: directory
+            prefix: "ansible_{{ role_name }}_"
+
+        # Lock down the temp directory. ansible.builtin.tempfile does not support
+        # owner/group/mode/SELinux params, so a separate file task is required.
+        - name: 'INIT | Securing Temporary Directory'
+          become: true
+          changed_when: false
+          when: _temp_dir_.path is defined
+
+          ansible.builtin.file:
+            path: "{{ _temp_dir_.path }}"
+            owner: 'root'
+            group: 'root'
+            mode: '0700'
+            selevel: 's0'
+            serole: 'object_r'
+            setype: 'tmp_t'
+            seuser: 'system_u'
+
+        #endregion --- [ Initialization: Creating Temp Directory ] --------------------------------- #
+
+    #endregion --- [ Initialization ] -------------------------------------------------------- #
+
+    #region ------ [ Main ] ------------------------------------------------------------------ #
+
+    - name: 'INFO | Entering Main Stage'
+      block:
+
+        #region ------ [ Main: Executing OS Specific Installers ] --------------------------------- #
+
+        # Check for the OS-specific task file on the controller using Jinja2's 'is file'
+        # test (no SSH round-trip). Logs a visible error if missing but does not halt the
+        # playbook — the 'always' cleanup block still runs and subsequent roles proceed.
+        - name: "MAIN | OS-specific task file not found"
+          when: (role_path ~ '/tasks/' ~ OS_NAME_VER ~ '.yml') is not file
+          ansible.builtin.fail:
+            msg: >-
+              OS-specific task file '{{ role_path }}/tasks/{{ OS_NAME_VER }}.yml' does not exist.
+              This role does not support {{ OS_NAME_VER }}. Verify the role has a task file
+              for this operating system or check that OS_NAME_VER is set correctly.
+          ignore_errors: true
+
+        # Include the OS-specific task file (e.g., tasks/rocky_10.yml) where the actual
+        # role work happens. 'config' is passed via vars: so it is scoped to the included
+        # tasks only — it does not persist as a host fact and needs no cleanup.
+        - name: "MAIN | Starting Installer"
+          when: (role_path ~ '/tasks/' ~ OS_NAME_VER ~ '.yml') is file
+          include_tasks: "{{ role_path }}/tasks/{{ OS_NAME_VER }}.yml"
+          vars:
+            config: "{{ lookup('vars', role_name ~ '_running') }}"
+
+        #endregion --- [ Main: Executing OS Specific Installers ] --------------------------------- #
+
+    #endregion --- [ Main ] ------------------------------------------------------------------ #
+
+  #region ------ [ Cleaning Up ] ------------------------------------------------------------- #
+
+  # Runs regardless of success or failure. Ensures the temp directory is removed even
+  # if the role errors out, preventing orphaned files from accumulating on the target.
+  always:
+
+    # Remove the temp directory created during initialization. Skipped if temp_dir
+    # was disabled or if creation failed (i.e., _temp_dir_.path is not set).
+    - name: 'Cleanup | Removing Temp File(s)'
+      become: true
+      changed_when: false
+      when: (( _temp_dir_ is defined ) and ( _temp_dir_.path is defined ))
+
+      ansible.builtin.file:
+        force: true
+        path: "{{ _temp_dir_.path }}"
+        state: 'absent'
+
+  #endregion --- [ Cleaning Up ] ------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

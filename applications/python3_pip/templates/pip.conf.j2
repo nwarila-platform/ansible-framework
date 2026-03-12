@@ -1,0 +1,26 @@
+#jinja2: lstrip_blocks: True, trim_blocks: True
+# =========================================================================================== #
+# File: '{{ __template__.file.path }}'
+# Managed by Ansible - DO NOT EDIT MANUALLY
+# =========================================================================================== #
+{% for __section__ in __template__.settings | default({}) %}
+  {% if __template__.settings[__section__] is mapping
+        and (__template__.settings[__section__] | list) | intersect(python3_pip_allowed_keys[__section__] | default([])) | length > 0 %}
+
+[{{ __section__ }}]
+    {% for __key__, __value__ in __template__.settings[__section__] | dictsort %}
+      {% if __key__ not in (python3_pip_allowed_keys[__section__] | default([])) %}
+      {% elif __value__ is sequence and __value__ is not string and __value__ is not mapping -%}
+        {% for __item__ in __value__ %}
+          {{- __key__ | replace('_', '-') }} = {{ __item__ }}
+        {% endfor %}
+      {% elif __value__ is sameas true -%}
+        {{ __key__ | replace('_', '-') }} = true
+      {% elif __value__ is sameas false -%}
+        {{ __key__ | replace('_', '-') }} = false
+      {% else -%}
+        {{ __key__ | replace('_', '-') }} = {{ __value__ }}
+      {% endif -%}
+    {% endfor %}
+  {% endif %}
+{% endfor %}

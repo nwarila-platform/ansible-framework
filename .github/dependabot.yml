@@ -1,0 +1,54 @@
+---
+# =============================================================================
+# Dependabot Configuration
+# =============================================================================
+# Automatically opens PRs to keep dependency versions current.
+# All PRs target PROD and follow conventional commit format so release-please
+# correctly categorizes them in the changelog.
+# =============================================================================
+
+version: 2
+updates:
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions
+  # ---------------------------------------------------------------------------
+  # Keeps workflow action SHAs and tags up to date. Dependabot will propose
+  # SHA-pinned updates (matching the pattern we enforce manually).
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    target-branch: "PROD"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  # ---------------------------------------------------------------------------
+  # pip (requirements-dev.txt)
+  # ---------------------------------------------------------------------------
+  # Keeps yamllint, ansible-lint, pre-commit, and other dev tools current.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    target-branch: "PROD"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "python"

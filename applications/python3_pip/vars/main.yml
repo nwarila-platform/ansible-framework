@@ -1,0 +1,116 @@
+
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Internal role constants - NOT intended to be overridden by users.
+# =========================================================================================== #
+
+#region ------ [ Whitelist: pip.conf Allowed Keys ] ------------------------------------------- #
+
+python3_pip_allowed_keys:
+
+  global:
+    - cache_dir
+    - cert
+    - client_cert
+    - disable_pip_version_check
+    - exists_action
+    - keyring_provider
+    - log
+    - no_cache_dir
+    - no_color
+    - no_input
+    - proxy
+    - require_virtualenv
+    - resume_retries
+    - retries
+    - timeout
+    - trusted_host
+    - use_deprecated
+    - use_feature
+
+  install:
+    - break_system_packages
+    - check_build_dependencies
+    - compile
+    - extra_index_url
+    - find_links
+    - force_reinstall
+    - ignore_installed
+    - ignore_requires_python
+    - index_url
+    - no_binary
+    - no_build_isolation
+    - no_clean
+    - no_deps
+    - no_index
+    - no_warn_conflicts
+    - no_warn_script_location
+    - only_binary
+    - pre
+    - prefer_binary
+    - prefix
+    - progress_bar
+    - report
+    - require_hashes
+    - root
+    - root_user_action
+    - src
+    - target
+    - upgrade
+    - upgrade_strategy
+
+  download:
+    - abi
+    - check_build_dependencies
+    - dest
+    - implementation
+    - no_binary
+    - no_build_isolation
+    - no_clean
+    - no_deps
+    - only_binary
+    - platform
+    - pre
+    - prefer_binary
+    - progress_bar
+    - python_version
+    - require_hashes
+    - src
+
+  freeze:
+    - all
+    - exclude
+    - exclude_editable
+    - requirement
+
+  list:
+    - editable
+    - exclude
+    - exclude_editable
+    - format
+    - include_editable
+    - not_required
+    - outdated
+    - uptodate
+
+  uninstall:
+    - break_system_packages
+    - require_virtualenv
+    - 'yes'
+
+  wheel:
+    - check_build_dependencies
+    - no_binary
+    - no_build_isolation
+    - no_clean
+    - no_deps
+    - only_binary
+    - pre
+    - prefer_binary
+    - progress_bar
+    - require_hashes
+    - src
+    - wheel_dir
+
+#endregion --- [ Whitelist: pip.conf Allowed Keys ] ------------------------------------------- #

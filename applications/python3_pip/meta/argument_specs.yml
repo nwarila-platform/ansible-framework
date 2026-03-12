@@ -1,0 +1,89 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/argument_specs.yml'                                           #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Formal input specification for python3_pip. Validated by Ansible at role entry             #
+# (ansible-core 2.11+). Documents all caller-facing variables with types, choices,           #
+# defaults, and descriptions.                                                                 #
+# =========================================================================================== #
+
+argument_specs:
+
+  main:
+    short_description: 'Installs, upgrades, and configures Python3 pip'
+    description:
+      - 'Manages the python3-pip package and /etc/pip.conf on supported platforms.'
+      - 'Execution path is determined by the ''state'' variable.'
+    options:
+
+      ENV:
+        type: 'str'
+        required: true
+        description:
+          - 'Selects environment-specific overlay variable files.'
+          - 'Must match ^[a-zA-Z0-9_-]+$. Path-traversal sequences are rejected.'
+          - 'Examples: prod, dev, staging, ci'
+
+      state:
+        type: 'str'
+        required: false
+        default: 'present'
+        choices:
+          - 'present'
+          - 'absent'
+          - 'clean'
+        description:
+          - >-
+            Controls which entrypoint task file is executed.
+            ''present'' installs, configures, and validates pip (default).
+            ''absent'' uninstalls pip and removes its configuration.
+            ''clean'' removes pip caches and build artifacts without uninstalling.
+
+      python3_pip:
+        type: 'dict'
+        required: false
+        description:
+          - >-
+            User-provided overrides merged on top of defaults and OS overlays
+            via combine(recursive=True). Only the keys you specify are changed;
+            all others inherit their default values.
+          - 'See defaults/main.yml for the full schema.'
+        options:
+
+          package_manager:
+            type: 'dict'
+            required: false
+            description: 'Per-OS package manager settings. Keyed by ansible_facts.os_family.'
+
+          self_upgrade:
+            type: 'dict'
+            required: false
+            description: 'Controls post-install pip self-upgrade behaviour.'
+            options:
+              enabled:
+                type: 'bool'
+                required: false
+                default: true
+                description: 'Set to false to skip the self-upgrade task entirely.'
+              version:
+                type: 'str'
+                required: false
+                default: 'latest'
+                description: >-
+                  Target pip version. Use ''latest'' for newest available, or pin
+                  to a specific version string (e.g., ''24.3.1'').
+
+          templates:
+            type: 'dict'
+            required: false
+            description: >-
+              Dict of configuration templates to deploy, keyed by destination path.
+              Each value is a template definition dict (template, file, settings).
+              See defaults/main.yml for the full pip.conf entry schema.
+
+          temp_dir:
+            type: 'bool'
+            required: false
+            default: true
+            description: >-
+              Set to false to skip temp directory creation and cleanup. Useful
+              when the caller manages its own staging area.

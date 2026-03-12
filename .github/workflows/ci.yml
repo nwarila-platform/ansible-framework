@@ -1,0 +1,116 @@
+---
+# =============================================================================
+# CI Workflow — Lint & Validate
+# =============================================================================
+# Runs on every pull request targeting PROD and on direct pushes to PROD.
+# Jobs are intentionally independent so they run in parallel — a yamllint
+# failure does not block ansible-lint from reporting its own findings.
+#
+# Required status checks (configure in branch protection):
+#   - yamllint
+#   - ansible-lint
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches:
+      - PROD
+  pull_request:
+    branches:
+      - PROD
+
+# Minimal permissions at workflow level — elevated per-job only where required
+permissions:
+  contents: read
+
+# Limit concurrent runs per branch — cancel stale runs on new push
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ---------------------------------------------------------------------------
+  # YAML Lint
+  # ---------------------------------------------------------------------------
+  yamllint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install yamllint
+        run: pip install -r requirements-dev.txt
+
+      - name: Run yamllint
+        run: yamllint --config-file .yamllint.yml .
+
+  # ---------------------------------------------------------------------------
+  # Ansible Lint
+  # ---------------------------------------------------------------------------
+  ansible-lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install ansible-lint
+        run: pip install -r requirements-dev.txt
+
+      - name: Run ansible-lint
+        run: ansible-lint
+
+  # ---------------------------------------------------------------------------
+  # Pre-Commit (full suite, non-blocking — informational only)
+  # ---------------------------------------------------------------------------
+  # Runs the full pre-commit suite to catch any hooks developers may have
+  # skipped locally. Results are reported but do not block merges while the
+  # conventional-commit hook is being adopted.
+  # ---------------------------------------------------------------------------
+  pre-commit:
+    name: Pre-Commit Hooks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install pre-commit
+        run: pip install -r requirements-dev.txt
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files
+        continue-on-error: true  # Remove once adoption is complete

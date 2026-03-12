@@ -1,0 +1,56 @@
+# Ignore everything by default
+**
+
+# ── Root config & docs ──────────────────────────────────────────────
+!/.ansible-lint
+!/.editorconfig
+!/.gitignore
+!/.pre-commit-config.yaml
+!/.release-please-manifest.json
+!/.yamllint.yml
+!/ansible.cfg
+!/CHANGELOG.md
+!/CODE_OF_CONDUCT.md
+!/CONTRIBUTING.md
+!/LICENSE
+!/Makefile
+!/README.md
+!/SECURITY.md
+!/SUPPORT.md
+!/release-please-config.json
+!/requirements-dev.txt
+
+# ── GitHub ──────────────────────────────────────────────────────────
+!/.github/
+!/.github/**
+
+# ── Role directories ───────────────────────────────────────────────
+!/applications/
+!/applications/*/
+!/applications/*/*.md
+!/applications/*/.gitkeep
+!/applications/*/*/
+!/applications/*/*/*.yml
+!/applications/*/*/*.j2
+!/applications/*/*/.gitkeep
+!/applications/*/*/*
+
+!/operating_systems/
+!/operating_systems/*/
+!/operating_systems/*/*.md
+!/operating_systems/*/.gitkeep
+!/operating_systems/*/*/
+!/operating_systems/*/*/*.yml
+!/operating_systems/*/*/*.j2
+!/operating_systems/*/*/.gitkeep
+!/operating_systems/*/*/*
+
+# ── Claude (never track) ─────────────────────────────────────────────
+.claude/
+CLAUDE.md
+
+# ── Ansible runtime artifacts (never track) ─────────────────────────
+*.retry
+*.pyc
+__pycache__/
+.cache/

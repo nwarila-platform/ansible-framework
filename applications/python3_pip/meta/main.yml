@@ -1,0 +1,40 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'                                                     #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for python3_pip. Defines Galaxy info, supported platforms, and dependencies. #
+# =========================================================================================== #
+
+galaxy_info:
+
+  role_name: 'python3_pip'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: 'Installs, upgrades, and configures Python3 PIP and its global configuration.'
+
+  license: 'MIT'
+  min_ansible_version: '2.17'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '10'
+    - name: 'Ubuntu'
+      versions:
+        - 'all'
+    - name: 'Debian'
+      versions:
+        - 'all'
+
+  galaxy_tags:
+    - 'python'
+    - 'pip'
+    - 'python3'
+    - 'package_manager'
+    - 'redhat'
+    - 'rocky'
+    - 'debian'
+    - 'ubuntu'
+
+allow_duplicates: false
+
+dependencies: []

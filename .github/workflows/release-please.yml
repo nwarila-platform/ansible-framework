@@ -1,0 +1,52 @@
+---
+# =============================================================================
+# Release Please — Automated Changelog & Release Management
+# =============================================================================
+# Triggered on every push to PROD. Release Please:
+#   1. Analyzes conventional commit messages since the last release
+#   2. Opens/updates a "Release PR" bumping the version and updating CHANGELOG.md
+#   3. When the Release PR is merged, creates a GitHub Release and git tag
+#
+# Conventional commit format (enforced by pre-commit):
+#   <type>(<scope>): <description>
+#
+#   feat(python3_pip): add Debian task file
+#   fix(RedHat_Rocky_10): correct venv Python version check
+#   chore(framework): update ansible-lint to 25.2.0
+# =============================================================================
+
+name: Release Please
+
+on:
+  push:
+    branches:
+      - PROD
+
+# Minimal permissions at workflow level
+permissions:
+  contents: read
+
+jobs:
+
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Elevated permissions scoped to this job only
+    permissions:
+      contents: write
+      pull-requests: write
+
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
