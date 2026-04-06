@@ -7,7 +7,7 @@
 # =============================================================================
 
 # YAML linting
-yamllint==1.35.1
+yamllint==1.38.0
 
 # Ansible linting and syntax checking
 ansible-lint==25.1.3
