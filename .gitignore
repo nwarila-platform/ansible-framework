@@ -1,7 +1,7 @@
 # Ignore everything by default
 **
 
-# ── Root config & docs ──────────────────────────────────────────────
+# Root config and docs
 !/.ansible-lint
 !/.editorconfig
 !/.gitignore
@@ -20,11 +20,11 @@
 !/release-please-config.json
 !/requirements-dev.txt
 
-# ── GitHub ──────────────────────────────────────────────────────────
+# GitHub
 !/.github/
 !/.github/**
 
-# ── Role directories ───────────────────────────────────────────────
+# Role directories
 !/applications/
 !/applications/*/
 !/applications/*/*.md
@@ -45,11 +45,7 @@
 !/operating_systems/*/*/.gitkeep
 !/operating_systems/*/*/*
 
-# ── Claude (never track) ─────────────────────────────────────────────
-.claude/
-CLAUDE.md
-
-# ── Ansible runtime artifacts (never track) ─────────────────────────
+# Ansible runtime artifacts
 *.retry
 *.pyc
 __pycache__/
