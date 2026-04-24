@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.1](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.0...v0.1.1) (2026-04-24)
+
+
+### Features
+
+* **framework:** scaffold Ansible automation framework with roles, CI, and tooling ([e1b52f3](https://github.com/nwarila-platform/ansible-framework/commit/e1b52f33d9270b14ba55cdb5810a7a3de0c83b90))
+
 ## [0.1.0] - 2026-03-11
 
 ### Features
