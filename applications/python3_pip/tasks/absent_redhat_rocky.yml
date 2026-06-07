@@ -47,43 +47,43 @@
       become: true
       block:
 
-      #region ------ [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+        #region ------ [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
 
-      # Remove python3-pip via dnf. Only parameters relevant to removal are passed;
-      # install-only parameters (best, bugfix, cacheonly, security, etc.) are omitted.
-      # autoremove is respected from config to optionally remove orphaned dependencies.
-      - name: "MAIN | Removing the 'Python3-pip' Package"
-        when: ansible_facts.os_family in config.package_manager
-        vars:
-          __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
+        # Remove python3-pip via dnf. Only parameters relevant to removal are passed;
+        # install-only parameters (best, bugfix, cacheonly, security, etc.) are omitted.
+        # autoremove is respected from config to optionally remove orphaned dependencies.
+        - name: "MAIN | Removing the 'Python3-pip' Package"
+          when: ansible_facts.os_family in config.package_manager
+          vars:
+            __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
 
-        ansible.builtin.dnf:
-          autoremove: "{{ __package__.autoremove | default(false) }}"
-          conf_file: "{{ __package__.conf_file | default(omit) }}"
-          disable_gpg_check: "{{ __package__.disable_gpg_check | default(false) }}"
-          disablerepo: "{{ __package__.disablerepo | default([]) }}"
-          enablerepo: "{{ __package__.enablerepo | default([]) }}"
-          installroot: "{{ __package__.installroot | default('/') }}"
-          lock_timeout: "{{ __package__.lock_timeout | default(30) }}"
-          name: "{{ __package__.name }}"
-          state: 'absent'
+          ansible.builtin.dnf:
+            autoremove: "{{ __package__.autoremove | default(false) }}"
+            conf_file: "{{ __package__.conf_file | default(omit) }}"
+            disable_gpg_check: "{{ __package__.disable_gpg_check | default(false) }}"
+            disablerepo: "{{ __package__.disablerepo | default([]) }}"
+            enablerepo: "{{ __package__.enablerepo | default([]) }}"
+            installroot: "{{ __package__.installroot | default('/') }}"
+            lock_timeout: "{{ __package__.lock_timeout | default(30) }}"
+            name: "{{ __package__.name }}"
+            state: 'absent'
 
-      #endregion --- [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+        #endregion --- [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
 
-      #region ------ [ MAIN: Removing Configuration Files ] --------------------------------------- #
+        #region ------ [ MAIN: Removing Configuration Files ] --------------------------------------- #
 
-      # Remove all configuration files deployed by state: present. Loops over the same
-      # config.templates dict used during installation so the set of files removed matches
-      # exactly what was deployed. Idempotent — missing files are silently skipped.
-      - name: 'MAIN | Remove Configuration Files'
-        loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
-        loop_control: { loop_var: '__template__' }
+        # Remove all configuration files deployed by state: present. Loops over the same
+        # config.templates dict used during installation so the set of files removed matches
+        # exactly what was deployed. Idempotent — missing files are silently skipped.
+        - name: 'MAIN | Remove Configuration Files'
+          loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
+          loop_control: { loop_var: '__template__' }
 
-        ansible.builtin.file:
-          path: "{{ __template__.file.path }}"
-          state: 'absent'
+          ansible.builtin.file:
+            path: "{{ __template__.file.path }}"
+            state: 'absent'
 
-      #endregion --- [ MAIN: Removing Configuration Files ] --------------------------------------- #
+        #endregion --- [ MAIN: Removing Configuration Files ] --------------------------------------- #
 
     #endregion --- [ Main ] -------------------------------------------------------------------- #
 
