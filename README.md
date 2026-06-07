@@ -15,7 +15,6 @@ The framework is organized into namespaces, each mapped as an Ansible `roles_pat
 |----------------------|------------------------------------------------------------|
 | `applications/`      | Application-specific roles (e.g., `python3_pip`, `nginx`)  |
 | `operating_systems/` | OS bootstrap and hardening roles                           |
-| `utilities/`         | Shared utility roles and helper functions                  |
 
 Roles are referenced directly by name — no path prefix required. Ansible resolves them via `roles_path`.
 
