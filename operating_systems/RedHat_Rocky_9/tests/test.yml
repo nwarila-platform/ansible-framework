@@ -1,0 +1,8 @@
+---
+- name: 'Syntax check redhat_rocky_9'
+  hosts: localhost
+  gather_facts: false
+  vars:
+    ENV: 'ci'
+  roles:
+    - role: "{{ playbook_dir | dirname }}"

@@ -12,6 +12,12 @@ yamllint==1.35.1
 # Ansible linting and syntax checking
 ansible-lint==25.1.3
 ansible-core>=2.17,<2.19
+ansible-compat==26.3.0
+
+# Molecule role testing
+molecule==25.1.0
+molecule-plugins[docker]==23.7.0
+docker==7.1.0
 
 # Pre-commit hook framework
 pre-commit==4.0.1

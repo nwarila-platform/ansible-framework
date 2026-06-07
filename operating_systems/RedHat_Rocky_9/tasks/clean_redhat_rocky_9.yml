@@ -1,0 +1,64 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/clean_redhat_rocky_9.yml'                                      #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Removes transient role scratch data only. It does not touch enforced configuration.          #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (clean_redhat_rocky_9)'
+  become: true
+  block:
+
+    - name: 'MAIN | Build Clean Path List'
+      ansible.builtin.set_fact:
+        __redhat_rocky_9_clean_paths: >-
+          {{
+            ([__temp_dir__.path] if (__temp_dir__ is defined and __temp_dir__.path is defined) else [])
+            + ([config.evidence.path] if (config.evidence.path | default('') | length > 0) else [])
+          }}
+
+    - name: 'MAIN | Stat Role Scratch Paths'
+      loop: "{{ __redhat_rocky_9_clean_paths }}"
+      loop_control: { loop_var: '__clean_path__' }
+      changed_when: false
+      ansible.builtin.stat:
+        path: "{{ __clean_path__ }}"
+      register: __redhat_rocky_9_clean_path_stats__
+      when: __redhat_rocky_9_clean_paths | length > 0
+
+    - name: 'MAIN | Find Role Scratch Paths'
+      loop: "{{ __redhat_rocky_9_clean_path_stats__.results | default([]) }}"
+      loop_control: { loop_var: '__clean_path_result__' }
+      changed_when: false
+      ansible.builtin.find:
+        paths: "{{ __clean_path_result__.__clean_path__ }}"
+        hidden: true
+        recurse: true
+        file_type: 'any'
+      register: __redhat_rocky_9_scratch_paths__
+      when: __clean_path_result__.stat.isdir | default(false)
+
+    - name: 'MAIN | Remove Role Scratch Paths'
+      loop: >-
+        {{
+          (__redhat_rocky_9_scratch_paths__.results | default([]))
+          | selectattr('files', 'defined')
+          | map(attribute='files')
+          | flatten
+          | map(attribute='path')
+          | list
+          + (
+            __redhat_rocky_9_clean_path_stats__.results | default([])
+            | selectattr('stat.exists')
+            | map(attribute='__clean_path__')
+            | list
+          )
+        }}
+      loop_control: { loop_var: '__scratch_path__' }
+      ansible.builtin.file:
+        path: "{{ __scratch_path__ }}"
+        state: 'absent'
+      when: __redhat_rocky_9_clean_paths | length > 0
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

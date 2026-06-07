@@ -1,0 +1,380 @@
+redhat_rocky_9_constants:
+  stig_profile: 'xccdf_org.ssgproject.content_profile_stig'
+  ssg_content_candidates:
+    - '/usr/share/xml/scap/ssg/content/ssg-rl9-ds.xml'
+    - '/usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml'
+  cis_benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+  cis_source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+  cis_l1_audit_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+  stig_source_base_url: 'https://stigaview.com/products/rhel9/latest'
+  container_virtualization_types:
+    - 'container'
+    - 'containerd'
+    - 'docker'
+    - 'lxc'
+    - 'openvz'
+    - 'podman'
+
+redhat_rocky_9_controls:
+
+  rhel_09_255100:
+    id: 'RHEL-09-255100'
+    title: 'SSH ClientAliveInterval is 600 seconds or less'
+    value: 'ClientAliveInterval 600'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255100/index.html'
+    verified: true
+  rhel_09_255095:
+    id: 'RHEL-09-255095'
+    title: 'SSH ClientAliveCountMax is 1'
+    value: 'ClientAliveCountMax 1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255095/index.html'
+    verified: true
+  rhel_09_255030:
+    id: 'RHEL-09-255030'
+    title: 'SSH logs at VERBOSE level'
+    value: 'LogLevel VERBOSE'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255030/index.html'
+    verified: true
+  rhel_09_255155:
+    id: 'RHEL-09-255155'
+    title: 'SSH X11 forwarding is disabled'
+    value: 'X11Forwarding no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255155/index.html'
+    verified: true
+  rhel_09_255160:
+    id: 'RHEL-09-255160'
+    title: 'SSH strict modes are enabled'
+    value: 'StrictModes yes'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255160/index.html'
+    verified: true
+  rhel_09_255145:
+    id: 'RHEL-09-255145'
+    title: 'SSH ignores rhosts files'
+    value: 'IgnoreRhosts yes'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255145/index.html'
+    verified: true
+  rhel_09_255080:
+    id: 'RHEL-09-255080'
+    title: 'SSH host-based authentication is disabled'
+    value: 'HostbasedAuthentication no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255080/index.html'
+    verified: true
+  rhel_09_255040:
+    id: 'RHEL-09-255040'
+    title: 'SSH empty passwords are disabled'
+    value: 'PermitEmptyPasswords no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255040/index.html'
+    verified: true
+  rhel_09_255135:
+    id: 'RHEL-09-255135'
+    title: 'SSH GSSAPI authentication is disabled'
+    value: 'GSSAPIAuthentication no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255135/index.html'
+    verified: true
+  rhel_09_255140:
+    id: 'RHEL-09-255140'
+    title: 'SSH Kerberos authentication is disabled'
+    value: 'KerberosAuthentication no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255140/index.html'
+    verified: true
+  rhel_09_255085:
+    id: 'RHEL-09-255085'
+    title: 'SSH user environment override is disabled'
+    value: 'PermitUserEnvironment no'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255085/index.html'
+    verified: true
+  rhel_09_255150:
+    id: 'RHEL-09-255150'
+    title: 'SSH ignores user known hosts for host-based authentication'
+    value: 'IgnoreUserKnownHosts yes'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255150/index.html'
+    verified: true
+  rhel_09_255165:
+    id: 'RHEL-09-255165'
+    title: 'SSH prints the last login'
+    value: 'PrintLastLog yes'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255165/index.html'
+    verified: true
+  rhel_09_255090:
+    id: 'RHEL-09-255090'
+    title: 'SSH rekeys frequently'
+    value: 'RekeyLimit 1G 1h'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255090/index.html'
+    verified: true
+  rhel_09_255175:
+    id: 'RHEL-09-255175'
+    title: 'SSH X11 uses localhost'
+    value: 'X11UseLocalhost yes'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255175/index.html'
+    verified: true
+  rhel_09_255025:
+    id: 'RHEL-09-255025'
+    title: 'SSH displays the local banner'
+    value: 'Banner /etc/issue'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-255025/index.html'
+    verified: true
+
+  rhel_09_411010:
+    id: 'RHEL-09-411010'
+    title: 'New password maximum age is 60 days'
+    value: 'PASS_MAX_DAYS 60'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411010/index.html'
+    verified: true
+  rhel_09_611075:
+    id: 'RHEL-09-611075'
+    title: 'New password minimum age is one day'
+    value: 'PASS_MIN_DAYS 1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611075/index.html'
+    verified: true
+  rhel_09_411025:
+    id: 'RHEL-09-411025'
+    title: 'System default umask is 077'
+    value: 'UMASK 077'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411025/index.html'
+    verified: true
+  rhel_09_411050:
+    id: 'RHEL-09-411050'
+    title: 'Inactive accounts are disabled after 35 days'
+    value: 'INACTIVE=35 and chage --inactive 35'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411050/index.html'
+    verified: true
+
+  rhel_09_611090:
+    id: 'RHEL-09-611090'
+    title: 'Password minimum length is 15'
+    value: 'minlen = 15'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611090/index.html'
+    verified: true
+  rhel_09_611110:
+    id: 'RHEL-09-611110'
+    title: 'Passwords require an uppercase character'
+    value: 'ucredit = -1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611110/index.html'
+    verified: true
+  rhel_09_611065:
+    id: 'RHEL-09-611065'
+    title: 'Passwords require a lowercase character'
+    value: 'lcredit = -1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611065/index.html'
+    verified: true
+  rhel_09_611070:
+    id: 'RHEL-09-611070'
+    title: 'Passwords require a numeric character'
+    value: 'dcredit = -1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611070/index.html'
+    verified: true
+  rhel_09_611100:
+    id: 'RHEL-09-611100'
+    title: 'Passwords require a special character'
+    value: 'ocredit = -1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611100/index.html'
+    verified: true
+  rhel_09_611115:
+    id: 'RHEL-09-611115'
+    title: 'Password reuse character difference is eight'
+    value: 'difok = 8'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611115/index.html'
+    verified: true
+  rhel_09_611125:
+    id: 'RHEL-09-611125'
+    title: 'Password maximum repeated characters is three'
+    value: 'maxrepeat = 3'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611125/index.html'
+    verified: true
+  rhel_09_611120:
+    id: 'RHEL-09-611120'
+    title: 'Password maximum repeated character classes is four'
+    value: 'maxclassrepeat = 4'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611120/index.html'
+    verified: true
+  rhel_09_611130:
+    id: 'RHEL-09-611130'
+    title: 'Passwords require four character classes'
+    value: 'minclass = 4'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611130/index.html'
+    verified: true
+  rhel_09_611105:
+    id: 'RHEL-09-611105'
+    title: 'Password dictionary check is enabled'
+    value: 'dictcheck = 1'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-611105/index.html'
+    verified: true
+
+  rhel_09_411075:
+    id: 'RHEL-09-411075'
+    title: 'Accounts lock after three failed logons'
+    value: 'deny = 3'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411075/index.html'
+    verified: true
+  rhel_09_411085:
+    id: 'RHEL-09-411085'
+    title: 'Failed logon interval is 900 seconds'
+    value: 'fail_interval = 900'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411085/index.html'
+    verified: true
+  rhel_09_411090:
+    id: 'RHEL-09-411090'
+    title: 'Locked accounts stay locked until administrator release'
+    value: 'unlock_time = 0'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411090/index.html'
+    verified: true
+  rhel_09_411080:
+    id: 'RHEL-09-411080'
+    title: 'Root account participates in faillock'
+    value: 'even_deny_root'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-411080/index.html'
+    verified: true
+
+  rhel_09_211020:
+    id: 'RHEL-09-211020'
+    title: 'Standard Mandatory DoD Notice and Consent Banner is displayed'
+    value: '/etc/issue and /etc/issue.net match the standard banner'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-211020/index.html'
+    verified: true
+  rhel_09_213070:
+    id: 'RHEL-09-213070'
+    title: 'Address space layout randomization is configured'
+    value: 'kernel.randomize_va_space = 2'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-213070/index.html'
+    verified: true
+  rhel_09_215075:
+    id: 'RHEL-09-215075'
+    title: 'openssl-pkcs11 package is installed'
+    value: 'openssl-pkcs11 present'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-215075/index.html'
+    verified: true
+  rhel_09_211035:
+    id: 'RHEL-09-211035'
+    title: 'rng-tools entropy service is enabled when not in FIPS mode'
+    value: 'rng-tools present and rngd enabled'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-211035/index.html'
+    verified: true
+  rhel_09_215015:
+    id: 'RHEL-09-215015'
+    title: 'FTP server package is absent'
+    value: 'vsftpd absent'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-215015/index.html'
+    verified: true
+  rhel_09_211030:
+    id: 'RHEL-09-211030'
+    title: 'Graphical target is not the default target'
+    value: 'multi-user.target'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-211030/index.html'
+    verified: true
+
+  cis_5_1_16:
+    id: 'CIS-5.1.16'
+    title: 'Ensure sshd MaxAuthTries is configured'
+    value: 'MaxAuthTries 4'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_5_1_login_grace_time:
+    id: 'CIS-5.1'
+    title: 'Ensure sshd LoginGraceTime is configured'
+    value: 'LoginGraceTime 60'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_5_1_max_startups:
+    id: 'CIS-5.1'
+    title: 'Ensure sshd MaxStartups is configured'
+    value: 'MaxStartups 10:30:60'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_5_1_max_sessions:
+    id: 'CIS-5.1'
+    title: 'Ensure sshd MaxSessions is configured'
+    value: 'MaxSessions 10'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_5_2_sudo_use_pty:
+    id: 'CIS-5.2'
+    title: 'Ensure sudo commands use pty'
+    value: 'Defaults use_pty'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_5_2_sudo_logfile:
+    id: 'CIS-5.2'
+    title: 'Ensure sudo log file exists'
+    value: 'Defaults logfile="/var/log/sudo.log"'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_3_nftables:
+    id: 'CIS-3'
+    title: 'Ensure nftables is installed'
+    value: 'nftables present'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_6_2_journald_compress:
+    id: 'CIS-6.2'
+    title: 'Ensure journald compresses large log files'
+    value: 'Compress=yes'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_6_2_journald_persistent:
+    id: 'CIS-6.2'
+    title: 'Ensure journald persistent storage is configured'
+    value: 'Storage=persistent'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+  cis_pass_warn_age:
+    id: 'CIS-password-warning-age'
+    title: 'Ensure password expiration warning days is configured'
+    value: 'PASS_WARN_AGE 7'
+    benchmark: 'CIS Rocky Linux 9 Benchmark v2.0.0'
+    source_url: 'https://www.cisecurity.org/benchmark/rocky_linux'
+    supporting_url: 'https://www.tenable.com/audits/CIS_Rocky_Linux_9_v2.0.0_L1_Server'
+    verified: true
+
+  cis_deferred_5_3_3_2_5:
+    id: 'CIS-5.3.3.2.5'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_1_3_1_7:
+    id: 'CIS-1.3.1.7'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_1_3_1_8:
+    id: 'CIS-1.3.1.8'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_7_1_9:
+    id: 'CIS-7.1.9'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_7_1_10:
+    id: 'CIS-7.1.10'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_2_4_1_8:
+    id: 'CIS-2.4.1.8'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false
+  cis_deferred_2_4_2_1:
+    id: 'CIS-2.4.2.1'
+    title: 'Deferred until R-07d citation verification'
+    implemented: false
+    verified: false

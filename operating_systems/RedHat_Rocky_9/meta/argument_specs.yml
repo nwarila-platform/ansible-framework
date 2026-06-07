@@ -1,0 +1,152 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/argument_specs.yml'                                             #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Formal input specification for redhat_rocky_9.                                              #
+# =========================================================================================== #
+
+argument_specs:
+
+  main:
+    short_description: 'Re-asserts Rocky Linux 9 DISA STIG drift controls and verified CIS deltas'
+    description:
+      - 'Manages container-testable Rocky Linux 9 hardening drift controls.'
+      - 'Execution path is determined by the ''state'' variable.'
+    options:
+
+      ENV:
+        type: 'str'
+        required: true
+        description:
+          - 'Selects environment-specific overlay variable files.'
+          - 'Must match ^[a-zA-Z0-9_-]+$. Path-traversal sequences are rejected.'
+
+      state:
+        type: 'str'
+        required: false
+        default: 'present'
+        choices:
+          - 'present'
+          - 'absent'
+          - 'clean'
+        description:
+          - >-
+            Controls which entrypoint task file is executed.
+            ''present'' applies role-owned controls (default).
+            ''absent'' removes only role-exclusive artifacts.
+            ''clean'' removes transient role scratch data only.
+
+      redhat_rocky_9:
+        type: 'dict'
+        required: false
+        description:
+          - >-
+            User-provided overrides merged on top of defaults and OS overlays
+            via combine(recursive=True). Only specified keys are changed.
+          - 'See defaults/main.yml for the full schema.'
+        options:
+
+          preflight:
+            type: 'dict'
+            required: false
+            description: 'Preflight and informational guard settings.'
+
+          sshd:
+            type: 'dict'
+            required: false
+            description: 'Role-owned sshd drop-in settings.'
+
+          login_defs:
+            type: 'dict'
+            required: false
+            description: 'login.defs settings managed by the role.'
+
+          useradd:
+            type: 'dict'
+            required: false
+            description: 'Default inactive-account settings and existing-user chage behavior.'
+
+          pwquality:
+            type: 'dict'
+            required: false
+            description: 'pwquality drop-in settings.'
+
+          faillock:
+            type: 'dict'
+            required: false
+            description: 'faillock.conf settings.'
+
+          banner:
+            type: 'dict'
+            required: false
+            description: 'DoD banner deployment settings.'
+
+          sysctl:
+            type: 'dict'
+            required: false
+            description: 'sysctl file settings and reload behavior.'
+
+          packages:
+            type: 'dict'
+            required: false
+            description: 'Package presence/absence settings.'
+
+          systemd_default:
+            type: 'dict'
+            required: false
+            description: 'Default systemd target assertion/remediation.'
+
+          cis_deltas:
+            type: 'dict'
+            required: false
+            description: 'Verified CIS Rocky Linux 9 Benchmark v2.0.0 delta settings.'
+
+          audit_offload:
+            type: 'dict'
+            required: false
+            description: 'R-07b placeholder; disabled in R-07a.'
+
+          aide:
+            type: 'dict'
+            required: false
+            description: 'R-07b placeholder; disabled in R-07a.'
+
+          fapolicyd:
+            type: 'dict'
+            required: false
+            description: 'R-07b placeholder; disabled in R-07a.'
+
+          grub_password:
+            type: 'dict'
+            required: false
+            description: 'R-07b placeholder; disabled in R-07a.'
+
+          selinux:
+            type: 'dict'
+            required: false
+            description: 'SELinux assertion settings.'
+
+          firewalld:
+            type: 'dict'
+            required: false
+            description: 'firewalld assertion settings.'
+
+          fips:
+            type: 'dict'
+            required: false
+            description: 'R-07b FIPS assertion placeholder.'
+
+          mounts:
+            type: 'dict'
+            required: false
+            description: 'R-07b mount assertion placeholder.'
+
+          evidence:
+            type: 'dict'
+            required: false
+            description: 'R-07c evidence path placeholder.'
+
+          temp_dir:
+            type: 'bool'
+            required: false
+            default: true
+            description: 'Set to false to skip temp directory creation and cleanup.'
