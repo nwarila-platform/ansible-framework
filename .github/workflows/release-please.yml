@@ -2,7 +2,7 @@
 # =============================================================================
 # Release Please — Automated Changelog & Release Management
 # =============================================================================
-# Triggered on every push to PROD. Release Please:
+# Triggered on every push to main. Release Please:
 #   1. Analyzes conventional commit messages since the last release
 #   2. Opens/updates a "Release PR" bumping the version and updating CHANGELOG.md
 #   3. When the Release PR is merged, creates a GitHub Release and git tag
@@ -20,7 +20,7 @@ name: Release Please
 on:
   push:
     branches:
-      - PROD
+      - main
 
 # Minimal permissions at workflow level
 permissions:
