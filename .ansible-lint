@@ -34,17 +34,6 @@ warn_list:
   - yaml[line-length]         # Already warned by yamllint; avoid double noise
 
 # -----------------------------------------------------------------------------
-# Skip List
-# -----------------------------------------------------------------------------
-# Rules intentionally disabled with documented rationale. Keep this list
-# short — each entry represents a debt to revisit.
-# -----------------------------------------------------------------------------
-skip_list:
-  # no-free-form: Our task names use the 'name: value\n  module:' style
-  # which older ansible-lint versions flag. Acceptable until upgrading baseline.
-  # - no-free-form
-
-# -----------------------------------------------------------------------------
 # Offline Mode
 # -----------------------------------------------------------------------------
 # Disable Galaxy resolution in CI to avoid network calls during lint.
