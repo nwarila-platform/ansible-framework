@@ -131,7 +131,7 @@
               - "{{ __family__ }}"
               - "{{ __family__ ~ '_' ~ __dist__ }}"
               - "{{ __family__ ~ '_' ~ __dist__ ~ '_' ~ __ver__ }}"
-              
+
           ansible.builtin.set_fact:
             __var_candidates__: "{{ __candidates__ | product(['', '_' ~ __env__]) | map('join') | list }}"
             __playbook_candidates__: "{{ __candidates__ | reverse | list }}"
