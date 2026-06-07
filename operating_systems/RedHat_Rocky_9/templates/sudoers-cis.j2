@@ -1,0 +1,8 @@
+#jinja2: lstrip_blocks: True, trim_blocks: True
+# =========================================================================================== #
+# {{ ansible_managed }}
+# =========================================================================================== #
+{% if config.cis_deltas.sudo.use_pty | default(true) | bool %}
+Defaults use_pty
+{% endif %}
+Defaults logfile="{{ config.cis_deltas.sudo.logfile }}"

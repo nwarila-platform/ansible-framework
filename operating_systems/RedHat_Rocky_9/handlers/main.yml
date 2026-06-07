@@ -1,0 +1,56 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/handlers/main.yml'                                                   #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Handlers for redhat_rocky_9.                                                                #
+# =========================================================================================== #
+
+- name: 'HANDLER | Validate sshd configuration'
+  listen: 'Reload sshd'
+  become: true
+  changed_when: false
+  ansible.builtin.command:
+    argv:
+      - '/usr/sbin/sshd'
+      - '-t'
+
+- name: 'HANDLER | Reload sshd'
+  listen: 'Reload sshd'
+  become: true
+  when:
+    - ansible_facts.service_mgr | default('') == 'systemd'
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.service:
+    name: 'sshd'
+    state: 'reloaded'
+
+- name: 'HANDLER | Restart firewalld'
+  listen: 'Restart firewalld'
+  become: true
+  when:
+    - ansible_facts.service_mgr | default('') == 'systemd'
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.service:
+    name: 'firewalld'
+    state: 'restarted'
+
+- name: 'HANDLER | Restart systemd-journald'
+  listen: 'Restart systemd-journald'
+  become: true
+  when:
+    - ansible_facts.service_mgr | default('') == 'systemd'
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.service:
+    name: 'systemd-journald'
+    state: 'restarted'
+
+- name: 'HANDLER | Reload sysctl'
+  listen: 'Reload sysctl'
+  become: true
+  changed_when: true
+  when:
+    - (lookup('vars', role_name ~ '_running', default={})).sysctl.reload | default(true) | bool
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.command:
+    argv:
+      - '/usr/sbin/sysctl'
+      - '--system'

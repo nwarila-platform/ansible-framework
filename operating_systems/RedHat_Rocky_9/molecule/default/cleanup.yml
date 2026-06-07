@@ -1,0 +1,10 @@
+---
+- name: 'Clean redhat_rocky_9'
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    ENV: 'ci'
+    state: 'clean'
+  roles:
+    - role: 'RedHat_Rocky_9'
