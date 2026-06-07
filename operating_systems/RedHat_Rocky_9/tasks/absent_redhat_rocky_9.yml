@@ -1,0 +1,29 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/absent_redhat_rocky_9.yml'                                     #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Removes only role-exclusive artifacts. absent != de-harden. This task file intentionally     #
+# does not touch SELinux, firewalld, 50-build-access.conf, login.defs, faillock.conf, or the   #
+# install-time SSG baseline.                                                                  #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (absent_redhat_rocky_9)'
+  become: true
+  block:
+
+    - name: 'MAIN | Remove Role-Exclusive Configuration Artifacts'
+      loop:
+        - "{{ config.sshd.drop_in.path }}"
+        - "{{ config.pwquality.path }}"
+        - "{{ config.sysctl.path }}"
+        - "{{ config.cis_deltas.sudo.path }}"
+        - "{{ config.cis_deltas.journald.path }}"
+        - '/etc/issue'
+        - '/etc/issue.net'
+      loop_control: { loop_var: '__role_artifact__' }
+      ansible.builtin.file:
+        path: "{{ __role_artifact__ }}"
+        state: 'absent'
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

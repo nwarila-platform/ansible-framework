@@ -1,0 +1,198 @@
+---
+- name: 'Verify redhat_rocky_9'
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    __expected_sshd__:
+      clientaliveinterval: '600'
+      clientalivecountmax: '1'
+      loglevel: 'verbose'
+      x11forwarding: 'no'
+      strictmodes: 'yes'
+      ignorerhosts: 'yes'
+      hostbasedauthentication: 'no'
+      permitemptypasswords: 'no'
+      gssapiauthentication: 'no'
+      kerberosauthentication: 'no'
+      permituserenvironment: 'no'
+      ignoreuserknownhosts: 'yes'
+      printlastlog: 'yes'
+      rekeylimit: '1073741824 3600'
+      x11uselocalhost: 'yes'
+      banner: '/etc/issue'
+      maxauthtries: '4'
+      logingracetime: '60'
+      maxstartups: '10:30:60'
+      maxsessions: '10'
+  tasks:
+
+    - name: 'VERIFY | Load Package Facts'
+      ansible.builtin.package_facts:
+        manager: 'auto'
+
+    - name: 'VERIFY | Read Effective sshd Configuration'
+      changed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/sbin/sshd'
+          - '-T'
+      register: __sshd_effective__
+
+    - name: 'VERIFY | Build sshd Effective Map'
+      ansible.builtin.set_fact:
+        __sshd_effective_map__: "{{ __sshd_effective_map__ | default({}) | combine({ (__line__.split()[0] | lower): (__line__.split()[1:] | join(' ')) }) }}"
+      loop: "{{ __sshd_effective__.stdout_lines }}"
+      loop_control: { loop_var: '__line__' }
+      when: __line__ | trim | length > 0
+
+    - name: 'VERIFY | Assert sshd Role-Owned Directives'
+      loop: "{{ __expected_sshd__ | dict2items }}"
+      loop_control: { loop_var: '__sshd_setting__' }
+      ansible.builtin.assert:
+        that:
+          - (__sshd_effective_map__[__sshd_setting__.key] | lower) == (__sshd_setting__.value | lower)
+        fail_msg: "Unexpected sshd value for {{ __sshd_setting__.key }}."
+        quiet: true
+
+    - name: 'VERIFY | Stat sshd Drop-In'
+      ansible.builtin.stat:
+        path: '/etc/ssh/sshd_config.d/60-ansible-stig.conf'
+      register: __sshd_dropin__
+
+    - name: 'VERIFY | Assert sshd Drop-In Ownership and Mode'
+      ansible.builtin.assert:
+        that:
+          - __sshd_dropin__.stat.exists
+          - __sshd_dropin__.stat.pw_name == 'root'
+          - __sshd_dropin__.stat.gr_name == 'root'
+          - __sshd_dropin__.stat.mode == '0600'
+        quiet: true
+
+    - name: 'VERIFY | Slurp Managed Files'
+      loop:
+        - { name: 'pwquality', path: '/etc/security/pwquality.conf.d/00-stig.conf' }
+        - { name: 'faillock', path: '/etc/security/faillock.conf' }
+        - { name: 'login_defs', path: '/etc/login.defs' }
+        - { name: 'useradd', path: '/etc/default/useradd' }
+        - { name: 'issue', path: '/etc/issue' }
+        - { name: 'issue_net', path: '/etc/issue.net' }
+        - { name: 'sysctl', path: '/etc/sysctl.d/99-stig.conf' }
+        - { name: 'sudoers', path: '/etc/sudoers.d/60-ansible-cis' }
+        - { name: 'journald', path: '/etc/systemd/journald.conf.d/60-ansible-cis.conf' }
+      loop_control: { loop_var: '__managed_file__' }
+      ansible.builtin.slurp:
+        path: "{{ __managed_file__.path }}"
+      register: __managed_files__
+
+    - name: 'VERIFY | Build Managed File Map'
+      ansible.builtin.set_fact:
+        __managed_file_map__: >-
+          {{
+            __managed_file_map__ | default({})
+            | combine({ __managed_file_result__.__managed_file__.name: (__managed_file_result__.content | b64decode) })
+          }}
+      loop: "{{ __managed_files__.results }}"
+      loop_control: { loop_var: '__managed_file_result__' }
+
+    - name: 'VERIFY | Assert pwquality Content'
+      ansible.builtin.assert:
+        that:
+          - "'minlen = 15' in __managed_file_map__.pwquality"
+          - "'ucredit = -1' in __managed_file_map__.pwquality"
+          - "'lcredit = -1' in __managed_file_map__.pwquality"
+          - "'dcredit = -1' in __managed_file_map__.pwquality"
+          - "'ocredit = -1' in __managed_file_map__.pwquality"
+          - "'difok = 8' in __managed_file_map__.pwquality"
+          - "'maxrepeat = 3' in __managed_file_map__.pwquality"
+          - "'maxclassrepeat = 4' in __managed_file_map__.pwquality"
+          - "'minclass = 4' in __managed_file_map__.pwquality"
+          - "'dictcheck = 1' in __managed_file_map__.pwquality"
+        quiet: true
+
+    - name: 'VERIFY | Assert faillock Content'
+      ansible.builtin.assert:
+        that:
+          - "'deny = 3' in __managed_file_map__.faillock"
+          - "'fail_interval = 900' in __managed_file_map__.faillock"
+          - "'unlock_time = 0' in __managed_file_map__.faillock"
+          - "'even_deny_root' in __managed_file_map__.faillock"
+        quiet: true
+
+    - name: 'VERIFY | Assert login.defs Content'
+      ansible.builtin.assert:
+        that:
+          - __managed_file_map__.login_defs is regex('(?m)^PASS_MAX_DAYS\\s+60$')
+          - __managed_file_map__.login_defs is regex('(?m)^PASS_MIN_DAYS\\s+1$')
+          - __managed_file_map__.login_defs is regex('(?m)^UMASK\\s+077$')
+          - __managed_file_map__.login_defs is regex('(?m)^PASS_WARN_AGE\\s+7$')
+        quiet: true
+
+    - name: 'VERIFY | Assert useradd Content'
+      ansible.builtin.assert:
+        that:
+          - __managed_file_map__.useradd is regex('(?m)^INACTIVE=35$')
+        quiet: true
+
+    - name: 'VERIFY | Assert Banner Content'
+      vars:
+        __expected_banner__: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../files/dod_banner.txt') }}"
+      ansible.builtin.assert:
+        that:
+          - (__managed_file_map__.issue | trim) == (__expected_banner__ | trim)
+          - (__managed_file_map__.issue_net | trim) == (__expected_banner__ | trim)
+        quiet: true
+
+    - name: 'VERIFY | Assert sysctl File Content'
+      ansible.builtin.assert:
+        that:
+          - "'kernel.randomize_va_space = 2' in __managed_file_map__.sysctl"
+        quiet: true
+
+    - name: 'VERIFY | Assert sudoers Content'
+      ansible.builtin.assert:
+        that:
+          - "'Defaults use_pty' in __managed_file_map__.sudoers"
+          - "'Defaults logfile=\"/var/log/sudo.log\"' in __managed_file_map__.sudoers"
+        quiet: true
+
+    - name: 'VERIFY | Assert journald Content'
+      ansible.builtin.assert:
+        that:
+          - "'[Journal]' in __managed_file_map__.journald"
+          - "'Compress=yes' in __managed_file_map__.journald"
+          - "'Storage=persistent' in __managed_file_map__.journald"
+        quiet: true
+
+    - name: 'VERIFY | Assert Package State'
+      ansible.builtin.assert:
+        that:
+          - "'openssl-pkcs11' in ansible_facts.packages"
+          - "'rng-tools' in ansible_facts.packages"
+          - "'nftables' in ansible_facts.packages"
+          - "'vsftpd' not in ansible_facts.packages"
+        quiet: true
+
+    - name: 'VERIFY | Read SELinux Mode Informationally'
+      changed_when: false
+      failed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/sbin/getenforce'
+      register: __getenforce_info__
+
+    - name: 'VERIFY | Read Live ASLR Informationally'
+      changed_when: false
+      failed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/sbin/sysctl'
+          - '-n'
+          - 'kernel.randomize_va_space'
+      register: __aslr_info__
+
+    - name: 'VERIFY | Report Container-Scoped Live Values'
+      ansible.builtin.debug:
+        msg:
+          - "SELinux mode is informational in molecule: {{ __getenforce_info__.stdout | default('unknown') }}"
+          - "Live kernel ASLR is informational in molecule: {{ __aslr_info__.stdout | default('unknown') }}"
