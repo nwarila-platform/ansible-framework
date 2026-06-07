@@ -20,7 +20,7 @@ Thanks for considering a contribution! Contributions and bug reports are very we
    # or
    pre-commit run --all-files
    ```
-4. Open a **pull request** against `PROD` and describe what you changed and why.
+4. Open a **pull request** against `main` and describe what you changed and why.
 
 ## Development setup
 

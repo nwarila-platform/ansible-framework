@@ -3,7 +3,7 @@
 # Dependabot Configuration
 # =============================================================================
 # Automatically opens PRs to keep dependency versions current.
-# All PRs target PROD and follow conventional commit format so release-please
+# All PRs target main and follow conventional commit format so release-please
 # correctly categorizes them in the changelog.
 # =============================================================================
 
@@ -23,7 +23,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/New_York"
-    target-branch: "PROD"
+    target-branch: "main"
     commit-message:
       prefix: "chore"
       prefix-development: "chore"
@@ -44,7 +44,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "America/New_York"
-    target-branch: "PROD"
+    target-branch: "main"
     commit-message:
       prefix: "chore"
       prefix-development: "chore"

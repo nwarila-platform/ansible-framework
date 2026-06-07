@@ -126,7 +126,7 @@ python3_pip:
 
 ## Contributing
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/), enforced by pre-commit. Merging to `PROD` triggers release-please, which opens a Release PR and eventually creates a tagged GitHub Release.
+This project uses [Conventional Commits](https://www.conventionalcommits.org/), enforced by pre-commit. Merging to `main` triggers release-please, which opens a Release PR and eventually creates a tagged GitHub Release.
 
 ### Commit Format
 

@@ -2,11 +2,11 @@
 
 ## Supported versions
 
-Only the latest commit on the `PROD` branch is actively maintained and receives security fixes.
+Only the latest commit on the `main` branch is actively maintained and receives security fixes.
 
 | Branch | Supported |
 |--------|-----------|
-| `PROD` (latest) | Yes |
+| `main` (latest) | Yes |
 | Older commits | No |
 
 ## Reporting a vulnerability
