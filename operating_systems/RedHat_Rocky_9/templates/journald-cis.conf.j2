@@ -1,8 +1,0 @@
-#jinja2: lstrip_blocks: True, trim_blocks: True
-# =========================================================================================== #
-# {{ ansible_managed }}
-# =========================================================================================== #
-[Journal]
-{% for __key__, __value__ in config.cis_deltas.journald.settings | dictsort %}
-{{ __key__ }}={{ __value__ }}
-{% endfor %}
