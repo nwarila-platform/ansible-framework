@@ -6,8 +6,13 @@
   vars:
     ENV: 'ci'
     redhat_rocky_9:
+      audit:
+        enabled: true
+        reload: false
       audit_offload:
-        enabled: false
+        enabled: true
+        rsyslog_forward:
+          remote_host: '198.51.100.10'
       aide:
         enabled: false
       fapolicyd:

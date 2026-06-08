@@ -19,6 +19,9 @@
         - "{{ config.sysctl.path }}"
         - "{{ config.cis_deltas.sudo.path }}"
         - "{{ config.cis_deltas.journald.path }}"
+        - "{{ config.audit.rules.stig_path }}"
+        - "{{ config.audit.rules.finalize_path }}"
+        - "{{ config.audit_offload.drop_in.path }}"
         - '/etc/issue'
         - '/etc/issue.net'
       loop_control: { loop_var: '__role_artifact__' }

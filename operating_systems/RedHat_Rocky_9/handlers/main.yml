@@ -43,6 +43,62 @@
     name: 'systemd-journald'
     state: 'restarted'
 
+- name: 'HANDLER | Restart auditd'
+  listen: 'Restart auditd'
+  become: true
+  changed_when: true
+  when:
+    - (lookup('vars', role_name ~ '_running', default={})).audit.reload | default(true) | bool
+    - ansible_facts.service_mgr | default('') == 'systemd'
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.command:
+    argv:
+      - '/usr/sbin/service'
+      - 'auditd'
+      - 'restart'
+
+- name: 'HANDLER | Load augenrules'
+  listen: 'Load augenrules'
+  become: true
+  register: __redhat_rocky_9_augenrules_load__
+  vars:
+    __augenrules_output__: >-
+      {{
+        (
+          __redhat_rocky_9_augenrules_load__.stdout | default('')
+        ) ~ ' ' ~ (
+          __redhat_rocky_9_augenrules_load__.stderr | default('')
+        )
+      }}
+  changed_when:
+    - __redhat_rocky_9_augenrules_load__.rc == 0
+    - "'no change' not in (__augenrules_output__ | lower)"
+  failed_when: >-
+    __redhat_rocky_9_augenrules_load__.rc not in [0, 1]
+    or (
+      __redhat_rocky_9_augenrules_load__.rc == 1
+      and 'immutable' not in (__augenrules_output__ | lower)
+      and 'operation not permitted' not in (__augenrules_output__ | lower)
+    )
+  when:
+    - (lookup('vars', role_name ~ '_running', default={})).audit.reload | default(true) | bool
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.command:
+    argv:
+      - '/usr/sbin/augenrules'
+      - '--load'
+
+- name: 'HANDLER | Restart rsyslog'
+  listen: 'Restart rsyslog'
+  become: true
+  when:
+    - (lookup('vars', role_name ~ '_running', default={})).audit_offload.enabled | default(false) | bool
+    - ansible_facts.service_mgr | default('') == 'systemd'
+    - ansible_facts.virtualization_type | default('') not in redhat_rocky_9_constants.container_virtualization_types
+  ansible.builtin.service:
+    name: 'rsyslog'
+    state: 'restarted'
+
 - name: 'HANDLER | Reload sysctl'
   listen: 'Reload sysctl'
   become: true

@@ -135,6 +135,48 @@ redhat_rocky_9_defaults:
     enabled: true
     target: 'multi-user.target'
 
+  # Drift re-assert of audit subsystem STIG controls. Live kernel rule loading is host-only.
+  audit:
+    enabled: true
+    reload: true
+    packages:
+      - 'audit'
+    service: 'auditd'
+    auditd_conf:
+      path: '/etc/audit/auditd.conf'
+      owner: 'root'
+      group: 'root'
+      mode: '0640'
+      settings:
+        space_left: '25%'
+        space_left_action: 'email'
+        action_mail_acct: 'root'
+        admin_space_left: '5%'
+        admin_space_left_action: 'single'
+        # Hardening-only: no planner-confirmed RHEL-09 id is bound to this default.
+        disk_full_action: 'single'
+        log_format: 'ENRICHED'
+        # Hardening-only: labels offloaded audit records; keep uncited until R-07d re-verifies IDs.
+        name_format: 'hostname'
+    rules:
+      dir: '/etc/audit/rules.d'
+      stig_path: '/etc/audit/rules.d/60-ansible-stig.rules'
+      finalize_path: '/etc/audit/rules.d/99-finalize.rules'
+      owner: 'root'
+      group: 'root'
+      mode: '0640'
+      immutable: true
+    tool_perms:
+      mode: '0755'
+      paths:
+        - '/sbin/auditctl'
+        - '/sbin/aureport'
+        - '/sbin/ausearch'
+        - '/sbin/autrace'
+        - '/sbin/auditd'
+        - '/sbin/rsyslogd'
+        - '/sbin/augenrules'
+
   # Verified CIS Rocky Linux 9 Benchmark v2.0.0 deltas sourced per control in vars/main.yml.
   cis_deltas:
     enabled: true
@@ -173,6 +215,17 @@ redhat_rocky_9_defaults:
   # Host-only controls are staged for R-07b; R-07a must not mutate these live controls.
   audit_offload:
     enabled: false
+    packages:
+      - 'rsyslog'
+    rsyslog_forward:
+      remote_host: ''
+      port: 6514
+      protocol: 'tcp'
+    drop_in:
+      path: '/etc/rsyslog.d/60-ansible-stig-offload.conf'
+      owner: 'root'
+      group: 'root'
+      mode: '0644'
   aide:
     enabled: false
   fapolicyd:

@@ -262,6 +262,107 @@ redhat_rocky_9_controls:
     source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-211030/index.html'
     verified: true
 
+  rhel_09_653010:
+    id: 'RHEL-09-653010'
+    title: 'Audit package is installed'
+    value: 'audit present'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653010/index.html'
+    verified: true
+  rhel_09_653015:
+    id: 'RHEL-09-653015'
+    title: 'Audit service is enabled'
+    value: 'auditd enabled'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653015/index.html'
+    verified: true
+  rhel_09_653035:
+    id: 'RHEL-09-653035'
+    title: 'Audit storage warning threshold is 25 percent free'
+    value: 'space_left = 25%'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653035/index.html'
+    verified: true
+  rhel_09_653040:
+    id: 'RHEL-09-653040'
+    title: 'Audit storage warning action emails administrators'
+    value: 'space_left_action = email'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653040/index.html'
+    verified: true
+  rhel_09_653045:
+    id: 'RHEL-09-653045'
+    title: 'Audit administrative storage threshold is 5 percent free'
+    value: 'admin_space_left = 5%'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653045/index.html'
+    verified: true
+  rhel_09_653050:
+    id: 'RHEL-09-653050'
+    title: 'Audit administrative storage action enters single-user mode'
+    value: 'admin_space_left_action = single'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653050/index.html'
+    verified: true
+  rhel_09_653070:
+    id: 'RHEL-09-653070'
+    title: 'Audit processing failure notifications go to root'
+    value: 'action_mail_acct = root'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653070/index.html'
+    verified: true
+  rhel_09_653100:
+    id: 'RHEL-09-653100'
+    title: 'Audit records use enriched log format'
+    value: 'log_format = ENRICHED'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653100/index.html'
+    verified: true
+  rhel_09_653110:
+    id: 'RHEL-09-653110'
+    title: 'Audit configuration files are mode 0640 or less permissive'
+    value: '/etc/audit/rules.d/*.rules and /etc/audit/auditd.conf mode 0640'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-653110/index.html'
+    verified: true
+  rhel_09_654150:
+    id: 'RHEL-09-654150'
+    title: 'All sudo command executions are audited'
+    value: '-a always,exit -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=unset -k priv_cmd'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-654150/index.html'
+    verified: true
+  rhel_09_654275:
+    id: 'RHEL-09-654275'
+    title: 'Audit rules are immutable'
+    value: '-e 2'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-654275/index.html'
+    verified: true
+  rhel_09_232035:
+    id: 'RHEL-09-232035'
+    title: 'Audit tools have mode 0755 or less permissive'
+    value: '/sbin/auditctl /sbin/aureport /sbin/ausearch /sbin/autrace /sbin/auditd /sbin/rsyslogd /sbin/augenrules mode 0755'
+    scope: 'audit'
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-232035/index.html'
+    verified: true
+  rhel_09_652010:
+    id: 'RHEL-09-652010'
+    title: 'Rsyslog package is installed for offload'
+    value: 'rsyslog present'
+    scope: 'audit_offload'
+    default_active: false
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-652010/index.html'
+    verified: true
+  rhel_09_652055:
+    id: 'RHEL-09-652055'
+    title: 'Audit records are forwarded over TCP via rsyslog'
+    value: 'omfwd protocol=tcp target=<operator remote_host> port=6514'
+    scope: 'audit_offload'
+    default_active: false
+    source_url: 'https://stigaview.com/products/rhel9/latest/RHEL-09-652055/index.html'
+    verified: true
+
   cis_5_1_16:
     id: 'CIS-5.1.16'
     title: 'Ensure sshd MaxAuthTries is configured'

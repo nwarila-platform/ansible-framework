@@ -95,6 +95,11 @@ argument_specs:
             required: false
             description: 'Default systemd target assertion/remediation.'
 
+          audit:
+            type: 'dict'
+            required: false
+            description: 'Audit subsystem package, service, auditd.conf, audit rules, and audit tool mode settings.'
+
           cis_deltas:
             type: 'dict'
             required: false
@@ -103,7 +108,7 @@ argument_specs:
           audit_offload:
             type: 'dict'
             required: false
-            description: 'R-07b placeholder; disabled in R-07a.'
+            description: 'Default-off rsyslog audit offload settings. Requires an operator-provided remote_host when enabled.'
 
           aide:
             type: 'dict'

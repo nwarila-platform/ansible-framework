@@ -173,6 +173,14 @@
                   )
                   | ternary([config.cis_deltas.nftables.package | default('nftables')], [])
                 )
+                + (
+                  (config.audit.enabled | default(true) | bool)
+                  | ternary(config.audit.packages | default([]), [])
+                )
+                + (
+                  (config.audit_offload.enabled | default(false) | bool)
+                  | ternary(config.audit_offload.packages | default([]), [])
+                )
               }}
 
         - name: 'MAIN | Install Required Packages'
@@ -200,6 +208,88 @@
           ansible.builtin.systemd_service:
             name: "{{ config.packages.rng_tools.service | default('rngd') }}"
             enabled: true
+
+        - name: 'MAIN | Configure audit Subsystem'
+          when: config.audit.enabled | default(true) | bool
+          block:
+
+            - name: 'MAIN | Ensure audit Rules Directory Exists'
+              ansible.builtin.file:
+                path: "{{ config.audit.rules.dir }}"
+                state: 'directory'
+                owner: "{{ config.audit.rules.owner | default('root') }}"
+                group: "{{ config.audit.rules.group | default('root') }}"
+                mode: '0750'
+
+            - name: 'MAIN | Enable auditd Service'
+              when: ansible_facts.service_mgr | default('') == 'systemd'
+              ansible.builtin.systemd_service:
+                name: "{{ config.audit.service | default('auditd') }}"
+                enabled: true
+
+            - name: 'MAIN | Configure auditd STIG Settings'
+              loop: "{{ config.audit.auditd_conf.settings | dict2items }}"
+              loop_control: { loop_var: '__auditd_conf_setting__' }
+              ansible.builtin.lineinfile:
+                path: "{{ config.audit.auditd_conf.path }}"
+                regexp: "^\\s*#?\\s*{{ __auditd_conf_setting__.key }}\\s*=.*$"
+                line: "{{ __auditd_conf_setting__.key }} = {{ __auditd_conf_setting__.value }}"
+                owner: "{{ config.audit.auditd_conf.owner | default('root') }}"
+                group: "{{ config.audit.auditd_conf.group | default('root') }}"
+                mode: "{{ config.audit.auditd_conf.mode | default('0640') }}"
+              notify: 'Restart auditd'
+
+            - name: 'MAIN | Deploy audit STIG Rules'
+              ansible.builtin.template:
+                src: 'auditd-stig.rules.j2'
+                dest: "{{ config.audit.rules.stig_path }}"
+                owner: "{{ config.audit.rules.owner | default('root') }}"
+                group: "{{ config.audit.rules.group | default('root') }}"
+                mode: "{{ config.audit.rules.mode | default('0640') }}"
+              notify: 'Load augenrules'
+
+            - name: 'MAIN | Deploy audit Finalize Rules'
+              ansible.builtin.template:
+                src: 'audit-finalize.rules.j2'
+                dest: "{{ config.audit.rules.finalize_path }}"
+                owner: "{{ config.audit.rules.owner | default('root') }}"
+                group: "{{ config.audit.rules.group | default('root') }}"
+                mode: "{{ config.audit.rules.mode | default('0640') }}"
+              notify: 'Load augenrules'
+
+            - name: 'MAIN | Stat audit Tool Paths'
+              loop: "{{ config.audit.tool_perms.paths | default([]) }}"
+              loop_control: { loop_var: '__audit_tool__' }
+              ansible.builtin.stat:
+                path: "{{ __audit_tool__ }}"
+              register: __redhat_rocky_9_audit_tool_stats__
+
+            - name: 'MAIN | Clamp audit Tool Modes'
+              loop: "{{ __redhat_rocky_9_audit_tool_stats__.results | default([]) | selectattr('stat.exists') | list }}"
+              loop_control: { loop_var: '__audit_tool_result__' }
+              ansible.builtin.file:
+                path: "{{ __audit_tool_result__.stat.path }}"
+                mode: "{{ config.audit.tool_perms.mode | default('0755') }}"
+
+        - name: 'MAIN | Configure audit Offload'
+          when: config.audit_offload.enabled | default(false) | bool
+          block:
+
+            - name: 'MAIN | Verify audit Offload Remote Host'
+              ansible.builtin.assert:
+                that:
+                  - config.audit_offload.rsyslog_forward.remote_host | string | trim | length > 0
+                fail_msg: 'audit_offload.rsyslog_forward.remote_host is required when audit offload is enabled.'
+                quiet: true
+
+            - name: 'MAIN | Deploy rsyslog audit Offload Drop-In'
+              ansible.builtin.template:
+                src: 'rsyslog-offload.conf.j2'
+                dest: "{{ config.audit_offload.drop_in.path }}"
+                owner: "{{ config.audit_offload.drop_in.owner | default('root') }}"
+                group: "{{ config.audit_offload.drop_in.group | default('root') }}"
+                mode: "{{ config.audit_offload.drop_in.mode | default('0644') }}"
+              notify: 'Restart rsyslog'
 
         - name: 'MAIN | Ensure sshd Configuration Directory Exists'
           when: config.sshd.enabled | default(true) | bool

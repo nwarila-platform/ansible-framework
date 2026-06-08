@@ -80,6 +80,10 @@
         - { name: 'sysctl', path: '/etc/sysctl.d/99-stig.conf' }
         - { name: 'sudoers', path: '/etc/sudoers.d/60-ansible-cis' }
         - { name: 'journald', path: '/etc/systemd/journald.conf.d/60-ansible-cis.conf' }
+        - { name: 'auditd_conf', path: '/etc/audit/auditd.conf' }
+        - { name: 'audit_stig_rules', path: '/etc/audit/rules.d/60-ansible-stig.rules' }
+        - { name: 'audit_finalize_rules', path: '/etc/audit/rules.d/99-finalize.rules' }
+        - { name: 'rsyslog_offload', path: '/etc/rsyslog.d/60-ansible-stig-offload.conf' }
       loop_control: { loop_var: '__managed_file__' }
       ansible.builtin.slurp:
         path: "{{ __managed_file__.path }}"
@@ -164,12 +168,84 @@
           - "'Storage=persistent' in __managed_file_map__.journald"
         quiet: true
 
+    - name: 'VERIFY | Assert auditd.conf Content'
+      ansible.builtin.assert:
+        that:
+          - __managed_file_map__.auditd_conf is regex('(?m)^space_left\\s*=\\s*25%$')
+          - __managed_file_map__.auditd_conf is regex('(?m)^space_left_action\\s*=\\s*email$')
+          - __managed_file_map__.auditd_conf is regex('(?m)^action_mail_acct\\s*=\\s*root$')
+          - __managed_file_map__.auditd_conf is regex('(?m)^log_format\\s*=\\s*ENRICHED$')
+        quiet: true
+
+    - name: 'VERIFY | Assert audit STIG Rules Content'
+      ansible.builtin.assert:
+        that:
+          - "'/usr/bin/sudo' in __managed_file_map__.audit_stig_rules"
+          - "'-a always,exit -F path=/usr/bin/sudo -F perm=x -F auid>=1000 -F auid!=unset -k priv_cmd' in __managed_file_map__.audit_stig_rules"
+          - "'priv_cmd' in __managed_file_map__.audit_stig_rules"
+          - "'privileged-priv_change' not in __managed_file_map__.audit_stig_rules"
+        quiet: true
+
+    - name: 'VERIFY | Assert audit Finalize Rules Content'
+      ansible.builtin.assert:
+        that:
+          - __managed_file_map__.audit_finalize_rules is regex('(?m)^-e 2$')
+        quiet: true
+
+    - name: 'VERIFY | Assert rsyslog Offload Content'
+      ansible.builtin.assert:
+        that:
+          - "'type=\"omfwd\"' in __managed_file_map__.rsyslog_offload"
+          - "'target=\"198.51.100.10\"' in __managed_file_map__.rsyslog_offload"
+          - "'port=\"6514\"' in __managed_file_map__.rsyslog_offload"
+          - "'protocol=\"tcp\"' in __managed_file_map__.rsyslog_offload"
+        quiet: true
+
+    - name: 'VERIFY | Stat audit Rules Files'
+      loop:
+        - '/etc/audit/rules.d/60-ansible-stig.rules'
+        - '/etc/audit/rules.d/99-finalize.rules'
+      loop_control: { loop_var: '__audit_rules_file__' }
+      ansible.builtin.stat:
+        path: "{{ __audit_rules_file__ }}"
+      register: __audit_rules_file_stats__
+
+    - name: 'VERIFY | Assert audit Rules File Ownership and Mode'
+      loop: "{{ __audit_rules_file_stats__.results }}"
+      loop_control: { loop_var: '__audit_rules_file_result__' }
+      ansible.builtin.assert:
+        that:
+          - __audit_rules_file_result__.stat.exists
+          - __audit_rules_file_result__.stat.pw_name == 'root'
+          - __audit_rules_file_result__.stat.gr_name == 'root'
+          - __audit_rules_file_result__.stat.mode == '0640'
+        quiet: true
+
+    - name: 'VERIFY | Read auditd Enabled State'
+      changed_when: false
+      failed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/bin/systemctl'
+          - 'is-enabled'
+          - 'auditd'
+      register: __auditd_enabled__
+
+    - name: 'VERIFY | Assert auditd Is Enabled or Static'
+      ansible.builtin.assert:
+        that:
+          - __auditd_enabled__.stdout in ['enabled', 'static']
+        fail_msg: "Unexpected auditd enabled state: {{ __auditd_enabled__.stdout | default('unknown') }}"
+        quiet: true
+
     - name: 'VERIFY | Assert Package State'
       ansible.builtin.assert:
         that:
           - "'openssl-pkcs11' in ansible_facts.packages"
           - "'rng-tools' in ansible_facts.packages"
           - "'nftables' in ansible_facts.packages"
+          - "'audit' in ansible_facts.packages"
+          - "'rsyslog' in ansible_facts.packages"
           - "'vsftpd' not in ansible_facts.packages"
         quiet: true
 
@@ -191,8 +267,28 @@
           - 'kernel.randomize_va_space'
       register: __aslr_info__
 
+    - name: 'VERIFY | Read auditctl Status Informationally'
+      changed_when: false
+      failed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/sbin/auditctl'
+          - '-s'
+      register: __auditctl_status_info__
+
+    - name: 'VERIFY | Read auditctl Rules Informationally'
+      changed_when: false
+      failed_when: false
+      ansible.builtin.command:
+        argv:
+          - '/usr/sbin/auditctl'
+          - '-l'
+      register: __auditctl_rules_info__
+
     - name: 'VERIFY | Report Container-Scoped Live Values'
       ansible.builtin.debug:
         msg:
           - "SELinux mode is informational in molecule: {{ __getenforce_info__.stdout | default('unknown') }}"
           - "Live kernel ASLR is informational in molecule: {{ __aslr_info__.stdout | default('unknown') }}"
+          - "auditctl -s is informational in molecule: rc={{ __auditctl_status_info__.rc }} stdout={{ __auditctl_status_info__.stdout | default('') }}"
+          - "auditctl -l is informational in molecule: rc={{ __auditctl_rules_info__.rc }} stdout={{ __auditctl_rules_info__.stdout | default('') }}"

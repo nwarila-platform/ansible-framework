@@ -1,0 +1,3 @@
+# Managed by Ansible: RedHat_Rocky_9
+# RHEL-09-652055: forward local logs to the operator-provided remote collector.
+*.* action(type="omfwd" target="{{ config.audit_offload.rsyslog_forward.remote_host }}" port="{{ config.audit_offload.rsyslog_forward.port }}" protocol="{{ config.audit_offload.rsyslog_forward.protocol | default('tcp') }}")

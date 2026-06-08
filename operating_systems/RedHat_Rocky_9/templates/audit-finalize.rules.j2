@@ -1,0 +1,4 @@
+# Managed by Ansible: RedHat_Rocky_9
+{% if config.audit.rules.immutable | default(true) | bool %}
+-e 2
+{% endif %}
