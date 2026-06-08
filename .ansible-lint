@@ -21,6 +21,7 @@ exclude_paths:
   - .git/
   - .github/
   - operating_systems/RedHat_Rocky_8/
+  - operating_systems/RedHat_Rocky_9/
 
 # -----------------------------------------------------------------------------
 # Warnings (non-blocking)
