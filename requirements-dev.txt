@@ -15,7 +15,7 @@ ansible-core>=2.17,<2.19
 ansible-compat==26.3.0
 
 # Molecule role testing
-molecule==25.1.0
+molecule==26.4.0
 molecule-plugins[docker]==23.7.0
 docker==7.1.0
 
