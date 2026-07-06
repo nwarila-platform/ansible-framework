@@ -10,7 +10,7 @@
 yamllint==1.35.1
 
 # Ansible linting and syntax checking
-ansible-lint==25.1.3
+ansible-lint==26.6.0
 ansible-core>=2.17,<2.19
 
 # Pre-commit hook framework
