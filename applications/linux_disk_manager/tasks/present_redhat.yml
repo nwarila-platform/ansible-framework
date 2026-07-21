@@ -1,0 +1,120 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_redhat.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# RHEL-family implementation of linux_disk_manager, resolved by the v3.1.0 loader via
+# first_found. Receives the merged running config as 'config'.
+#
+# TWO KINDS OF LOGIC, kept distinct:
+#   * TARGETING (the role's function — kept explicit and robust): dispatch to the declared
+#     `platform` provider, and target each SPECIFIC disk by its stable, globally-unique
+#     `unique_id` (a /dev/disk/by-id/ name — the VMware disk WWN, the AWS NVMe/EBS serial),
+#     operating entirely through /dev/disk/by-id/<unique_id> and writing fstab by filesystem
+#     UUID. NEVER /dev/sdX / /dev/nvmeXnY (that is the Nitro failure mode).
+#   * DEFENSIVE VALIDATION (CI/CD's responsibility — NOT done here): the role trusts the
+#     declared inputs and lets the modules fail loudly on bad input. No input re-checks, no
+#     vendor-match assert, no foreign-filesystem guard.
+# =========================================================================================== #
+
+#region ------ [ Script ] -------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (present_redhat - linux_disk_manager)'
+  become: true
+  block:
+
+    #region ------ [ Provider dispatch: VMware (target-0) ] ---------------------------------- #
+
+    # Platform TARGETING: run the provider matching the declared platform. VMware is target-0;
+    # the AWS provider (NVMe/EBS serial identity) is added as a sibling `when: ... == 'aws'`
+    # block. On VMware the `unique_id` is the disk WWN, which requires disk.EnableUUID=TRUE on
+    # the VM so /dev/disk/by-id/wwn-* exists.
+    - name: 'MAIN | Provision Declared Disks (VMware provider)'
+      when: (config.platform | string | lower | trim) == 'vmware'
+      block:
+
+        # GPT + a single partition spanning the disk, targeted by the disk's WWN by-id path.
+        # Idempotent: parted no-ops when the partition already exists with the same geometry.
+        - name: 'PROCESS | Ensure GPT Single-Partition Layout'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          community.general.parted:
+            device: "/dev/disk/by-id/{{ disk.unique_id }}"
+            label: 'gpt'
+            number: 1
+            part_start: '0%'
+            part_end: '100%'
+            align: 'optimal'
+            state: 'present'
+
+        # The partition's by-id node (<unique_id>-part1) is created asynchronously by udev after
+        # parted; wait for it so mkfs never races a missing device node.
+        - name: 'PROCESS | Wait For Partition Device Node'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          ansible.builtin.wait_for:
+            path: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            timeout: 20
+
+        # Create the labeled filesystem. Idempotent (no reformat when a matching fs already
+        # exists); force left false.
+        - name: 'PROCESS | Create Labeled Filesystem On Partition'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          community.general.filesystem:
+            dev: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            fstype: "{{ disk.fstype | default('xfs') }}"
+            opts: "-L {{ disk.label }}"
+
+        # Read the partition's filesystem UUID — this is what goes in fstab (never a device
+        # name), so a reboot that re-enumerates the disk still mounts the correct volume.
+        - name: 'PROCESS | Read Filesystem UUID Of Each Partition'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          register: '__fsuuid__'
+          changed_when: false
+          ansible.builtin.command:
+            argv:
+              - 'blkid'
+              - '-s'
+              - 'UUID'
+              - '-o'
+              - 'value'
+              - "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+
+        - name: 'PROCESS | Ensure Mount Point Directory Exists'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.mount_point }}"
+          ansible.builtin.file:
+            path: "{{ disk.mount_point }}"
+            state: 'directory'
+            mode: "{{ disk.mode | default('0755') }}"
+
+        - name: 'PROCESS | Mount Filesystem By UUID And Persist To fstab'
+          loop: "{{ __fsuuid__.results }}"
+          loop_control:
+            loop_var: 'r'
+            label: "{{ r.disk.mount_point }}"
+          ansible.posix.mount:
+            path: "{{ r.disk.mount_point }}"
+            src: "UUID={{ r.stdout | trim }}"
+            fstype: "{{ r.disk.fstype | default('xfs') }}"
+            opts: "{{ r.disk.opts | default('defaults,nodev,nosuid') }}"
+            passno: "{{ r.disk.passno | default(2) }}"
+            dump: 0
+            state: 'mounted'
+
+    #endregion --- [ Provider dispatch: VMware (target-0) ] ---------------------------------- #
+
+    # --- AWS provider (NVMe/EBS serial identity) — next piece: a sibling block
+    #     `when: (config.platform | string | lower | trim) == 'aws'`. ---
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #
