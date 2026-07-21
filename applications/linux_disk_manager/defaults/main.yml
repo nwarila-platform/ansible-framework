@@ -1,0 +1,63 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Lowest-precedence configuration for the linux_disk_manager role, merged by the v3.1.0 loader
+# into 'linux_disk_manager_running' (defaults -> vars/<family>[_<dist>[_<ver>]][_<env>].yml
+# overlays -> playbook 'linux_disk_manager:' override dict). Task files receive the merged
+# result as 'config'.
+#
+# WHAT THIS ROLE IS
+#   The "step-0" storage initializer. Given a machine handed to it with attached-but-blank data
+#   disks, it partitions -> formats -> labels -> mounts each one, then the application role
+#   (e.g. wazuh_server) consumes the mounted volume (/mnt/data).
+#
+# THE NITRO FIX (why this role exists)
+#   Block-device names (/dev/sda, /dev/nvme0n1) are NOT stable. On AWS Nitro the NVMe
+#   enumeration order can differ across reboots, so a role that partitions/mounts by device
+#   name can target the WRONG disk or leave an fstab entry that fails to mount on reboot. This
+#   role selects each disk by a declared, stable `unique_id` (its /dev/disk/by-id/ name) and
+#   writes fstab by filesystem UUID. Both are platform-agnostic — the by-id name is the disk
+#   WWN on VMware (needs disk.EnableUUID=TRUE) and the NVMe/EBS serial on AWS; CI/CD supplies
+#   the right value.
+#
+#   Input correctness is CI/CD's responsibility: this role trusts the declared disks and lets
+#   the underlying modules fail loudly on bad input. It carries no defensive guards.
+#
+# =========================================================================================== #
+linux_disk_manager_defaults:
+
+  #region ------ [ Lifecycle ] ------------------------------------------------------------------ #
+  state: 'present'
+  #endregion --- [ Lifecycle ] ------------------------------------------------------------------ #
+
+  #region ------ [ Platform targeting ] --------------------------------------------------------- #
+  # Declared infrastructure platform (vmware | aws). REQUIRED in the linux_disk_manager: override
+  # dict; no default is safe. This is TARGETING, not a guard: present_redhat.yml dispatches to
+  # the matching provider block. VMware is target-0 (implemented); AWS is the next provider.
+  # There is deliberately NO vendor-match assert — CI/CD owns declaring the correct platform.
+  platform: ''
+  #endregion --- [ Platform targeting ] --------------------------------------------------------- #
+
+  #region ------ [ Managed disks ] -------------------------------------------------------------- #
+  # Declared disks to manage. Empty by default → the role is a no-op. Each entry:
+  #
+  #   - unique_id:   Stable /dev/disk/by-id/ NAME of the WHOLE disk (VMware WWN 'wwn-0x...' or
+  #                  AWS NVMe serial by-id name). Never a /dev/sdX path.
+  #     mount_point: Absolute path to mount the disk's single partition at.
+  #     label:       Filesystem label.
+  #     fstype:      Filesystem type (default 'xfs').
+  #     opts:        Mount options (default 'defaults,nodev,nosuid' — STIG-friendly, NOT noexec).
+  #     mode:        Mount-point directory mode (default '0755').
+  #     passno:      fstab fsck order (default 2 for a data mount).
+  #
+  # Example (declared in the linux_disk_manager: override dict, not here):
+  #   disks:
+  #     - unique_id:   'wwn-0x6000c29f1b525ff8397ccfbf8cdaa7d4'
+  #       mount_point: '/mnt/data'
+  #       fstype:      'xfs'
+  #       label:       'wazuh-data'
+  #       opts:        'defaults,nodev,nosuid'
+  disks: []
+  #endregion --- [ Managed disks ] -------------------------------------------------------------- #

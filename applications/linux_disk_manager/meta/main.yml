@@ -1,0 +1,35 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for linux_disk_manager. Description-only (style guide 8): NOT an enforcing
+# argument spec — merged-config validation lives in tasks/validate.yml.
+# =========================================================================================== #
+
+galaxy_info:
+
+  role_name: 'linux_disk_manager'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: 'Step-0 storage initializer: selects a data disk by stable unique_id (WWN), then partitions/formats/mounts it by UUID (Nitro-safe). VMware target-0.'
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+        - '10'
+
+  galaxy_tags:
+    - 'storage'
+    - 'disk'
+    - 'partition'
+    - 'mount'
+    - 'vmware'
+    - 'redhat'
+
+allow_duplicates: false
+
+dependencies: []
