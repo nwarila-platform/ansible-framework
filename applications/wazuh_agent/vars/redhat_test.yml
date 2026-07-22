@@ -1,0 +1,13 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/redhat_test.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Per-env overlay loaded by the generic role loader when os_family=redhat AND ENV=test.
+# Replace every CHANGE_ME placeholder with the real test-env value before running
+# `-e env=test`.
+# =========================================================================================== #
+
+s3:
+  bucket: 'CHANGE_ME-ansible-test'
+  agent_rpm_key: 'applications/wazuh-agent/wazuh-agent-4.14.5-1.x86_64.rpm'
+  agent_rpm_sha256: 'CHANGE_ME-64-character-sha256-of-the-test-agent-rpm'

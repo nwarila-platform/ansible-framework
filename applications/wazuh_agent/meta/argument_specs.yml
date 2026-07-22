@@ -1,0 +1,115 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/argument_specs.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Formal input specification for the `wazuh_agent:` dict — documents the input contract. Runtime
+# input guards (S3 coords, enrollment IP, not-on-manager) live in present_redhat.yml's BEGIN region.
+# =========================================================================================== #
+
+argument_specs:
+
+  main:
+    short_description: 'Installs and enrolls the Wazuh agent on an endpoint host'
+    description:
+      - 'Deploys the Wazuh agent from a per-version RPM stored in S3 and enrolls it to'
+      - 'the Wazuh manager. This role is for endpoint hosts only; it must not run on'
+      - 'Wazuh manager hosts.'
+    options:
+
+      wazuh_agent:
+        type: 'dict'
+        required: false
+        options:
+
+          state:
+            type: 'str'
+            required: false
+            default: 'present'
+            choices: ['present', 'clean']
+
+          temp_dir:
+            type: 'bool'
+            required: false
+
+          s3:
+            type: 'dict'
+            required: false
+            description: >-
+              S3 source for the standalone Wazuh agent RPM. The RPM SHA256 is validated
+              against `agent_rpm_sha256` in this dict, not a sidecar. This dict is supplied
+              by the per-env overlay `vars/redhat_<env>.yml`.
+            options:
+              bucket: { type: 'str', required: false }
+              region: { type: 'str', required: false }
+              agent_rpm_key: { type: 'str', required: false }
+              agent_rpm_sha256: { type: 'str', required: false }
+
+          manager:
+            type: 'dict'
+            required: false
+            options:
+              host: { type: 'str', required: false }
+              port: { type: 'int', required: false }
+              protocol: { type: 'str', required: false, choices: ['tcp', 'udp'] }
+              enrollment_port: { type: 'int', required: false }
+              enrollment_password: { type: 'str', required: false, no_log: true }
+
+          agent_name:
+            type: 'str'
+            required: false
+
+          agent_ip:
+            type: 'str'
+            required: false
+
+          fim:
+            type: 'dict'
+            required: false
+            description: >-
+              Real-time File Integrity Monitoring overrides. Paths listed here are added to
+              ossec.conf as `<directories realtime="yes">` entries so changes generate FIM
+              events immediately, rather than waiting for the vendor's 12-hour `/etc` scan.
+            options:
+              realtime_paths:
+                type: 'list'
+                elements: 'str'
+                required: false
+
+          windows:
+            type: 'dict'
+            required: false
+            description: >-
+              Windows agent settings, consumed only by the Windows entry point
+              (tasks/main_windows.yml). The MSI S3 coordinates (bucket + agent_msi_key +
+              agent_msi_sha256) come from vars/windows_<env>.yml, like the Linux RPM overlay.
+            options:
+              msi_dest: { type: 'str', required: false }
+              ossec_conf: { type: 'str', required: false }
+              service_name: { type: 'str', required: false }
+              fim_realtime_paths: { type: 'list', elements: 'str', required: false }
+
+          services:
+            type: 'list'
+            elements: 'dict'
+            required: false
+            options:
+              name: { type: 'str', required: true }
+              enabled: { type: 'bool', required: true }
+              state: { type: 'str', required: true, choices: ['started', 'stopped', 'restarted', 'reloaded'] }
+
+          side_deps:
+            type: 'list'
+            elements: 'str'
+            required: false
+
+          # (The former pip: and fapolicyd.pip_site_packages: inputs were removed with the
+          # pip-install-boto3-on-target flow — boto3 now comes from the bootstrap venv. The
+          # windows: input is defined above, alongside fim:.)
+
+          stig:
+            type: 'dict'
+            required: false
+            options:
+              local_users:
+                type: 'list'
+                elements: 'str'
+                required: false
