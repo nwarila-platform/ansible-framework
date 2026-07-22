@@ -1,0 +1,158 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Install + enroll the Wazuh agent on a WINDOWS endpoint (native win_* path). Dispatched by
+# tasks/main_windows.yml with the merged role config in `config`. Mirrors the Linux
+# present_redhat.yml S3 flow: fetch the SHA256-pinned agent artifact from S3 -> verify ->
+# install -> auto-enroll -> real-time FIM -> service.
+#
+# S3 detail: a Windows target can't run boto3, so amazon.aws.s3_object runs DELEGATED to the
+# controller (which has the bootstrap/runner venv boto3 + AWS creds from the runner env, passed
+# as no_log module args exactly like the Linux role), then win_copy pushes the verified MSI to
+# the target. Same source of truth, same key + sha256 pinning as the Linux RPM.
+# =========================================================================================== #
+
+- name: 'BEGIN (win) | Assert S3 MSI Coordinates Are Present And Well-Formed'
+  ansible.builtin.assert:
+    that:
+      - config.s3.bucket | default('') | string | trim | length > 0
+      - config.s3.agent_msi_key | default('') | string | trim | length > 0
+      - config.s3.agent_msi_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
+    fail_msg: >-
+      vars/windows_<env>.yml must provide s3.bucket, s3.agent_msi_key, and a real 64-char
+      hex s3.agent_msi_sha256 before the agent MSI can be downloaded.
+    quiet: true
+
+- name: 'BEGIN (win) | Assert A Manager Endpoint Is Resolvable'
+  ansible.builtin.assert:
+    that:
+      - (config.manager.host | default('') | length > 0) or ((groups['wazuh_servers'] | default([])) | length > 0)
+    fail_msg: >-
+      No Wazuh manager host could be resolved. Set wazuh_agent.manager.host, or ensure the
+      inventory has a wazuh_servers member for this Windows agent to enroll against.
+    quiet: true
+
+- name: 'BEGIN (win) | Resolve Manager Host'
+  ansible.builtin.set_fact:
+    # Explicit wazuh_agent.manager.host wins; otherwise the first wazuh_servers member
+    # (matching how present_redhat.yml resolves it for Linux agents). The assert above
+    # guarantees one of the two is present before this dereference.
+    __win_manager_host__: >-
+      {{ config.manager.host
+         if (config.manager.host | default('') | length > 0)
+         else (hostvars[(groups['wazuh_servers'] | default([]))[0]].ansible_host
+               | default((groups['wazuh_servers'] | default([]))[0] | default(''))) }}
+    __win_msi_ctrl_path__: "/tmp/{{ config.s3.agent_msi_key | basename }}"
+
+# AWS creds are passed as no_log module args (never target/controller shell env). The task runs
+# on the controller (delegate_to localhost), whose interpreter is the venv running ansible-playbook
+# and therefore already has boto3 — no per-task interpreter override needed (unlike the Linux
+# target, which must borrow /opt/ansible/venv). ignore_nonexistent_bucket: the deploy identity is
+# GetObject-only, so skip the HeadBucket precheck (see present_redhat.yml for the full rationale).
+- name: 'S3 (win) | Fetch Agent MSI From S3 To The Controller'
+  delegate_to: 'localhost'
+  become: false
+  no_log: true
+  vars:
+    # Run boto3 under the SAME interpreter that runs ansible-playbook (the runner venv, which
+    # has boto3/botocore). Delegating to localhost otherwise auto-discovers /usr/bin/python3,
+    # which lacks boto3 — the localhost analogue of the Linux target's /opt/ansible/venv override.
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  amazon.aws.s3_object:
+    bucket: "{{ config.s3.bucket }}"
+    object: "{{ config.s3.agent_msi_key }}"
+    dest: "{{ __win_msi_ctrl_path__ }}"
+    mode: 'get'
+    overwrite: 'different'
+    ignore_nonexistent_bucket: true
+    region: "{{ AWS_DEFAULT_REGION | default(config.s3.region | default(omit), true) }}"
+    access_key: "{{ AWS_ACCESS_KEY_ID | default(omit, true) }}"
+    secret_key: "{{ AWS_SECRET_ACCESS_KEY | default(omit, true) }}"
+    session_token: "{{ AWS_SESSION_TOKEN | default(omit, true) }}"
+
+# Trust-on-first-use: the pinned sha256 in the env overlay is the operator's known-good hash.
+- name: 'S3 (win) | Verify Downloaded MSI Matches Trusted SHA256 (on controller)'
+  delegate_to: 'localhost'
+  become: false
+  ansible.builtin.stat:
+    path: "{{ __win_msi_ctrl_path__ }}"
+    checksum_algorithm: 'sha256'
+  register: '__win_msi_stat__'
+  failed_when: (__win_msi_stat__.stat.checksum | default('') | lower) != (config.s3.agent_msi_sha256 | lower)
+
+- name: 'PROCESS (win) | Copy The Verified MSI To The Windows Target'
+  ansible.windows.win_copy:
+    src: "{{ __win_msi_ctrl_path__ }}"
+    dest: "{{ config.windows.msi_dest }}"
+
+# WAZUH_MANAGER / WAZUH_REGISTRATION_SERVER / WAZUH_AGENT_NAME are baked into ossec.conf by the
+# installer; the agent auto-registers with the manager's authd on first service start (authd is
+# passwordless unless config.manager.enrollment_password is set — reserved for a future arg).
+- name: 'PROCESS (win) | Install The Wazuh Agent MSI (auto-enroll Via Install Properties)'
+  ansible.windows.win_package:
+    path: "{{ config.windows.msi_dest }}"
+    state: 'present'
+    arguments:
+      - '/qn'
+      - 'WAZUH_MANAGER={{ __win_manager_host__ }}'
+      - 'WAZUH_REGISTRATION_SERVER={{ __win_manager_host__ }}'
+      - 'WAZUH_AGENT_NAME={{ config.agent_name | default(inventory_hostname, true) }}'
+
+- name: 'PROCESS (win) | Ensure Real-Time Watched Directories Exist'
+  loop: "{{ config.windows.fim_realtime_paths | default([]) }}"
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: 'directory'
+
+# OWN a marker-delimited region rather than inserting per line (community.windows has no
+# win_blockinfile). This is the Windows analogue of the Linux path's blockinfile and the server
+# role's wholesale <syscheck> rewrite: the block is rebuilt from the declared list every run, so
+# a path REMOVED from wazuh_agent.windows.fim_realtime_paths is dropped from ossec.conf too —
+# insert-only win_lineinfile would strand it. .NET Read/WriteAllText keeps the file UTF-8 (no BOM).
+- name: 'PROCESS (win) | Own The Real-Time FIM Managed Region In ossec.conf'
+  when: (config.windows.fim_realtime_paths | default([]) | length) > 0
+  notify: 'wazuh-agent-windows-config-changed'
+  vars:
+    __fim_begin__: '    <!-- BEGIN ANSIBLE MANAGED WAZUH AGENT REALTIME FIM -->'
+    __fim_end__: '    <!-- END ANSIBLE MANAGED WAZUH AGENT REALTIME FIM -->'
+  ansible.windows.win_powershell:
+    parameters:
+      Path: "{{ config.windows.ossec_conf }}"
+      Dirs: "{{ config.windows.fim_realtime_paths }}"
+      Begin: "{{ __fim_begin__ }}"
+      End: "{{ __fim_end__ }}"
+    script: |
+      param([string]$Path, [string[]]$Dirs, [string]$Begin, [string]$End)
+      $nl      = "`r`n"
+      $entries = ($Dirs | ForEach-Object { '    <directories realtime="yes" check_all="yes">' + $_ + '</directories>' }) -join $nl
+      $block   = $Begin + $nl + $entries + $nl + $End
+      $content = [System.IO.File]::ReadAllText($Path)
+      # Strip any prior managed region (+ its trailing newline); Singleline so '.' spans newlines.
+      $stripped = [regex]::Replace($content, [regex]::Escape($Begin) + '.*?' + [regex]::Escape($End) + '(\r?\n)?', '', 'Singleline')
+      # Guard: [regex]::Replace below inserts the managed block before EVERY </syscheck> match.
+      # A vendor ossec.conf is expected to carry exactly one; more than one (e.g. a commented-out
+      # sample stanza) would silently duplicate the managed block. Fail loudly instead of guessing.
+      $closeCount = ([regex]::Matches($stripped, '</syscheck>')).Count
+      if ($closeCount -ne 1) {
+        $Ansible.Failed = $true
+        throw "expected exactly one </syscheck>, found $closeCount"
+      }
+      # Re-insert the fresh block immediately before the closing </syscheck> (MatchEvaluator avoids
+      # '$'-token issues if a path contains a dollar sign).
+      $new = [regex]::Replace($stripped, '(?<lead>\s*)</syscheck>', { param($m) $nl + $block + $m.Groups['lead'].Value + '</syscheck>' }, 'Singleline')
+      if ($new -ne $content) {
+        [System.IO.File]::WriteAllText($Path, $new)
+        $Ansible.Changed = $true
+      } else {
+        $Ansible.Changed = $false
+      }
+
+- name: 'END (win) | Ensure The Wazuh Agent Service Is Running And Automatic'
+  ansible.windows.win_service:
+    name: "{{ config.windows.service_name }}"
+    state: 'started'
+    start_mode: 'auto'
+
+- name: 'END (win) | Apply Pending Restart (If FIM Config Changed) Before Finishing'
+  ansible.builtin.meta: 'flush_handlers'

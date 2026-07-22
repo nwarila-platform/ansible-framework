@@ -112,6 +112,24 @@
             dump: 0
             state: 'mounted'
 
+        # Grow the filesystem to fill its partition. Two cases this covers, both real:
+        #   1. A freshly-partitioned disk can hand mkfs a STALE device size (the kernel may
+        #      still report the pre-partition geometry for a beat), yielding a filesystem
+        #      smaller than its partition — observed as a 10G xfs on a 60G partition.
+        #   2. The backing volume was expanded (VMware/EBS grow). The partition is widened by
+        #      the parted task above, but the filesystem never follows on its own.
+        # Runs AFTER the mount because xfs_growfs requires a mounted filesystem. No-op when
+        # the filesystem already spans the partition, so it stays idempotent.
+        - name: 'PROCESS | Grow Filesystem To Fill Partition'
+          loop: "{{ config.disks }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.mount_point }}"
+          community.general.filesystem:
+            dev: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            fstype: "{{ disk.fstype | default('xfs') }}"
+            resizefs: true
+
     #endregion --- [ Provider dispatch: VMware (target-0) ] ---------------------------------- #
 
     # --- AWS provider (NVMe/EBS serial identity) — next piece: a sibling block

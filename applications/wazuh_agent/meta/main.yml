@@ -1,0 +1,31 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for wazuh_agent.
+# =========================================================================================== #
+
+galaxy_info:
+
+  role_name: 'wazuh_agent'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: 'Installs and enrolls the Wazuh agent from a standalone RPM in S3.'
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+
+  galaxy_tags:
+    - 'wazuh'
+    - 'agent'
+    - 'endpoint'
+    - 'redhat'
+    - 's3'
+
+allow_duplicates: false
+
+dependencies: []

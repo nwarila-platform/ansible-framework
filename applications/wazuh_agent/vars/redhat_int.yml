@@ -1,0 +1,17 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/redhat_int.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Per-env overlay loaded by the generic role loader when os_family=redhat AND ENV=int.
+#
+# Per-env operator action when bumping the agent version: upload the new RPM to
+# `s3://<bucket>/applications/wazuh-agent/wazuh-agent-<ver>-1.x86_64.rpm`, then update
+# `s3.agent_rpm_key` and `s3.agent_rpm_sha256` below. Compute the SHA with:
+#   sha256sum wazuh-agent-<ver>-1.x86_64.rpm
+# Current int SHA is for the official Wazuh 4.14.5-1 x86_64 agent RPM.
+# =========================================================================================== #
+
+s3:
+  bucket: '<account-id>-ansible'
+  agent_rpm_key: 'applications/wazuh-agent/wazuh-agent-4.14.5-1.x86_64.rpm'
+  agent_rpm_sha256: 'e320cdd225e56b311557de7b7ed9f176f10ef20315beac3de8846705495990da'
