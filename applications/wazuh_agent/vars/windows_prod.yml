@@ -1,0 +1,7 @@
+---
+# Per-env overlay for the WINDOWS agent path, ENV=prod. Fill in the real bucket + MSI key +
+# sha256 for this environment (see windows_int.yml for the shape and the bump procedure).
+s3:
+  bucket: 'CHANGE_ME-ansible-prod'
+  agent_msi_key: 'applications/wazuh-agent/wazuh-agent-4.14.5-1.msi'
+  agent_msi_sha256: 'CHANGE_ME'

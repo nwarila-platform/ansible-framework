@@ -1,0 +1,345 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_redhat.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# RHEL 8 / state=present - installs the Wazuh agent from a standalone RPM in S3 and enrolls
+# it to the Wazuh manager.
+#
+# Agent vs. central-stack source: the central indexer/server/dashboard roles consume the
+# wazuh-offline.tar.gz bundle. The agent role does NOT; it downloads exactly one file
+# (`s3://<bucket>/applications/wazuh-agent/wazuh-agent-<ver>-1.x86_64.rpm`) and dnf-installs
+# it. The bundle is unnecessary on endpoint hosts and decoupling the agent from it lets the
+# bundle and the agent ship on independent cadences.
+#
+# This role is for endpoint hosts only. Do not install wazuh-agent on a host that also runs
+# wazuh-manager; the manager owns /var/ossec and provides local monitoring behavior.
+# =========================================================================================== #
+
+#region ------ [ Script ] -------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (present_redhat - wazuh_agent)'
+  vars:
+    __manager_inventory_host__: "{{ groups['wazuh_servers'][0] | default('') }}"
+    __manager_host__: >-
+      {{
+        (config.manager.host | default('') | string | trim)
+        if (config.manager.host | default('') | string | trim | length) > 0
+        else (hostvars[__manager_inventory_host__].ansible_host | default(__manager_inventory_host__))
+      }}
+    __agent_name__: >-
+      {{
+        (config.agent_name | default('') | string | trim)
+        if (config.agent_name | default('') | string | trim | length) > 0
+        else inventory_hostname
+      }}
+    # The IPv4 address passed to `agent-auth -I`. Wazuh documents this as an IP address,
+    # not an arbitrary host label, so the BEGIN stage rejects DNS names before enrollment.
+    __agent_ip__: >-
+      {{
+        (config.agent_ip | default('') | string | trim)
+        if (config.agent_ip | default('') | string | trim | length) > 0
+        else (ansible_host | default('') | string | trim)
+      }}
+    __agent_rpm_basename__: "{{ config.s3.agent_rpm_key | basename }}"
+    __agent_rpm_path__: "{{ __temp_dir__.path }}/{{ __agent_rpm_basename__ }}"
+  become: true
+  block:
+
+    #region ------ [ Initialization ] -------------------------------------------------------- #
+
+    #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
+
+    - name: 'BEGIN | Assert Bootstrap Venv Is Present'
+      ansible.builtin.stat:
+        path: '/opt/ansible/venv/bin/python'
+      register: '__venv_python__'
+      failed_when: not (__venv_python__.stat.exists | default(false))
+
+    - name: 'BEGIN | Assert Agent Role Is Not Running On A Manager Host'
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname not in (groups['wazuh_servers'] | default([]))
+        fail_msg: >-
+          Refusing to install the standalone wazuh-agent package on '{{ inventory_hostname }}'
+          because this host is also in the wazuh_servers group. Use a separate endpoint host
+          for standalone agent validation.
+        quiet: true
+
+    - name: 'BEGIN | Assert Manager Endpoint Is Known'
+      ansible.builtin.assert:
+        that:
+          - __manager_host__ | string | trim | length > 0
+        fail_msg: >-
+          No Wazuh manager host could be resolved. Set wazuh_agent.manager.host or define
+          at least one host in the wazuh_servers inventory group.
+        quiet: true
+
+    - name: 'BEGIN | Assert Loader Temp Dir Is Available'
+      ansible.builtin.assert:
+        that:
+          - __temp_dir__ is defined
+          - __temp_dir__ is mapping
+          - __temp_dir__.path is defined
+          - __temp_dir__.path | string | trim | length > 0
+        fail_msg: >-
+          wazuh_agent state=present requires the loader staging directory because the
+          standalone RPM is downloaded there before dnf install. Leave
+          wazuh_agent.temp_dir enabled.
+        quiet: true
+
+    - name: 'BEGIN | Assert Agent S3 Inputs Are Complete'
+      ansible.builtin.assert:
+        that:
+          - config.s3.bucket | default('') | string | trim | length > 0
+          - config.s3.agent_rpm_key | default('') | string | trim | length > 0
+          - config.s3.agent_rpm_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
+        fail_msg: >-
+          wazuh_agent.s3.bucket, wazuh_agent.s3.agent_rpm_key, and a real
+          64-character hexadecimal wazuh_agent.s3.agent_rpm_sha256 are required
+          before the standalone agent RPM can be downloaded.
+        quiet: true
+
+    - name: 'BEGIN | Assert Agent Enrollment IP Is An IPv4 Address'
+      ansible.builtin.assert:
+        that:
+          - __agent_ip__ is match('^((25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$')
+        fail_msg: >-
+          agent-auth -I requires an endpoint IPv4 address. Set wazuh_agent.agent_ip,
+          or set ansible_host to the endpoint's IPv4 address; DNS names are not safe
+          for the manager's anti-impersonation binding.
+        quiet: true
+
+    # Cross-host collision check: if two endpoints in `wazuh_agents` end up resolving
+    # to the same effective agent_name (either both defaulted to a duplicated
+    # inventory_hostname, or both explicitly set wazuh_agent.agent_name to the same
+    # string), the second enrollment overwrites the first in the manager's client.keys.
+    # Catch it here instead of silently re-keying one of the agents.
+    - name: 'BEGIN | Assert Agent Name Is Unique Within wazuh_agents'
+      vars:
+        __effective_names__: >-
+          {%- set out = [] -%}
+          {%- for h in (groups['wazuh_agents'] | default([])) -%}
+            {%- set explicit = hostvars[h].wazuh_agent.agent_name | default('') | string | trim -%}
+            {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
+          {%- endfor -%}
+          {{ out }}
+      ansible.builtin.assert:
+        that:
+          - (__effective_names__ | length) == (__effective_names__ | unique | length)
+        fail_msg: >-
+          Two or more hosts in `wazuh_agents` resolve to the same wazuh_agent.agent_name.
+          Each endpoint must produce a unique agent name because the manager keys
+          client.keys by name. Effective names: {{ __effective_names__ }}.
+        quiet: true
+
+    #endregion --- [ Initialization: Input Guards ] ------------------------------------------ #
+
+    #endregion --- [ Initialization ] -------------------------------------------------------- #
+
+    #region ------ [ Main ] ------------------------------------------------------------------ #
+
+    #region ------ [ Main: Host Preparation ] ------------------------------------------------ #
+
+    - name: 'PROCESS | Install Side-Deps'
+      when: (config.side_deps | default([]) | length) > 0
+      ansible.builtin.dnf:
+        name: "{{ config.side_deps }}"
+        state: 'present'
+        disablerepo: 'epel'
+
+    #endregion --- [ Main: Host Preparation ] ------------------------------------------------ #
+
+    #region ------ [ Main: S3 Staging ] ------------------------------------------------------ #
+
+    # AWS creds and region are passed as module-args (access_key/secret_key/region)
+    # to amazon.aws.s3_object so they never enter the target's shell environment; this
+    # prevents sudo/audit/Wazuh-alert logs from capturing them.
+    #
+    # Task-level `ansible_python_interpreter` override forces this task onto the
+    # bootstrap venv (Python 3.12) because the current amazon.aws collection's boto3
+    # floor is above what RHEL 8 platform-python (3.6) can install. Every other task
+    # in the role uses platform-python — see ansible.cfg's interpreter_python note.
+    - name: 'S3 | Fetch Wazuh Agent RPM From S3 To Target Temp Dir'
+      no_log: true
+      changed_when: false
+      vars:
+        ansible_python_interpreter: '/opt/ansible/venv/bin/python'
+      amazon.aws.s3_object:
+        bucket: "{{ config.s3.bucket }}"
+        region: "{{ AWS_DEFAULT_REGION | default(config.s3.region | default(omit), true) }}"
+        access_key: "{{ AWS_ACCESS_KEY_ID | default(omit, true) }}"
+        secret_key: "{{ AWS_SECRET_ACCESS_KEY | default(omit, true) }}"
+        session_token: "{{ AWS_SESSION_TOKEN | default(omit, true) }}"
+        object: "{{ config.s3.agent_rpm_key }}"
+        dest: "{{ __agent_rpm_path__ }}"
+        mode: 'get'
+        overwrite: 'different'
+        # Least-privilege deploy identity: s3:GetObject on the pinned key only. s3_object's
+        # default HeadBucket existence precheck needs unconditional s3:ListBucket and 403s
+        # under our prefix-scoped grant — skip it (this flag exists for GetObject-only identities)
+        # rather than widen IAM to list the whole shared artifact bucket.
+        ignore_nonexistent_bucket: true
+
+    # Trust-on-first-use: the SHA256 in the per-env overlay is the operator's
+    # PR-reviewed known-good hash. Mismatch = S3 object was tampered with, so abort install.
+    - name: 'S3 | Verify Downloaded Agent RPM Matches Trusted SHA256'
+      register: '__agent_rpm_verify__'
+      failed_when: (__agent_rpm_verify__.stat.checksum | lower) != (config.s3.agent_rpm_sha256 | lower)
+      ansible.builtin.stat:
+        path: "{{ __agent_rpm_path__ }}"
+        checksum_algorithm: 'sha256'
+
+    #endregion --- [ Main: S3 Staging ] ------------------------------------------------------ #
+
+    #region ------ [ Main: Package Installation ] ------------------------------------------- #
+
+    - name: 'PROCESS | Install Wazuh RPM Signing Key'
+      ansible.builtin.copy:
+        src: 'GPG-KEY-WAZUH'
+        dest: '/etc/pki/rpm-gpg/GPG-KEY-WAZUH'
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+
+    - name: 'PROCESS | Import Wazuh GPG Signing Key Into rpmdb'
+      ansible.builtin.rpm_key:
+        key: '/etc/pki/rpm-gpg/GPG-KEY-WAZUH'
+        state: 'present'
+
+    - name: 'PROCESS | Install wazuh-agent RPM'
+      environment:
+        WAZUH_MANAGER: "{{ __manager_host__ }}"
+        WAZUH_AGENT_NAME: "{{ __agent_name__ }}"
+      ansible.builtin.dnf:
+        name: "{{ __agent_rpm_path__ }}"
+        state: 'present'
+        allow_downgrade: true
+        disable_gpg_check: false
+
+    - name: 'PROCESS | Lock Wazuh Service Accounts (Non-Interactive Per Nessus Allowlist)'
+      loop: "{{ config.stig.local_users }}"
+      ansible.builtin.user:
+        name: "{{ item }}"
+        shell: '/sbin/nologin'
+        password_lock: true
+
+    #endregion --- [ Main: Package Installation ] ------------------------------------------- #
+
+    #region ------ [ Main: Agent Configuration ] -------------------------------------------- #
+
+    # Scope this edit to the first <client><server> block. Other single-line tags, such
+    # as <client><enrollment><port>1515</port>, must not be touched during config drift.
+    - name: 'PROCESS | Configure Agent Manager Server Block'
+      notify: 'wazuh-agent-config-changed'
+      ansible.builtin.replace:
+        path: '/var/ossec/etc/ossec.conf'
+        regexp: '(?ms)^(\s*<client>\s*)<server>.*?</server>\s*'
+        replace: |
+          \1<server>
+                <address>{{ __manager_host__ }}</address>
+                <port>{{ config.manager.port }}</port>
+                <protocol>{{ config.manager.protocol }}</protocol>
+              </server>
+
+    - name: 'PROCESS | Configure Agent Realtime FIM Paths'
+      when: (config.fim.realtime_paths | default([]) | length) > 0
+      notify: 'wazuh-agent-config-changed'
+      ansible.builtin.blockinfile:
+        path: '/var/ossec/etc/ossec.conf'
+        marker: '    <!-- {mark} ANSIBLE MANAGED WAZUH AGENT REALTIME FIM -->'
+        insertbefore: '^\s*</syscheck>'
+        block: |
+          {% for path in config.fim.realtime_paths %}
+              <directories realtime="yes" check_all="yes">{{ path }}</directories>
+          {% endfor %}
+
+    #endregion --- [ Main: Agent Configuration ] -------------------------------------------- #
+
+    #region ------ [ Main: Enrollment ] ------------------------------------------------------ #
+
+    - name: 'PROCESS | Check Agent Enrollment Key'
+      register: '__client_keys__'
+      ansible.builtin.stat:
+        path: '/var/ossec/etc/client.keys'
+
+    # agent-auth -I <ip> binds the client.keys entry to this endpoint's IP so the
+    # manager's anti-impersonation check rejects a re-enrollment of the same name
+    # from a different address.
+    #
+    # The enrollment password is NEVER passed as `-P <pass>` on the argv: on a STIG host
+    # auditd's execve rule (and ps/proc, which Wazuh forwards) would capture the plaintext
+    # into wazuh-alerts-*. Instead it is staged to /var/ossec/etc/authd.pass, which
+    # agent-auth reads automatically when -P is absent (per the agent-auth reference:
+    # "-P: use the specified password instead of searching for it at authd.pass"). The
+    # `always` block removes the file afterward so no shared enrollment secret is stranded
+    # on the endpoint, whether enrollment succeeded or failed.
+    - name: 'PROCESS | Enroll Agent With Manager (authd.pass, no argv secret)'
+      when: not (__client_keys__.stat.exists | default(false)) or (__client_keys__.stat.size | default(0) | int) == 0
+      block:
+
+        - name: 'PROCESS | Stage Enrollment Password File (authd.pass)'
+          when: (config.manager.enrollment_password | default('') | length) > 0
+          no_log: true
+          ansible.builtin.copy:
+            dest: '/var/ossec/etc/authd.pass'
+            content: "{{ config.manager.enrollment_password }}"
+            owner: 'root'
+            group: 'wazuh'
+            mode: '0640'
+
+        - name: 'PROCESS | Run agent-auth (reads authd.pass; no -P on argv)'
+          register: '__agent_auth__'
+          changed_when: true
+          ansible.builtin.command:
+            argv:
+              - '/var/ossec/bin/agent-auth'
+              - '-m'
+              - "{{ __manager_host__ }}"
+              - '-p'
+              - "{{ config.manager.enrollment_port | string }}"
+              - '-A'
+              - "{{ __agent_name__ }}"
+              - '-I'
+              - "{{ __agent_ip__ }}"
+
+      always:
+
+        - name: 'PROCESS | Remove Staged authd.pass (no stranded enrollment secret)'
+          when: (config.manager.enrollment_password | default('') | length) > 0
+          ansible.builtin.file:
+            path: '/var/ossec/etc/authd.pass'
+            state: 'absent'
+
+    #endregion --- [ Main: Enrollment ] ------------------------------------------------------ #
+
+    #endregion --- [ Main ] ------------------------------------------------------------------ #
+
+    #region ------ [ Validation ] ------------------------------------------------------------ #
+
+    - name: 'END | Enable And Start Agent Service'
+      loop: "{{ config.services }}"
+      loop_control:
+        label: '{{ item.name }}'
+      ansible.builtin.systemd:
+        name: "{{ item.name }}"
+        enabled: "{{ item.enabled }}"
+        state: "{{ item.state }}"
+
+    - name: 'END | Flush Handlers'
+      ansible.builtin.meta: 'flush_handlers'
+
+    # Retry while the service is briefly in "reloading" — the wazuh-agent-config-changed
+    # handler that just ran flushes a `systemctl reload`, which takes a couple of seconds
+    # to settle on a freshly-installed agent. Without the retry this races with reload
+    # completion and fails on a transient stdout of "reloading".
+    - name: 'END | Verify Agent Service Is Active'
+      register: '__agent_active__'
+      changed_when: false
+      retries: 15
+      delay: 2
+      until: (__agent_active__.stdout | default('') | trim) == 'active'
+      ansible.builtin.command:
+        argv: ['systemctl', 'is-active', 'wazuh-agent']
+
+    #endregion --- [ Validation ] ------------------------------------------------------------ #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

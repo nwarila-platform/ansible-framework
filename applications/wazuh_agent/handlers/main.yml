@@ -1,0 +1,17 @@
+---
+# Handlers for wazuh_agent.
+
+- name: 'Wazuh agent config changed'
+  listen: 'wazuh-agent-config-changed'
+  ansible.builtin.systemd:
+    name: 'wazuh-agent'
+    state: 'restarted'
+
+# Windows counterpart (native win_* path — tasks/present_windows.yml). `config` is visible
+# here because main_windows.yml sets it via a host-scoped set_fact before dispatch, and
+# present_windows.yml flushes handlers in-sequence (same play, same host).
+- name: 'Wazuh agent config changed (Windows)'
+  listen: 'wazuh-agent-windows-config-changed'
+  ansible.windows.win_service:
+    name: "{{ config.windows.service_name | default('WazuhSvc') }}"
+    state: 'restarted'

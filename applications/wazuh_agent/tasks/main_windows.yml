@@ -1,0 +1,46 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/main_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# WINDOWS entry point for the wazuh_agent role.
+#
+# The shared, byte-identical generic loader (tasks/main.yml) is Linux-only — it gathers OS
+# facts, creates a staging dir with ansible.builtin.tempfile, installs via dnf, and escalates
+# with become=sudo, none of which work on a Windows host. So Windows deployments target THIS
+# file explicitly instead of the default entry:
+#
+#   - ansible.builtin.include_role:
+#       name: 'wazuh_agent'
+#       tasks_from: 'main_windows'
+#
+# It performs a lightweight config merge (role defaults <- per-env overlay <- playbook
+# `wazuh_agent:` override, no OS-fact gathering) and dispatches to present_windows.yml. The MSI
+# comes from S3 exactly like the Linux RPM: the per-env overlay vars/windows_<env>.yml pins
+# s3.bucket / s3.agent_msi_key / s3.agent_msi_sha256. Enrollment is automatic via the MSI
+# install properties against the manager's authd. Requires the ansible.windows collection on
+# the runner, and AWS creds in the runner env (aws_runner_env.yml).
+# =========================================================================================== #
+
+- name: 'INIT (win) | Assert ENV Is Set (selects the S3 overlay)'
+  ansible.builtin.assert:
+    that: [ "env | default('') | length > 0" ]
+    fail_msg: 'Pass -e env=<int|test|prod>; it selects vars/windows_<env>.yml (S3 MSI coords).'
+    quiet: true
+
+- name: 'INIT (win) | Load Per-Env Overlay (S3 MSI coordinates)'
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/windows_{{ env }}.yml"
+    name: '__win_overlay__'
+
+- name: 'INIT (win) | Merge Config (defaults <- env overlay <- playbook override)'
+  ansible.builtin.set_fact:
+    # Mirrors what the Linux loader produces as `config` (defaults + env overlay + override),
+    # minus the OS-fact gathering the loader does on Linux.
+    config: >-
+      {{ wazuh_agent_defaults
+         | combine(__win_overlay__ | default({}, true), recursive=True, list_merge='replace')
+         | combine(wazuh_agent      | default({}, true), recursive=True, list_merge='replace') }}
+
+- name: 'INIT (win) | Dispatch To The Windows Installer'
+  ansible.builtin.include_tasks: 'present_windows.yml'
+  when: (config.state | default('present')) == 'present'
