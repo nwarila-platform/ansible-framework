@@ -7,40 +7,57 @@
 # The shared, byte-identical generic loader (tasks/main.yml) is Linux-only — it gathers OS
 # facts, creates a staging dir with ansible.builtin.tempfile, installs via dnf, and escalates
 # with become=sudo, none of which work on a Windows host. So Windows deployments target THIS
-# file explicitly instead of the default entry:
+# file explicitly instead of the default entry.
 #
-#   - ansible.builtin.include_role:
-#       name: 'wazuh_agent'
-#       tasks_from: 'main_windows'
+# This entry mirrors the loader contract without OS facts: top-level `ENV` selects the overlay,
+# top-level `state` selects lifecycle behavior, and only `present` is implemented today.
 #
-# It performs a lightweight config merge (role defaults <- per-env overlay <- playbook
-# `wazuh_agent:` override, no OS-fact gathering) and dispatches to present_windows.yml. The MSI
-# comes from S3 exactly like the Linux RPM: the per-env overlay vars/windows_<env>.yml pins
-# s3.bucket / s3.agent_msi_key / s3.agent_msi_sha256. Enrollment is automatic via the MSI
-# install properties against the manager's authd. Requires the ansible.windows collection on
-# the runner, and AWS creds in the runner env (aws_runner_env.yml).
+# The merged config is persisted as `wazuh_agent_running` (matching the loader's own
+# `<role_name>_running` contract — see style guide §2/§4) rather than a bare `config` fact, so
+# it does not R3-bleed into later roles under a generic name and remains visible to handlers.
 # =========================================================================================== #
 
-- name: 'INIT (win) | Assert ENV Is Set (selects the S3 overlay)'
+- name: 'INIT (win) | Validating Required Input(s)'
+  vars:
+    __win_state__: "{{ state | default('present') | string | lower | trim }}"
   ansible.builtin.assert:
-    that: [ "env | default('') | length > 0" ]
-    fail_msg: 'Pass -e env=<int|test|prod>; it selects vars/windows_<env>.yml (S3 MSI coords).'
+    that:
+      - ENV is defined
+      - (ENV | string | trim | length) > 0
+      - (ENV | string | trim) is match('^[a-zA-Z0-9_-]+$')
+      - __win_state__ in ['present']
+    fail_msg: >-
+      {% if ENV is undefined or (ENV | string | trim | length) == 0 or not ((ENV | string | trim) is match('^[a-zA-Z0-9_-]+$')) %}
+      The 'ENV' variable is required but was
+      {{ 'not defined' if ENV is undefined
+         else ('empty' if (ENV | string | trim | length) == 0
+         else "invalid ('" ~ ENV ~ "'). Only alphanumeric characters, hyphens, and underscores are allowed") }}.
+      Set it via group_vars, host_vars, extra-vars, or inventory (e.g., -e "ENV=int").
+      {% else %}
+      wazuh_agent's Windows entry point (tasks/main_windows.yml) does not implement
+      state='{{ __win_state__ }}'. Only 'present' is supported today (no clean_windows.yml /
+      absent_windows.yml ships yet); pass -e state=present, or omit state entirely.
+      {% endif %}
     quiet: true
 
 - name: 'INIT (win) | Load Per-Env Overlay (S3 MSI coordinates)'
   ansible.builtin.include_vars:
-    file: "{{ role_path }}/vars/windows_{{ env }}.yml"
+    file: "{{ role_path }}/vars/windows_{{ ENV | string | lower | trim }}.yml"
     name: '__win_overlay__'
 
 - name: 'INIT (win) | Merge Config (defaults <- env overlay <- playbook override)'
-  ansible.builtin.set_fact:
+  no_log: true
+  vars:
     # Mirrors what the Linux loader produces as `config` (defaults + env overlay + override),
     # minus the OS-fact gathering the loader does on Linux.
-    config: >-
+    __win_merged__: >-
       {{ wazuh_agent_defaults
          | combine(__win_overlay__ | default({}, true), recursive=True, list_merge='replace')
          | combine(wazuh_agent      | default({}, true), recursive=True, list_merge='replace') }}
+  ansible.builtin.set_fact:
+    wazuh_agent_running: "{{ __win_merged__ }}"
 
 - name: 'INIT (win) | Dispatch To The Windows Installer'
   ansible.builtin.include_tasks: 'present_windows.yml'
-  when: (config.state | default('present')) == 'present'
+  vars:
+    config: "{{ wazuh_agent_running }}"

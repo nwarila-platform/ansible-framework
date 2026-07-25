@@ -1,0 +1,38 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the v3.1.0 loader's
+# 'INIT | Validating Merged Configuration' hook -- immediately after defaults -> overlays ->
+# overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
+# config as 'config' (see tasks/main.yml INIT stage).
+#
+# WINDOWS SCOPE: this hook is wired into the shared Linux loader (tasks/main.yml) only. The
+# Windows entry point (tasks/main_windows.yml) performs its own lightweight config merge and
+# dispatches straight to present_windows.yml without including this file, so the checks below
+# apply to the RHEL/present_redhat.yml path exclusively.
+#
+# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but the S3
+# coordinates below are only needed to download the agent RPM for state=present -- clean_redhat.yml
+# is a declared no-op and there is no absent_redhat.yml -- so the assert is scoped to state=present
+# and is a deliberate no-op otherwise (a bare `-e state=clean` run must not be blocked on an input
+# it never reads).
+#
+# WHY THIS EXISTS: present_redhat.yml's S3 fetch/verify/install sequence carried this same check
+# as an inline BEGIN guard. Relocating it here means a malformed s3.* override fails at loader
+# INIT -- before OS facts, package facts, or temp-dir work run -- instead of partway through the
+# role's own BEGIN stage, and it consolidates config-contract validation into the one hook the
+# loader ships for exactly this purpose (CC5) instead of leaving it scattered inline.
+# =========================================================================================== #
+
+- name: 'BEGIN | Assert Agent S3 Inputs Are Complete'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - config.s3.bucket | default('') | string | trim | length > 0
+      - config.s3.agent_rpm_key | default('') | string | trim | length > 0
+      - config.s3.agent_rpm_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
+    fail_msg: >-
+      wazuh_agent.s3.bucket, wazuh_agent.s3.agent_rpm_key, and a real
+      64-character hexadecimal wazuh_agent.s3.agent_rpm_sha256 are required
+      before the standalone agent RPM can be downloaded.
+    quiet: true

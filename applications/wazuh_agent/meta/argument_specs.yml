@@ -20,12 +20,6 @@ argument_specs:
         required: false
         options:
 
-          state:
-            type: 'str'
-            required: false
-            default: 'present'
-            choices: ['present', 'clean']
-
           temp_dir:
             type: 'bool'
             required: false

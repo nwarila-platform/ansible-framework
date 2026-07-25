@@ -3,15 +3,16 @@
 
 - name: 'Wazuh agent config changed'
   listen: 'wazuh-agent-config-changed'
+  when: wazuh_agent_svc_was_running | default(false)
   ansible.builtin.systemd:
     name: 'wazuh-agent'
     state: 'restarted'
 
-# Windows counterpart (native win_* path — tasks/present_windows.yml). `config` is visible
-# here because main_windows.yml sets it via a host-scoped set_fact before dispatch, and
-# present_windows.yml flushes handlers in-sequence (same play, same host).
+# Windows counterpart (native win_* path — tasks/present_windows.yml). main_windows.yml
+# persists the merged config as the host-scoped `wazuh_agent_running` contract before dispatch.
 - name: 'Wazuh agent config changed (Windows)'
   listen: 'wazuh-agent-windows-config-changed'
+  when: wazuh_agent_win_svc_was_running | default(false)
   ansible.windows.win_service:
-    name: "{{ config.windows.service_name | default('WazuhSvc') }}"
+    name: "{{ wazuh_agent_running.windows.service_name | default('WazuhSvc') }}"
     state: 'restarted'

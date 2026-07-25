@@ -9,6 +9,14 @@
 # s3://<bucket>/applications/wazuh-agent/wazuh-agent-<ver>.msi, then update s3.agent_msi_key and
 # s3.agent_msi_sha256 below. Compute the SHA with:  sha256sum wazuh-agent-<ver>.msi
 # Current int SHA is for the official Wazuh 4.14.5-1 Windows agent MSI.
+#
+# s3.bucket is RUNTIME-SUBSTITUTED (secure-wazuh ADR-0004), not operator-filled: the consuming
+# playbook (secure-wazuh/ansible/playbooks/site.yml) derives the caller's AWS account id
+# (amazon.aws.aws_caller_info, controller-side) and injects the account-scoped
+# `<account-id>-ansible` bucket as a fallback default via the wazuh_agent override dict, so this
+# literal is never actually used. Do NOT hand-edit it: it is a deliberate fail-fast TRIPWIRE — if
+# it ever reaches a real AWS call, that call fails immediately instead of silently
+# reading/writing the wrong account. The real account id is never committed to any repo.
 # =========================================================================================== #
 
 s3:
