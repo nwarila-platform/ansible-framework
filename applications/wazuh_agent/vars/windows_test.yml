@@ -1,7 +1,14 @@
 ---
-# Per-env overlay for the WINDOWS agent path, ENV=test. Fill in the real bucket + MSI key +
-# sha256 for this environment (see windows_int.yml for the shape and the bump procedure).
+# Per-env overlay for the WINDOWS agent path, ENV=test. Fill in the real MSI key + sha256 for
+# this environment (see windows_int.yml for the shape and the bump procedure).
+#
+# s3.bucket is the EXCEPTION: it is RUNTIME-SUBSTITUTED (secure-wazuh ADR-0004), not
+# operator-filled — see windows_int.yml's header for the full rationale. Do NOT replace it with
+# CHANGE_ME-style text or a real bucket name: it is a deliberate fail-fast TRIPWIRE. (Previously
+# this and prod carried an env-suffixed `CHANGE_ME-ansible-test`/`-prod` shape that contradicted
+# int's non-suffixed `<account-id>-ansible` and the IAM `*-ansible` wildcard; normalized to the
+# one convention.)
 s3:
-  bucket: 'CHANGE_ME-ansible-test'
+  bucket: '<account-id>-ansible'
   agent_msi_key: 'applications/wazuh-agent/wazuh-agent-4.14.5-1.msi'
   agent_msi_sha256: 'CHANGE_ME'

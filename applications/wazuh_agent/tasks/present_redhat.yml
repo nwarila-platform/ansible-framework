@@ -19,11 +19,21 @@
 - name: 'INFO | Entering OS Tasks (present_redhat - wazuh_agent)'
   vars:
     __manager_inventory_host__: "{{ groups['wazuh_servers'][0] | default('') }}"
+    # Self-correcting AWS fallback: prefer the dynamic inventory's private_ip_address (the
+    # manager's real, routable IP) over ansible_host, which aws_ec2.yml deliberately sets to
+    # the EC2 instance-id for SSH-over-SSM (same treatment as wazuh_server's __endpoint_host__,
+    # see group_vars/aws/wazuh_servers.yml). On Proxmox's static inventory private_ip_address is
+    # never set, so this falls through to ansible_host, which IS the manager's real IP there --
+    # the same expression is therefore correct on both platforms with no per-inventory override
+    # required. The BEGIN guard below catches the residual case (an explicit
+    # wazuh_agent.manager.host override that is itself an instance-id).
     __manager_host__: >-
       {{
         (config.manager.host | default('') | string | trim)
         if (config.manager.host | default('') | string | trim | length) > 0
-        else (hostvars[__manager_inventory_host__].ansible_host | default(__manager_inventory_host__))
+        else (hostvars[__manager_inventory_host__].private_ip_address
+              | default(hostvars[__manager_inventory_host__].ansible_host, true)
+              | default(__manager_inventory_host__))
       }}
     __agent_name__: >-
       {{
@@ -48,12 +58,6 @@
 
     #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
 
-    - name: 'BEGIN | Assert Bootstrap Venv Is Present'
-      ansible.builtin.stat:
-        path: '/opt/ansible/venv/bin/python'
-      register: '__venv_python__'
-      failed_when: not (__venv_python__.stat.exists | default(false))
-
     - name: 'BEGIN | Assert Agent Role Is Not Running On A Manager Host'
       ansible.builtin.assert:
         that:
@@ -73,30 +77,22 @@
           at least one host in the wazuh_servers inventory group.
         quiet: true
 
-    - name: 'BEGIN | Assert Loader Temp Dir Is Available'
+    # SSM inventory IDs are not agent-routable.
+    - name: 'BEGIN | Assert Manager Endpoint Is Not An EC2 Instance-ID'
       ansible.builtin.assert:
         that:
-          - __temp_dir__ is defined
-          - __temp_dir__ is mapping
-          - __temp_dir__.path is defined
-          - __temp_dir__.path | string | trim | length > 0
+          - not (__manager_host__ is match('^i-[0-9a-fA-F]{8}([0-9a-fA-F]{9})?$'))
         fail_msg: >-
-          wazuh_agent state=present requires the loader staging directory because the
-          standalone RPM is downloaded there before dnf install. Leave
-          wazuh_agent.temp_dir enabled.
+          wazuh_agent.manager.host resolved to '{{ __manager_host__ }}', which looks like an
+          EC2 instance-id, not a routable address. This happens when ansible_host is an
+          instance-id (aws_ec2.yml, for SSH-over-SSM) and no private_ip_address hostvar or
+          explicit wazuh_agent.manager.host override is available for that host. Set
+          wazuh_agent.manager.host to the manager's real IP or DNS name.
         quiet: true
 
-    - name: 'BEGIN | Assert Agent S3 Inputs Are Complete'
-      ansible.builtin.assert:
-        that:
-          - config.s3.bucket | default('') | string | trim | length > 0
-          - config.s3.agent_rpm_key | default('') | string | trim | length > 0
-          - config.s3.agent_rpm_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
-        fail_msg: >-
-          wazuh_agent.s3.bucket, wazuh_agent.s3.agent_rpm_key, and a real
-          64-character hexadecimal wazuh_agent.s3.agent_rpm_sha256 are required
-          before the standalone agent RPM can be downloaded.
-        quiet: true
+    # s3.bucket / s3.agent_rpm_key / s3.agent_rpm_sha256 shape is now validated once, at loader
+    # INIT, by tasks/validate.yml (CC5) -- by the time this BEGIN stage runs the merged config
+    # has already passed that check.
 
     - name: 'BEGIN | Assert Agent Enrollment IP Is An IPv4 Address'
       ansible.builtin.assert:
@@ -108,17 +104,29 @@
           for the manager's anti-impersonation binding.
         quiet: true
 
-    # Cross-host collision check: if two endpoints in `wazuh_agents` end up resolving
-    # to the same effective agent_name (either both defaulted to a duplicated
-    # inventory_hostname, or both explicitly set wazuh_agent.agent_name to the same
-    # string), the second enrollment overwrites the first in the manager's client.keys.
-    # Catch it here instead of silently re-keying one of the agents.
-    - name: 'BEGIN | Assert Agent Name Is Unique Within wazuh_agents'
+    # Cross-host collision check: if two endpoints across the Linux (wazuh_agents) and
+    # Windows (wazuh_agents_windows) groups end up resolving to the same effective agent_name
+    # (both defaulted to a duplicated inventory_hostname, or an overlay/override sets
+    # wazuh_agent.agent_name identically for more than one host), the second enrollment
+    # overwrites the first in the manager's shared client.keys -- Wazuh keys it by name only,
+    # not by OS. Catch it here instead of silently re-keying one of the agents.
+    #
+    # Reads the LOADER-MERGED config (wazuh_agent_running), not the raw wazuh_agent override
+    # dict: an agent_name set at the OVERLAY layer (vars/redhat_<env>.yml / vars/windows_<env>.yml)
+    # is invisible to a raw-dict read but fully present in the merged config, and enrollment
+    # itself (__agent_name__ above) already resolves from merged config -- the guard has to
+    # match what enrollment actually does or it can wrongly call a real collision "unique".
+    #
+    # Windows hosts persist the merged config as wazuh_agent_running. The `config` fallback is
+    # retained only as a defensive read for legacy hostvars; it is not written by main_windows.yml.
+    - name: 'BEGIN | Assert Agent Name Is Unique Across wazuh_agents + wazuh_agents_windows'
+      run_once: true
       vars:
         __effective_names__: >-
           {%- set out = [] -%}
-          {%- for h in (groups['wazuh_agents'] | default([])) -%}
-            {%- set explicit = hostvars[h].wazuh_agent.agent_name | default('') | string | trim -%}
+          {%- for h in ((groups['wazuh_agents'] | default([])) + (groups['wazuh_agents_windows'] | default([]))) -%}
+            {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
+            {%- set explicit = merged.agent_name | default('') | string | trim -%}
             {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
           {%- endfor -%}
           {{ out }}
@@ -126,9 +134,9 @@
         that:
           - (__effective_names__ | length) == (__effective_names__ | unique | length)
         fail_msg: >-
-          Two or more hosts in `wazuh_agents` resolve to the same wazuh_agent.agent_name.
-          Each endpoint must produce a unique agent name because the manager keys
-          client.keys by name. Effective names: {{ __effective_names__ }}.
+          Two or more hosts across `wazuh_agents`/`wazuh_agents_windows` resolve to the same
+          wazuh_agent.agent_name. Each endpoint must produce a unique agent name because the
+          manager keys client.keys by name. Effective names: {{ __effective_names__ }}.
         quiet: true
 
     #endregion --- [ Initialization: Input Guards ] ------------------------------------------ #
@@ -226,8 +234,41 @@
 
     #region ------ [ Main: Agent Configuration ] -------------------------------------------- #
 
+    - name: 'PROCESS | Record Whether wazuh-agent Was Running Before Config Ownership'
+      register: '__agent_svc_pre__'
+      changed_when: false
+      ansible.builtin.systemd:
+        name: 'wazuh-agent'
+
+    # JUSTIFIED R3 set_fact exception: a handler consumes this latch, and handlers cannot see
+    # block/task vars.
+    - name: 'PROCESS | Latch Pre-Config Service State For The Restart Handler'
+      ansible.builtin.set_fact:
+        wazuh_agent_svc_was_running: >-
+          {{ (__agent_svc_pre__.status.ActiveState | default('inactive')) == 'active' }}
+
     # Scope this edit to the first <client><server> block. Other single-line tags, such
     # as <client><enrollment><port>1515</port>, must not be touched during config drift.
+    # Reconnect runway invariant: 12 * 10s = 120s exceeds remoted's 60s connection-overtake
+    # refusal plus its <=10s key-reload lag. Verified at wazuh/wazuh v4.14.5:
+    # src/client-agent/start_agent.c:131-183, src/remoted/secure.c:488-497,647-663; the knobs are
+    # parsed as <server> children by src/config/client-config.c:262-280.
+    - name: 'BEGIN | Read Agent ossec.conf For Manager Block Ownership Guard'
+      register: '__ossec_conf_pre__'
+      ansible.builtin.slurp:
+        src: '/var/ossec/etc/ossec.conf'
+
+    - name: 'BEGIN | Assert Exactly One <client><server> Block In ossec.conf'
+      vars:
+        __server_block_count__: "{{ (__ossec_conf_pre__.content | b64decode) | regex_findall('(?ms)^\\s*<client>\\s*<server>.*?</server>') | length }}"
+      ansible.builtin.assert:
+        that:
+          - __server_block_count__ | int == 1
+        fail_msg: >-
+          Expected exactly one <client><server>...</server> block in /var/ossec/etc/ossec.conf so
+          ownership replaces an unambiguous location, but found {{ __server_block_count__ }}.
+        quiet: true
+
     - name: 'PROCESS | Configure Agent Manager Server Block'
       notify: 'wazuh-agent-config-changed'
       ansible.builtin.replace:
@@ -238,17 +279,56 @@
                 <address>{{ __manager_host__ }}</address>
                 <port>{{ config.manager.port }}</port>
                 <protocol>{{ config.manager.protocol }}</protocol>
+                <max_retries>12</max_retries>
+                <retry_interval>10</retry_interval>
               </server>
 
+    # blockinfile's per-line insertbefore search silently lands on the LAST </syscheck> match.
+    # Guard the first insertion against duplicate or commented-out vendor stanzas; once markers
+    # exist, blockinfile locates them directly and ignores insertbefore.
+    - name: 'BEGIN | Read Agent ossec.conf For FIM Insertion-Point Guard'
+      register: '__ossec_conf__'
+      ansible.builtin.slurp:
+        src: '/var/ossec/etc/ossec.conf'
+
+    - name: 'BEGIN | Assert Exactly One </syscheck> Closing Tag In ossec.conf'
+      vars:
+        __syscheck_close_count__: "{{ (__ossec_conf__.content | b64decode) | regex_findall('(?m)^\\s*</syscheck>') | length }}"
+      ansible.builtin.assert:
+        that:
+          - __syscheck_close_count__ | int == 1
+        fail_msg: >-
+          Expected exactly one </syscheck> closing tag in /var/ossec/etc/ossec.conf so the FIM
+          realtime-paths blockinfile inserts at an unambiguous location, but found
+          {{ __syscheck_close_count__ }}. Investigate the installed ossec.conf for a duplicate
+          or commented-out <syscheck> stanza before continuing.
+        quiet: true
+
+    - name: 'PROCESS | Ensure Real-Time Watched Directories Exist'
+      loop: "{{ config.fim.realtime_paths | default([]) }}"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: 'directory'
+
+    # No `when:` gate -- this must run even when realtime_paths is empty so an emptied list
+    # actually removes the managed block. ansible.builtin.blockinfile treats a missing/empty
+    # `block` as state=absent ("If it is missing or an empty string, the block will be removed
+    # as if state were specified to absent" -- module docs, confirmed against source), so
+    # gating this task on length>0 made the managed region ADD-ONLY: emptying
+    # wazuh_agent.fim.realtime_paths would silently strand the old block (and its live FIM
+    # watches) forever instead of the role retracting what it added. The `|-` (strip) chomping
+    # indicator matters here: with the default `|` (clip) indicator the rendered block for an
+    # empty list is a single leftover newline, not a true empty string, and blockinfile treats
+    # that as non-empty content (verified empirically) -- the managed markers would survive
+    # with nothing between them instead of being removed.
     - name: 'PROCESS | Configure Agent Realtime FIM Paths'
-      when: (config.fim.realtime_paths | default([]) | length) > 0
       notify: 'wazuh-agent-config-changed'
       ansible.builtin.blockinfile:
         path: '/var/ossec/etc/ossec.conf'
         marker: '    <!-- {mark} ANSIBLE MANAGED WAZUH AGENT REALTIME FIM -->'
         insertbefore: '^\s*</syscheck>'
-        block: |
-          {% for path in config.fim.realtime_paths %}
+        block: |-
+          {% for path in config.fim.realtime_paths | default([]) %}
               <directories realtime="yes" check_all="yes">{{ path }}</directories>
           {% endfor %}
 
@@ -287,7 +367,6 @@
             mode: '0640'
 
         - name: 'PROCESS | Run agent-auth (reads authd.pass; no -P on argv)'
-          register: '__agent_auth__'
           changed_when: true
           ansible.builtin.command:
             argv:
@@ -309,6 +388,11 @@
             path: '/var/ossec/etc/authd.pass'
             state: 'absent'
 
+    - name: 'PROCESS | Remove Any Stranded authd.pass (Cross-Run Cleanup, Unconditional)'
+      ansible.builtin.file:
+        path: '/var/ossec/etc/authd.pass'
+        state: 'absent'
+
     #endregion --- [ Main: Enrollment ] ------------------------------------------------------ #
 
     #endregion --- [ Main ] ------------------------------------------------------------------ #
@@ -327,18 +411,63 @@
     - name: 'END | Flush Handlers'
       ansible.builtin.meta: 'flush_handlers'
 
-    # Retry while the service is briefly in "reloading" — the wazuh-agent-config-changed
-    # handler that just ran flushes a `systemctl reload`, which takes a couple of seconds
-    # to settle on a freshly-installed agent. Without the retry this races with reload
-    # completion and fails on a transient stdout of "reloading".
+    # Retry while the service is briefly in "activating" — the wazuh-agent-config-changed
+    # handler (handlers/main.yml) issues `systemctl restart`, not a reload, so the transient
+    # state observed right after a fresh install/restart is systemd's normal start-up state,
+    # not "reloading". Without the retry this races with restart completion and fails on that
+    # transient state.
     - name: 'END | Verify Agent Service Is Active'
       register: '__agent_active__'
       changed_when: false
       retries: 15
       delay: 2
-      until: (__agent_active__.stdout | default('') | trim) == 'active'
-      ansible.builtin.command:
-        argv: ['systemctl', 'is-active', 'wazuh-agent']
+      until: (__agent_active__.status.ActiveState | default('')) == 'active'
+      ansible.builtin.systemd:
+        name: 'wazuh-agent'
+
+    # Service-up does not prove manager connectivity; the agent's own state file is the contract.
+    # Linux's wazuh-agentd.state filename differs from Windows by design, not by typo.
+    # This CONNECTED gate is proven live; see converge-reconnect.md for the full rationale.
+    - name: 'END | Read Agent Connection State File'
+      become: true
+      register: '__agent_state__'
+      changed_when: false
+      ignore_errors: true
+      retries: 30
+      delay: 10
+      until: (__agent_state__.stdout | default('') | trim) == 'connected'
+      args:
+        executable: '/bin/bash'
+      ansible.builtin.shell: |
+        set -uo pipefail
+        f='/var/ossec/var/run/wazuh-agentd.state'
+        if [ ! -f "${f}" ]; then
+          echo 'missing'
+          exit 0
+        fi
+        status="$(sed -n "s/^status='\(.*\)'\$/\1/p" "${f}" | tail -n1)"
+        if [ -z "${status}" ]; then
+          echo 'unknown'
+        else
+          echo "${status}"
+        fi
+
+    - name: 'END | Verify Agent Is CONNECTED To The Manager'
+      ansible.builtin.assert:
+        that:
+          - (__agent_state__.stdout | default('') | trim) == 'connected'
+        quiet: true
+        fail_msg: >-
+          Agent service is active (previous task) but never reached status='connected' in
+          /var/ossec/var/run/wazuh-agentd.state (last read:
+          '{{ (__agent_state__.stdout | default('')) | trim }}'). Diagnose the reconnect path on
+          the manager in /var/ossec/logs/ossec.log: discriminate "Agent key already in use" from
+          "Decrypt the message fail" and ENC_IP_ERROR. A transient connection-overtake/key-reload
+          refusal should self-heal in <= ~90s inside this agent's 120s retry runway. If it does
+          not, check for a restart-within-runway regression and verify the persisted manager/agent
+          keys and enrolled source IP still agree. Keep this CONNECTED gate load-bearing; do not
+          weaken authd force-replacement policy to make a duplicate enrollment pass.
+        success_msg: 'Agent is connected to the manager (status=connected).'
 
     #endregion --- [ Validation ] ------------------------------------------------------------ #
 
