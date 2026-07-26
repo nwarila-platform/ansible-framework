@@ -18,23 +18,9 @@
 
 - name: 'INFO | Entering OS Tasks (present_redhat - wazuh_agent)'
   vars:
-    __manager_inventory_host__: "{{ groups['wazuh_servers'][0] | default('') }}"
-    # Self-correcting AWS fallback: prefer the dynamic inventory's private_ip_address (the
-    # manager's real, routable IP) over ansible_host, which aws_ec2.yml deliberately sets to
-    # the EC2 instance-id for SSH-over-SSM (same treatment as wazuh_server's __endpoint_host__,
-    # see group_vars/aws/wazuh_servers.yml). On Proxmox's static inventory private_ip_address is
-    # never set, so this falls through to ansible_host, which IS the manager's real IP there --
-    # the same expression is therefore correct on both platforms with no per-inventory override
-    # required. The BEGIN guard below catches the residual case (an explicit
-    # wazuh_agent.manager.host override that is itself an instance-id).
-    __manager_host__: >-
-      {{
-        (config.manager.host | default('') | string | trim)
-        if (config.manager.host | default('') | string | trim | length) > 0
-        else (hostvars[__manager_inventory_host__].private_ip_address
-              | default(hostvars[__manager_inventory_host__].ansible_host, true)
-              | default(__manager_inventory_host__))
-      }}
+    # The manager is an explicit role input. The shared role does not infer consumer inventory
+    # topology; tasks/validate.yml requires this value before OS dispatch.
+    __manager_host__: "{{ config.manager.host | string | trim }}"
     __agent_name__: >-
       {{
         (config.agent_name | default('') | string | trim)
@@ -59,22 +45,19 @@
     #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
 
     - name: 'BEGIN | Assert Agent Role Is Not Running On A Manager Host'
+      vars:
+        __endpoint_addresses__:
+          - "{{ private_ip_address | default('', true) | string | trim | lower }}"
+          - "{{ ansible_host | default('', true) | string | trim | lower }}"
+          - "{{ inventory_hostname | string | trim | lower }}"
       ansible.builtin.assert:
         that:
-          - inventory_hostname not in (groups['wazuh_servers'] | default([]))
+          - (__manager_host__ | lower) not in __endpoint_addresses__
         fail_msg: >-
           Refusing to install the standalone wazuh-agent package on '{{ inventory_hostname }}'
-          because this host is also in the wazuh_servers group. Use a separate endpoint host
-          for standalone agent validation.
-        quiet: true
-
-    - name: 'BEGIN | Assert Manager Endpoint Is Known'
-      ansible.builtin.assert:
-        that:
-          - __manager_host__ | string | trim | length > 0
-        fail_msg: >-
-          No Wazuh manager host could be resolved. Set wazuh_agent.manager.host or define
-          at least one host in the wazuh_servers inventory group.
+          because wazuh_agent.manager.host ('{{ __manager_host__ }}') matches this host's
+          private_ip_address, ansible_host, or inventory_hostname. The manager already owns
+          /var/ossec and provides local monitoring; use a separate endpoint host.
         quiet: true
 
     # SSM inventory IDs are not agent-routable.
@@ -83,10 +66,8 @@
         that:
           - not (__manager_host__ is match('^i-[0-9a-fA-F]{8}([0-9a-fA-F]{9})?$'))
         fail_msg: >-
-          wazuh_agent.manager.host resolved to '{{ __manager_host__ }}', which looks like an
-          EC2 instance-id, not a routable address. This happens when ansible_host is an
-          instance-id (aws_ec2.yml, for SSH-over-SSM) and no private_ip_address hostvar or
-          explicit wazuh_agent.manager.host override is available for that host. Set
+          wazuh_agent.manager.host is '{{ __manager_host__ }}', which looks like an EC2
+          instance-id, not a routable address. Set
           wazuh_agent.manager.host to the manager's real IP or DNS name.
         quiet: true
 

@@ -20,19 +20,9 @@
 
 - name: 'INFO (win) | Entering OS Tasks (present_windows - wazuh_agent)'
   vars:
-    __manager_inventory_host__: "{{ (groups['wazuh_servers'] | default([]))[0] | default('') }}"
-    # Explicit config.manager.host wins. Otherwise prefer the resolved wazuh_servers manager's
-    # private_ip_address (routable) over ansible_host, because aws_ec2.yml deliberately sets
-    # ansible_host to the EC2 instance-id (for SSH-over-SSM) — an agent cannot enroll against an
-    # instance-id. Falls all the way back to the bare inventory hostname as a last resort.
-    # Mirrors group_vars/aws/wazuh_agents_windows.yml's own private_ip_address-first treatment
-    # of manager.host.
-    __win_manager_host__: >-
-      {{ (config.manager.host | default('') | string | trim)
-         if (config.manager.host | default('') | string | trim | length) > 0
-         else (hostvars[__manager_inventory_host__].private_ip_address
-               | default(hostvars[__manager_inventory_host__].ansible_host
-                         | default(__manager_inventory_host__), true)) }}
+    # The manager is an explicit role input. The shared role does not infer consumer inventory
+    # topology; tasks/validate.yml requires this value before OS dispatch.
+    __win_manager_host__: "{{ config.manager.host | string | trim }}"
     __win_agent_name__: >-
       {{ (config.agent_name | default('') | string | trim)
          if (config.agent_name | default('') | string | trim | length) > 0
@@ -55,25 +45,14 @@
 
     #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
 
-    - name: 'BEGIN (win) | Assert A Manager Endpoint Is Resolvable'
-      ansible.builtin.assert:
-        that:
-          - (config.manager.host | default('') | string | trim | length > 0) or ((groups['wazuh_servers'] | default([])) | length > 0)
-        fail_msg: >-
-          No Wazuh manager host could be resolved. Set wazuh_agent.manager.host, or ensure the
-          inventory has a wazuh_servers member for this Windows agent to enroll against.
-        quiet: true
-
     # SSM inventory IDs are not agent-routable.
     - name: 'BEGIN (win) | Assert Manager Endpoint Is Not An EC2 Instance-ID'
       ansible.builtin.assert:
         that:
           - not (__win_manager_host__ is match('^i-[0-9a-fA-F]{8}([0-9a-fA-F]{9})?$'))
         fail_msg: >-
-          wazuh_agent.manager.host resolved to '{{ __win_manager_host__ }}', which looks like
-          an EC2 instance-id, not a routable address. This happens when ansible_host is an
-          instance-id (aws_ec2.yml, for SSH-over-SSM) and no private_ip_address hostvar or
-          explicit wazuh_agent.manager.host override is available for that host. Set
+          wazuh_agent.manager.host is '{{ __win_manager_host__ }}', which looks like an EC2
+          instance-id, not a routable address. Set
           wazuh_agent.manager.host to the manager's real IP or DNS name.
         quiet: true
 

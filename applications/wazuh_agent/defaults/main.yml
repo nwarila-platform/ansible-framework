@@ -7,7 +7,9 @@
 #
 # Operator prereqs:
 #   - Target host is an endpoint, not a Wazuh manager. Do not install wazuh-agent on a host
-#     in the `wazuh_servers` inventory group.
+#     whose private_ip_address, ansible_host, or inventory_hostname matches manager.host.
+#   - `manager.host` is required for state=present and must be the manager's routable IP address
+#     or DNS name. The role does not infer manager identity from consumer inventory topology.
 #   - The Wazuh agent RPM is uploaded to S3 at `s3://<bucket>/applications/wazuh-agent/`
 #     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
 #     consume the central wazuh-offline.tar.gz bundle.
@@ -23,7 +25,7 @@ wazuh_agent_defaults:
 
   #region ------ [ Manager / enrollment ] ------------------------------------------------------- #
   manager:
-    # host defaults to the first host in `wazuh_servers` via present_redhat.yml.
+    # Required for state=present; intentionally empty so validation rejects an omitted endpoint.
     host: ''
     port: 1514
     # The Wazuh agent-manager link wraps every message in a per-agent AES-256 session keyed

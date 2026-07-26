@@ -6,14 +6,26 @@
 # overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
 # config as 'config' (see tasks/main.yml INIT stage).
 #
-# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but the S3
-# coordinates below are only needed to download an agent package for state=present. Every assert
-# is therefore scoped to state=present and is a deliberate no-op otherwise (a bare
+# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but the manager
+# endpoint and S3 coordinates below are only needed to install an agent for state=present. Every
+# assert is therefore scoped to state=present and is a deliberate no-op otherwise (a bare
 # `-e state=clean` run must not be blocked on an input it never reads).
 #
-# WHY THIS EXISTS: both installers consume S3 coordinates, but validation belongs in one hook.
-# A malformed s3.* override now fails at loader INIT before staging or installer work begins.
+# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but validation
+# belongs in one hook. A malformed merged input now fails at loader INIT before staging or installer
+# work begins.
 # =========================================================================================== #
+
+- name: 'BEGIN | Assert Manager Endpoint Is Explicit'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - config.manager.host | default('') | string | trim | length > 0
+    fail_msg: >-
+      wazuh_agent.manager.host must be a non-empty manager IP address or DNS name when
+      state=present. This shared role cannot infer a consumer-specific manager from inventory
+      topology. Set wazuh_agent.manager.host explicitly to the routable Wazuh manager endpoint.
+    quiet: true
 
 - name: 'BEGIN | Assert Shared Agent S3 Inputs Are Complete'
   when: (state | default('present') | string | lower | trim) == 'present'
