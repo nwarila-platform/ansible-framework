@@ -22,19 +22,21 @@
     fim_demo_dir_windows: "{{ __fim_trigger_config__.windows.fim_realtime_paths | first }}"
   block:
 
-    # Same rationale as the Linux play's marker+path task: both facts land on hostvars here so
-    # the ledger play can read them without re-deriving the Windows path convention.
-    - name: 'TRIGGER (win) | Compute A Unique Marker For This Run (draw the random ONCE)'
-      # Same re-evaluation trap as the Linux play above: draw the random once into a concrete
+    # Same rationale as the Linux entry point's marker, path, and timestamp tasks: the facts land
+    # on hostvars so the ledger entry point can read them without re-deriving the Windows path
+    # convention.
+    - name: 'TRIGGER (win) | Compute A High-Entropy Marker (draw the random ONCE)'
+      # Same re-evaluation trap as the Linux entry point: draw the random once into a concrete
       # fact, then derive the path from it, so the ledger marker and the on-disk filename match.
       ansible.builtin.set_fact:
-        __fim_marker__: "fim-proof-{{ inventory_hostname }}-{{ 9999999999 | random }}"
+        __fim_marker__: >-
+          fim-proof-{{ inventory_hostname }}-{{ 340282366920938463463374607431768211456 | random }}
 
     - name: 'TRIGGER (win) | Derive The Monitored Path From The Fixed Marker'
       ansible.builtin.set_fact:
         __fim_path__: "{{ fim_demo_dir_windows }}\\{{ __fim_marker__ }}.txt"
 
-    # THE ARMING RACE, PROCESS-AWARE (see the Linux play's identical task for the full
+    # THE ARMING RACE, PROCESS-AWARE (see the Linux entry point's identical task for the full
     # baseline-scan-then-realtime-thread source citation). The agent role records whether WazuhSvc
     # was running before config ownership and gates its restart handler on that latch. A fresh MSI
     # therefore receives the final server/FIM config before its sole service start and emits one
@@ -55,7 +57,7 @@
     # (.github/actions/check_files/windows_agent_base.csv) — this is the PROCESS name Get-Process
     # matches on, distinct from the Windows SERVICE name ("WazuhSvc", src/win32/win_service.c),
     # which is not used here. ossec.log timestamps are "yyyy/MM/dd HH:mm:ss ..." — same verified
-    # format as the Linux play's citation (src/shared/time_op.c, w_get_timestamp) — parsed via
+    # format as the Linux entry point's citation (src/shared/time_op.c, w_get_timestamp) — parsed via
     # [datetime]::ParseExact against that exact format, invariant culture (no locale-sensitive
     # tokens in it, but no reason to leave it to chance).
     - name: 'TRIGGER (win) | Wait For The FIM Realtime Engine To Be Armed For The CURRENT Agent Process'
@@ -94,6 +96,10 @@
         } else {
           Write-Output 'NOT_ARMED (latest 6012 predates the current wazuh-agent.exe process start; stale arming)'
         }
+
+    - name: 'TRIGGER (win) | Capture The UTC Timestamp Immediately Before The Marker Write'
+      ansible.builtin.set_fact:
+        __fim_triggered_at__: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%S.%fZ') }}"
 
     - name: 'TRIGGER (win) | Create The File (This Is The FIM Event The Agent Detects In Real Time)'
       ansible.windows.win_copy:
