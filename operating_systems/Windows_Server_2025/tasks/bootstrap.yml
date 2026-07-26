@@ -1,0 +1,369 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/bootstrap.yml'                                  | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2025     #
+# host. Called EXPLICITLY by the deploying playbook — never by a loader.                       #
+#                                                                                             #
+# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The v2.2.0 loader retained     #
+# only in operating_systems/RedHat_Rocky_10/tasks/main.yml is Linux-only: it requires 'ENV',   #
+# escalates with become=sudo, stages with ansible.builtin.tempfile and labels with SELinux,     #
+# and derives its dispatch name from ansible_distribution — which on Windows is                #
+# Win32_OperatingSystem.Caption, yielding the space-containing string                          #
+# 'microsoft windows server 2025 datacenter_10'. See tasks/main.yml for the guard that stands  #
+# in its place.                                                                                #
+#                                                                                             #
+# --- [ How To Call It ] --------------------------------------------------------------------- #
+#   - name: 'Bootstrap | Windows Server 2025 minimum requirements'
+#     hosts: 'wazuh_agents_windows'
+#     gather_facts: false
+#     tasks:
+#       - name: 'Bootstrap | Windows Server 2025'
+#         ansible.builtin.include_role:
+#           name: 'Windows_Server_2025'
+#           tasks_from: 'bootstrap'
+#
+#   * 'operating_systems' must be on roles_path (the framework's ansible.cfg declares it; a
+#     consuming product whose ansible.cfg overwrites that must re-add it), or use the path form
+#     'name: "{{ playbook_dir }}/../operating_systems/Windows_Server_2025"'.
+#   * EXACTLY ONE invocation, BEFORE every other play against the Windows group. The omission
+#     bug already shipped once: a deployment path reached the agent stage without this having
+#     run, and the first file push died on a cmd-ism ("Parameter format not correct").
+#   * gather_facts MUST be false: implicit gathering runs a PowerShell module BEFORE this file
+#     can repair the shell, over whatever shell type the inventory guessed — the exact failure
+#     this file exists to prevent. This file loads the facts it needs itself, after the gate.
+#   * Pass NO 'vars:' to that include_role. Block vars are precedence 16; include_role params
+#     are 20, include_tasks params 21 and extra vars 22 — all outrank the connection scoping
+#     below. A stray 'vars: { ansible_shell_type: powershell }' on the include, or
+#     '-e ansible_shell_type=...', silently re-breaks the pre-flip stage on a fresh host, and a
+#     task file cannot out-precedence its own caller. This is the one scoping limitation, and it
+#     is called out here rather than papered over.
+#   * This file repairs the HOST, not the controller's connection variables, and deliberately
+#     does NOT set_fact them. The suite's LATER plays still need 'ansible_shell_type: powershell'
+#     from the inventory.
+#
+# --- [ What It Does, And Why In This Order ] ------------------------------------------------- #
+#   1. TRANSPORT: flip OpenSSH DefaultShell cmd.exe -> PowerShell, reset the connection, then
+#      PROVE the flip over a fresh session. Nothing else can run first: every ansible.windows.*
+#      module in the suite is a PowerShell module whose command wrapping must match the shell
+#      OpenSSH actually serves.
+#   2. INITIALIZATION: only now can facts be gathered (fact gathering IS a module run).
+#   3. MAIN: the one host precondition the suite cannot recover from on its own — an elevated
+#      token.
+#
+# NOTE the deliberate INVERSION of the Linux bootstrap's order (facts/OS-assert first, work
+# second): on Windows the transport is not yet trustworthy when the file starts, so the OS
+# assert cannot come first — it guards the MAIN work, not the transport repair. Any fact or
+# assert placed before the gate is a coin flip, because the file cannot know which shell the
+# host is currently serving until it has probed.
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering Bootstrap'
+
+  # become: BOTH forms, deliberately, and over the WHOLE file rather than just the cmd stage.
+  # The keyword alone is not durable — the 'ansible_become' VARIABLE is what ansible-core
+  # consults first (constants.py MAGIC_VARIABLE_MAPPING become=('ansible_become',);
+  # task_executor._set_become_plugin reads cvars['ansible_become'] and only falls back to the
+  # keyword), so a caller with 'ansible_become: true' anywhere in play or inventory scope would
+  # defeat a bare 'become: false'. This is NOT belt-and-braces: with a sudo become plugin bound
+  # to a Windows shell family, ansible-core raises
+  #   "The <cmd|powershell> shell family is incompatible with the sudo become plugin"
+  # (plugins/become/__init__.py _build_success_command, which reaches for shell.ECHO /
+  # shell.COMMAND_SEP — attributes no Windows shell plugin has) and the FIRST task of this file
+  # dies. Consuming products commonly set '[privilege_escalation] become = True' globally.
+  # Scoping the guard to the cmd stage only is NOT enough: the post-reset gate then dies with
+  # the same error in its 'powershell' form.
+  # Escalation here is not merely unnecessary, it is fatal: sudo does not exist on these
+  # targets, and module-level become on Windows only ever engages for become_method 'runas'.
+  become: false
+  vars:
+    ansible_become: false
+
+  block:
+
+  #region ------ [ Transport ] --------------------------------------------------------------- #
+  #   WHY THIS EXISTS AT ALL: the Terraform layer that builds these instances deliberately
+  #   leaves OpenSSH's DefaultShell at cmd.exe — per that framework's own locals.tf, setting it
+  #   to PowerShell breaks Terraform remote-exec SCP upload when its dormant SSH bootstrap is
+  #   re-activated. That is a Terraform-owned concern this suite does not touch, so the flip is
+  #   permanently this file's job, on every fresh boot.
+  #
+  #   WHY IT MUST BE FIRST AND IDEMPOTENT: a refresh / OS-swap-replaced instance re-arrives with
+  #   a fresh Windows boot and DefaultShell back at cmd.exe, regardless of what a prior run
+  #   flipped it to.
+
+    - name: 'INFO | Entering Transport Stage'
+
+      # SCOPE, precisely: block vars are precedence 16. They outrank the per-host
+      # 'ansible_shell_type: powershell' a dynamic inventory composes for Windows hosts
+      # (inventory host vars, precedence 8) and any play-level value (12), and they END at the
+      # block boundary — so the gate / facts / assert tasks below are NOT wrapped as cmd. A
+      # task-level copy on each raw task (17) would behave identically but would have to be
+      # repeated per task, inviting exactly the copy-paste drift that gave the production
+      # reference two tasks with the same name; a play-level copy would be both too wide for a
+      # shared framework file and unavailable here, since a task file has no play keywords.
+      #
+      # WHY cmd AT ALL: this stage's own SSH session lands on the CURRENT, not-yet-flipped
+      # DefaultShell (cmd.exe), so its commands must be wrapped cmd-style to execute at all.
+      vars:
+        ansible_shell_type: 'cmd'
+
+      block:
+
+      #region ------ [ Transport: Flip OpenSSH DefaultShell (cmd -> PowerShell) ] ------------- #
+
+        # BEST-EFFORT BY CONSTRUCTION (failed_when: false), and RE-ENTRANCY is exactly why.
+        # An ALREADY-FLIPPED host cannot be reached through the cmd wrapper at all: ansible
+        # builds 'chcp.com 65001 >nul 2>&1 && <PowerShell -EncodedCommand ...>'
+        # (connection/ssh.py _build_command, using the cmd shell plugin's
+        # _SHELL_REDIRECT_ALLNULL / _SHELL_AND), and PowerShell rejects '&&' with
+        # "The token '&&' is not a valid statement separator in this version", leaving stdout
+        # EMPTY. A guard that treats empty stdout as "not flipped" then mis-fires, the flip
+        # below is attempted through the same broken wrapper, and a HARD failure here would
+        # abort a run that was actually already healthy. Hence: no task in this stage is allowed
+        # to fail the run — the ONLY gate is the post-reset verify, which runs over a fresh
+        # session with the shell type the rest of the suite uses.
+        - name: 'INIT | Query Current OpenSSH DefaultShell'
+          register: '__openssh_defaultshell_query__'
+          changed_when: false
+          failed_when: false
+
+          ansible.builtin.raw: 'reg query "HKLM\SOFTWARE\OpenSSH" /v DefaultShell'
+
+        # Fires when the query does NOT already show PowerShell: a never-flipped instance
+        # (cmd.exe, or the value missing entirely pre-first-boot), a refresh-replaced instance
+        # back at the framework default, or the empty-stdout re-entrant case above. '/f' forces
+        # the add with no confirmation prompt.
+        #
+        # NOTE THE DOUBLED BACKSLASHES below, and do not "clean them up". Unlike the raw command
+        # strings (verbatim text, no {{ }} involved, correctly single), this 'when:' IS a Jinja
+        # expression, and Jinja applies Python-style escapes inside '...' string literals. A
+        # single '\v' decodes to a VERTICAL TAB (0x0b), so
+        # 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' silently becomes
+        # 'C:\Windows\System32\WindowsPowerShell<VT>1.0\powershell.exe' and never matches reg
+        # query's real output — breaking the idempotency guard forever, with no error anywhere.
+        # '\W', '\S' and '\p' are not valid escapes and survive unharmed, which is exactly why
+        # the bug is invisible on inspection: 90% of the path still looks right.
+        - name: 'INIT | Flip OpenSSH DefaultShell To PowerShell'
+          when: >-
+            'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' not in
+            (__openssh_defaultshell_query__.stdout | default('', true))
+          changed_when: true
+          failed_when: false
+
+          ansible.builtin.raw: >-
+            reg add "HKLM\SOFTWARE\OpenSSH" /v DefaultShell /t REG_SZ
+            /d "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" /f
+
+      #endregion --- [ Transport: Flip OpenSSH DefaultShell (cmd -> PowerShell) ] ------------- #
+
+  #region ------ [ Transport: Rebind The Session To The New Shell ] -------------------------- #
+
+    # UNCONDITIONAL — no 'when:' — for two reasons: (a) ansible-core explicitly lists
+    # reset_connection among the meta actions that do NOT support conditionals
+    # (strategy/__init__.py), so a 'when:' would be warned about and IGNORED — writing one would
+    # be a lie in the source; (b) it is harmless when nothing was flipped (one extra reconnect)
+    # but ESSENTIAL when it was.
+    #
+    # THE MUX MECHANIC (do not delete this task as "unnecessary" without re-reading this):
+    # OpenSSH serves the shell that was bound to the ControlPersist master AT THE MOMENT THAT
+    # MASTER WAS OPENED, not at the moment a command is sent. The query task above already
+    # opened (or reused) a master while DefaultShell was still cmd, and ControlPersist keeps
+    # that cmd-bound master warm well past this file. The registry flip only affects masters
+    # opened AFTER it. Without this reset, the next task — and the next play — ride that SAME
+    # warm cmd-bound socket with powershell-style wrapping and die on a cmd-ism ("Parameter
+    # format not correct"), which is exactly what a live -vvvv repro traced to this.
+    # Sitting OUTSIDE the cmd-scoped block is intentional: it is the boundary between the two
+    # transport worlds, and it is shell-agnostic (the reset only runs 'ssh -O check' then
+    # 'ssh -O stop' against the mux socket).
+    - name: 'INIT | Reset The SSH Connection (Apply The New DefaultShell)'
+      ansible.builtin.meta: 'reset_connection'
+
+    # THE REAL GATE. Everything above is best-effort precisely because a re-entrant run cannot
+    # talk to an already-flipped host through the cmd wrapper. This task runs over the FRESH
+    # post-reset session with the powershell shell type the rest of the suite uses, so it is the
+    # first command in this file that is guaranteed to be wrapped correctly for whatever shell
+    # is actually serving. If the flip genuinely did not take, it fails loudly HERE rather than
+    # letting a later play die on an unexplained cmd-ism.
+    #
+    # The task var (precedence 17) is declared explicitly rather than inherited from the
+    # inventory: a shared framework file must not depend on the caller's inventory having
+    # composed ansible_shell_type at all, and 17 also outranks a block-scoped 16 if this task is
+    # ever moved back inside the cmd block.
+    - name: 'INIT | Verify DefaultShell Now Serves PowerShell'
+      vars:
+        ansible_shell_type: 'powershell'
+      register: '__openssh_defaultshell_verify__'
+      changed_when: false
+      failed_when: >-
+        'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' not in
+        (__openssh_defaultshell_verify__.stdout | default('', true))
+
+      ansible.builtin.raw: 'reg query "HKLM\SOFTWARE\OpenSSH" /v DefaultShell'
+
+  #endregion --- [ Transport: Rebind The Session To The New Shell ] -------------------------- #
+
+  #endregion --- [ Transport ] --------------------------------------------------------------- #
+
+  #region ------ [ Initialization ] ---------------------------------------------------------- #
+
+    - name: 'INFO | Entering Initialization Stage'
+      block:
+
+      #region ------ [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+
+        # CONDITIONAL AND NARROW, same contract as the Linux bootstrap: this file is called on
+        # hosts whose facts may or may not have been gathered, so it loads only what its own
+        # assert reads, and only if that is missing.
+        #
+        # WINDOWS DIFFERENCES, all deliberate:
+        #   * The guard names WINDOWS facts. 'distribution' is NOT usable here: on Windows it
+        #     comes from Win32_OperatingSystem.Caption, which ansible.windows' setup module only
+        #     sets when the session token is ELEVATED, and which its own source comment says is
+        #     LOCALIZED. os_family / distribution_version / os_product_type come from
+        #     [Environment]::OSVersion and a native ProductType call — always present, never
+        #     localized, no elevation needed.
+        #   * There is deliberately no network-facts sibling: nothing in this file or in the
+        #     suite's Windows path reads ansible_default_ipv4 (the agent's manager address comes
+        #     from the MANAGER's hostvars, and the agent's own address from inventory), and
+        #     gathering 'network' on Windows pulls a much heavier subset.
+        #   * FQCN, not ansible.builtin.setup. Both work — builtin resolves here because a
+        #     Windows connection sets module_implementation_preferences ('.ps1','.exe',''), so
+        #     'setup' becomes 'setup.ps1', which config/ansible_builtin_runtime.yml redirects to
+        #     ansible.windows.setup. The FQCN simply removes the question; the dependency is
+        #     identical either way, since builtin lands on the same collection module.
+        #   * The '!all','!min',<subset> spelling is identical to the Linux one and behaves
+        #     identically here ('!all' excludes all-minus-min, '!min' then excludes min,
+        #     'distribution' adds it back). Unlike POSIX setup, an INVALID subset only WARNS on
+        #     Windows rather than failing — a typo degrades silently, so do not mistype it.
+        - name: 'INIT | Loading Facts'
+          when: >-
+            ansible_facts.os_family is undefined
+            or ansible_facts.distribution_version is undefined
+            or ansible_facts.os_product_type is undefined
+          ansible.windows.setup: { gather_subset: [ '!all', '!min', 'distribution' ] }
+
+      #endregion --- [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+
+      #region ------ [ Initialization: Perform OS Validation ] ------------------------------- #
+
+        # BUILD NUMBER, not major version: EVERY Windows since 10 reports major version 10, so
+        # the Linux reference's '(major_version | int) == 8' shape asserts nothing at all here.
+        # Windows Server 2025 is NT 10.0 BUILD 26100 (Server 2022 is 20348, Server 2019 is
+        # 17763). And the build ALONE is not enough either — Windows 11 24H2 is also build
+        # 26100 — so os_product_type 'server' is what separates client from server, and it comes
+        # from a native ProductType call that needs no elevated token.
+        # distribution_version is [Environment]::OSVersion.Version.ToString(), e.g.
+        # '10.0.26100.0'; element 2 is the build. 'distribution' and installation type are
+        # printed for the operator only, never asserted on.
+        - name: 'INIT | Perform OS Check'
+          vars:
+            # Padded BEFORE indexing: an unexpected short version string must not blow up the
+            # assert itself with an index error instead of reporting the OS it actually found.
+            __os_build__: >-
+              {{ (((ansible_facts.distribution_version | default('') | string).split('.')) + ['0', '0', '0'])[2] }}
+          ansible.builtin.assert:
+            that:
+              - (ansible_facts.os_family | default('') | string) == 'Windows'
+              - (ansible_facts.os_product_type | default('') | string) == 'server'
+              - (__os_build__ | int) == 26100
+            fail_msg: >-
+              The role 'Windows_Server_2025' is intended for Windows Server 2025
+              (NT 10.0 build 26100) hosts only. Detected:
+              {{ ansible_facts.distribution | default('<unreported: needs an elevated token>', true) }}
+              version {{ ansible_facts.distribution_version | default('<unknown>', true) }},
+              family {{ ansible_facts.os_family | default('<unknown>', true) }},
+              product type {{ ansible_facts.os_product_type | default('<unknown>', true) }},
+              installation type {{ ansible_facts.os_installation_type | default('<unknown>', true) }}.
+              NOTE 'distribution' is reported only when the session token is elevated, and it is
+              localized — it is printed for the operator, never asserted on.
+            quiet: true
+
+      #endregion --- [ Initialization: Perform OS Validation ] ------------------------------- #
+
+  #endregion --- [ Initialization ] ---------------------------------------------------------- #
+
+  #region ------ [ Main ] -------------------------------------------------------------------- #
+  #   INTENTIONALLY THIN. Every item the Linux bootstrap does in its Main stage is either
+  #   already guaranteed on Windows or actively wrong to port:
+  #     * python3.12 / pip / venv / venv drift probe / venv permissions — nothing on a Windows
+  #       target runs a Python module at all. The suite's Windows path is entirely win_*/raw,
+  #       and its only boto3 work is delegated to the CONTROLLER. Bootstrap must not install
+  #       Python here.
+  #     * prerequisite roles (ca_certificates, python3_pip) — both are Linux roles, and only
+  #       python3_pip even exists in this framework; a loop + include_role here would reference
+  #       a role that cannot run.
+  #     * an exec-capable remote-tmp base — Windows has no noexec mounts and no fapolicyd, and
+  #       modules are pipelined into the shell on this connection rather than staged in
+  #       remote_tmp. This is precisely where the Linux fapolicyd requirement has NO analogue.
+  #     * a TLS floor — nothing target-side makes an outbound .NET HTTPS call; the agent MSI is
+  #       fetched controller-side and pushed. The customary ServicePointManager::SecurityProtocol
+  #       bootstrap line would protect nothing.
+  #     * an execution-policy relaxation — ansible already passes '-ExecutionPolicy Unrestricted'
+  #       on every command it wraps, so Set-ExecutionPolicy is a no-op; and in the only case
+  #       that would matter (a machine GPO) MachinePolicy outranks it anyway.
+  #     * hostname + hosts-file normalisation — THE INTERESTING REJECTION. win_hostname only
+  #       QUEUES a rename that needs a REBOOT, which would drop the very session the rest of the
+  #       run depends on; nothing in the suite depends on the Windows hostname (the agent name
+  #       comes from inventory_hostname, the manager address from the manager's private IP); and
+  #       the Windows analogue of /etc/hosts lives in C:\Windows\System32\drivers\etc, which is
+  #       EXACTLY the directory the deploy's Windows FIM proof watches in realtime. A bootstrap
+  #       that wrote a hosts entry would inject spurious file-integrity alerts into the very
+  #       evidence the run exists to produce, and the cumulative ledger would carry them forever.
+  #
+  #   NOT INCLUDED, deliberately, but worth knowing: an assert that the ssh transfer method is
+  #   not pinned to 'scp'. scp shells out through DefaultShell and breaks once it is PowerShell
+  #   — the same hazard the Terraform layer's locals.tf describes. Ansible's default 'smart'
+  #   tries sftp (a shell-independent subsystem) first, so this is latent, not live, and a
+  #   var-level assert cannot see an ini-level setting anyway.
+
+    - name: 'INFO | Entering Main Stage'
+      block:
+
+      #region ------ [ MAIN: Verifying The Session Token Is Elevated ] ----------------------- #
+
+        # The one precondition the suite cannot recover from on its own. Installing the agent
+        # MSI, writing under 'C:\Program Files (x86)', and driving a Windows service all require
+        # an elevated token, and NOTHING in the suite requests elevation: the Windows plays run
+        # become: false because sudo does not exist there and 'runas' would need a stored
+        # password. Today that works because the SSH login is the built-in Administrator
+        # (RID 500), whose token is not UAC-filtered by default. A hardened image that enables
+        # Admin Approval Mode for the built-in Administrator (FilterAdministratorToken) silently
+        # produces a FILTERED token: the MSI install then fails deep inside the agent role, and
+        # the tell is that ansible_distribution above comes back null. Probe it in one round
+        # trip and fail here instead, with the reason, at the cheapest possible point.
+        # This is a CHECK, not a repair: a filtered token cannot elevate itself in-session.
+        - name: 'MAIN | Probing The Session Token For Administrator Rights'
+          register: '__win_token_elevated__'
+          changed_when: false
+
+          ansible.windows.win_powershell:
+            error_action: 'stop'
+            script: |
+              $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+              $principal = [Security.Principal.WindowsPrincipal]$identity
+              $Ansible.Result = @{
+                  user = $identity.Name
+                  elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+              }
+              $Ansible.Changed = $false
+
+        - name: 'MAIN | Verifying The Session Token Is Elevated'
+          ansible.builtin.assert:
+            that:
+              - (__win_token_elevated__.result.elevated | default(false)) | bool
+            fail_msg: >-
+              The connected session
+              ({{ __win_token_elevated__.result.user | default('<unknown>') }}) does not hold an
+              elevated Administrators token. The suite installs an MSI, writes under
+              'C:\Program Files (x86)' and manages a service with become: false, so it cannot
+              elevate for itself. Check UAC Admin Approval Mode for the built-in Administrator
+              (FilterAdministratorToken) and the SSH login used for this host.
+            quiet: true
+
+      #endregion --- [ MAIN: Verifying The Session Token Is Elevated ] ----------------------- #
+
+  #endregion --- [ Main ] -------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

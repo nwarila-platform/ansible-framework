@@ -75,9 +75,9 @@
     fail_msg: >-
       Expected exactly one ATTACHED EBS volume tagged Function={{ disk.function }} on instance
       {{ __instance_id__ }}; found {{ __matches__ | length }}. Attached volumes on this
-      instance: {% for v in __aws_vol_info__.volumes %}{{ v.id }} (Function=
-      {{- v.tags.Function | default('<untagged>', true) }}){% if not loop.last %}, {% endif %}
-      {%- endfor %}. Fix the intended volume's `tags.Function` value so exactly one attached
+      instance: {% for v in __aws_vol_info__.volumes %}{{ v.id }} (Function={{
+      v.tags.Function | default('<untagged>', true) }}){% if not loop.last %}, {% endif %}{% endfor
+      %}. Fix the intended volume's `tags.Function` value so exactly one attached
       volume carries `Function={{ disk.function }}`.
     quiet: true
 
