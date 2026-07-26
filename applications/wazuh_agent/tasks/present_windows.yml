@@ -2,10 +2,10 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/tasks/present_windows.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
-# Install + enroll the Wazuh agent on a WINDOWS endpoint (native win_* path). Dispatched by
-# tasks/main_windows.yml with the merged role config in `config`. Mirrors the Linux
-# present_redhat.yml S3 flow: fetch the SHA256-pinned agent artifact from S3 -> verify ->
-# install -> auto-enroll -> real-time FIM -> service.
+# Install + enroll the Wazuh agent on a WINDOWS endpoint (native win_* path). Dispatched by the
+# shared tasks/main.yml loader with the merged role config in `config`. Mirrors the Linux
+# present_redhat.yml S3 flow: fetch the SHA256-pinned agent artifact from S3 -> verify -> install
+# -> auto-enroll -> real-time FIM -> service.
 #
 # Controller-side S3 staging and MSI seed-once rationale live at their task sites below.
 # ossec.conf ownership: win_package's install-time WAZUH_MANAGER/WAZUH_REGISTRATION_SERVER/
@@ -54,17 +54,6 @@
     #region ------ [ Initialization ] -------------------------------------------------------- #
 
     #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
-
-    - name: 'BEGIN (win) | Assert S3 MSI Coordinates Are Present And Well-Formed'
-      ansible.builtin.assert:
-        that:
-          - config.s3.bucket | default('') | string | trim | length > 0
-          - config.s3.agent_msi_key | default('') | string | trim | length > 0
-          - config.s3.agent_msi_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
-        fail_msg: >-
-          vars/windows_<env>.yml must provide s3.bucket, s3.agent_msi_key, and a real 64-char
-          hex s3.agent_msi_sha256 before the agent MSI can be downloaded.
-        quiet: true
 
     - name: 'BEGIN (win) | Assert A Manager Endpoint Is Resolvable'
       ansible.builtin.assert:

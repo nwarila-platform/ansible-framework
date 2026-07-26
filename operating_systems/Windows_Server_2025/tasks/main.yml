@@ -18,17 +18,15 @@
 #   4. That miss then lands on the loader's 'fail' + 'ignore_errors: true' pair, i.e. the role #
 #      prints an error and SILENTLY DOES NOTHING. Silent success is the worst possible failure #
 #      mode for a bootstrap everything downstream depends on.                                 #
-# The framework has already made this call once: applications/wazuh_agent/tasks/main_windows.  #
-# yml opens with the same finding and ships a separate Windows entry point for the same reason.#
+# Application roles now use the Windows-safe v3.2.0 loader. This bootstrap role still must not #
+# use it: bootstrap has no ENV/state application contract and must repair transport first.     #
 #                                                                                             #
 # WHY THIS FILE EXISTS AT ALL RATHER THAN BEING OMITTED: with no tasks/main.yml, ansible-core's#
 # role loader returns None for the 'tasks' entry point, the role runs ZERO tasks, and the play #
 # REPORTS SUCCESS. Omitting the file converts a caller's mistake into a silent no-op. This     #
 # turns it into a loud, self-documenting failure instead.                                     #
 #                                                                                             #
-# If a real Windows loader is ever wanted it should be written FRESH against the current       #
-# applications/* loader contract, using ansible.windows.setup and no tempfile/SELinux/become — #
-# never adapted from the v2.2.0 Linux loader.                                                 #
+# The named bootstrap entry remains the only supported path for this role.                     #
 # =========================================================================================== #
 
 #region ------ [ Script ] ------------------------------------------------------------------- #

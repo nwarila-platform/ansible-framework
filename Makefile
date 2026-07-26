@@ -7,15 +7,22 @@
 #   make pre-commit   Run full pre-commit suite against all files
 #   make allowlist-check
 #                     Fail if a deliverable file is silently ignored
+#   make loader-identity-check
+#                     Assert every framework application loader is byte-identical
 #   make clean        Remove Python cache artifacts
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint yamllint ansible-lint allowlist-check pre-commit clean
+.PHONY: help install lint yamllint ansible-lint allowlist-check loader-identity-check pre-commit clean
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
 GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$)
+
+LOADER_PATHS := \
+	applications/linux_disk_manager/tasks/main.yml \
+	applications/python3_pip/tasks/main.yml \
+	applications/wazuh_agent/tasks/main.yml
 
 # ---------------------------------------------------------------------------
 # Help
@@ -28,6 +35,8 @@ help:
 	@echo "  make ansible-lint  Run ansible-lint only"
 	@echo "  make allowlist-check"
 	@echo "                     Fail if a deliverable file is silently ignored"
+	@echo "  make loader-identity-check"
+	@echo "                     Assert every framework application loader is byte-identical"
 	@echo "  make pre-commit    Run full pre-commit suite against all files"
 	@echo "  make clean         Remove Python cache artifacts"
 	@echo ""
@@ -43,7 +52,7 @@ install:
 # ---------------------------------------------------------------------------
 # Lint
 # ---------------------------------------------------------------------------
-lint: yamllint ansible-lint allowlist-check
+lint: yamllint ansible-lint allowlist-check loader-identity-check
 
 yamllint:
 	yamllint --config-file .yamllint.yml .
@@ -90,6 +99,19 @@ allowlist-check:
 	else \
 	  printf 'allowlist-orphan-check: OK — every rooted allowlist entry resolves\n'; \
 	fi
+
+# The application loader is intentionally copied into each role so every role is standalone.
+# Compare the current bytes to one another; no expected digest is stored because legitimate
+# loader changes must not require maintaining a second version value in CI.
+loader-identity-check:
+	@digest_count=$$(sha256sum $(LOADER_PATHS) | cut -d' ' -f1 | sort -u | wc -l); \
+	if [ "$$digest_count" -ne 1 ]; then \
+	  printf 'ERROR: application role loaders are not byte-identical:\n'; \
+	  sha256sum $(LOADER_PATHS); \
+	  exit 1; \
+	fi; \
+	digest=$$(sha256sum $(firstword $(LOADER_PATHS)) | cut -d' ' -f1); \
+	printf 'loader-identity-check: OK — all framework copies share sha256 %s\n' "$$digest"
 
 # ---------------------------------------------------------------------------
 # Pre-Commit

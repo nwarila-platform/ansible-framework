@@ -67,13 +67,16 @@ argument_specs:
                 type: 'list'
                 elements: 'str'
                 required: false
+              demo_dir:
+                type: 'str'
+                required: false
 
           windows:
             type: 'dict'
             required: false
             description: >-
-              Windows agent settings, consumed only by the Windows entry point
-              (tasks/main_windows.yml). The MSI S3 coordinates (bucket + agent_msi_key +
+              Windows agent settings, consumed when the shared loader dispatches
+              tasks/present_windows.yml. The MSI S3 coordinates (bucket + agent_msi_key +
               agent_msi_sha256) come from vars/windows_<env>.yml, like the Linux RPM overlay.
             options:
               msi_dest: { type: 'str', required: false }

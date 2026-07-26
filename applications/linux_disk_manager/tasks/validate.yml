@@ -1,7 +1,7 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/tasks/validate.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
-# Config-contract validation, auto-discovered and run ONCE by the v3.1.0 loader's
+# Config-contract validation, auto-discovered and run ONCE by the v3.2.0 loader's
 # 'INIT | Validating Merged Configuration' hook — immediately after defaults -> overlays ->
 # overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
 # config as 'config' (see tasks/main.yml INIT stage).

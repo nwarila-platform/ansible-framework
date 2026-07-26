@@ -12,7 +12,7 @@
 # account-scoped `<account-id>-ansible` bucket as a fallback default via the wazuh_agent
 # override dict, so this literal is never actually used. Do NOT replace it with CHANGE_ME-style
 # text or a real bucket name: it is a deliberate fail-fast TRIPWIRE. (Previously this and test
-# carried an env-suffixed `CHANGE_ME-ansible-prod`/`-test` shape that contradicted int's
+# carried an env-suffixed `CHANGE_ME-ansible-prod`/`-test` shape that contradicted dev's
 # non-suffixed `<account-id>-ansible` and the IAM `*-ansible` wildcard; normalized to the one
 # convention.)
 # =========================================================================================== #
