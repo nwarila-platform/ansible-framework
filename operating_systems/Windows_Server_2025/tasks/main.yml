@@ -1,0 +1,47 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/main.yml'                                       | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+#                                                                                             #
+#                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                     #
+#                                                                                             #
+# This is NOT the v2.2.0 role loader retained only by RedHat_Rocky_10. That loader must never  #
+# be copied here. Four concrete reasons, any one of them fatal:                                #
+#   1. Its 'INIT | Creating Temporary Directory' step uses ansible.builtin.tempfile under      #
+#      'become: true' — a POSIX module, and sudo does not exist on a Windows target. Hard      #
+#      failure before any work happens.                                                       #
+#   2. Its 'INIT | Securing Temporary Directory' step sets selevel/serole/setype/seuser.       #
+#      SELinux is meaningless on Windows.                                                     #
+#   3. It derives its dispatch name as '<ansible_distribution|lower>_<major_version>'. On      #
+#      Windows ansible_distribution is Win32_OperatingSystem.Caption, so that evaluates to the #
+#      literal string 'microsoft windows server 2025 datacenter_10'. Spaces are legal in a      #
+#      filename, but this role ships no task file with that generated name, so dispatch misses.#
+#   4. That miss then lands on the loader's 'fail' + 'ignore_errors: true' pair, i.e. the role #
+#      prints an error and SILENTLY DOES NOTHING. Silent success is the worst possible failure #
+#      mode for a bootstrap everything downstream depends on.                                 #
+# The framework has already made this call once: applications/wazuh_agent/tasks/main_windows.  #
+# yml opens with the same finding and ships a separate Windows entry point for the same reason.#
+#                                                                                             #
+# WHY THIS FILE EXISTS AT ALL RATHER THAN BEING OMITTED: with no tasks/main.yml, ansible-core's#
+# role loader returns None for the 'tasks' entry point, the role runs ZERO tasks, and the play #
+# REPORTS SUCCESS. Omitting the file converts a caller's mistake into a silent no-op. This     #
+# turns it into a loud, self-documenting failure instead.                                     #
+#                                                                                             #
+# If a real Windows loader is ever wanted it should be written FRESH against the current       #
+# applications/* loader contract, using ansible.windows.setup and no tempfile/SELinux/become — #
+# never adapted from the v2.2.0 Linux loader.                                                 #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Unsupported Entry Point'
+  ansible.builtin.fail:
+    msg: >-
+      The role 'Windows_Server_2025' has no generic entry point. Call one of its named task
+      files explicitly, e.g.
+      "ansible.builtin.include_role: { name: 'Windows_Server_2025', tasks_from: 'bootstrap' }".
+      tasks/bootstrap.yml establishes the minimum requirements for the ansible-framework suite
+      to run on a new Windows Server 2025 host; see the header of that file for the full call
+      contract (notably: gather_facts must be false, and no 'vars:' may be passed to the
+      include).
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #
