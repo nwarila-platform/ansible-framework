@@ -2,9 +2,10 @@
 
 Installs and enrolls the **Wazuh agent** on endpoint hosts.
 
-This role is for monitored endpoints only. Do not run it on a host that is also in the
-`wazuh_servers` group; the role refuses to install the standalone agent package on a
-manager host because both packages own `/var/ossec`.
+This role is for monitored endpoints only. Do not run it on the manager host: the role
+compares `wazuh_agent.manager.host` with the endpoint's `private_ip_address`, `ansible_host`,
+and `inventory_hostname`, and refuses to install the standalone agent package when one
+matches because both packages own `/var/ossec`.
 
 ## What this role does NOT consume
 
@@ -23,9 +24,30 @@ Decoupling the agent from the central bundle lets the two ship on independent ca
 
 | Variable | Type | Description |
 |---|---|---|
-| `ENV` | str | Environment selector (`int`, `test`, or `prod`). Used by overlay loader. |
+| `ENV` | str | Environment selector (`dev`, `test`, or `prod`). Used by overlay loader. |
 | `wazuh_agent.state` | str | `present` (default) or `clean`. |
+| `wazuh_agent.manager.host` | str | Required and non-empty for `state=present`. Set explicitly to the manager's routable IP address or DNS name; the shared role does not infer consumer inventory topology. |
 | `wazuh_agent.agent_ip` | str | Optional explicit endpoint IPv4 for `agent-auth -I`. Required when `ansible_host` is a DNS name instead of an IPv4 address. |
+
+The normal role entry point supports both Linux and Windows hosts in the same play. It gathers
+the platform facts needed for per-host dispatch, uses POSIX package and staging tasks only on
+non-Windows hosts, and selects the appropriate RPM or MSI validation contract.
+
+`tasks_from: main_windows` remains as a deprecated forwarding alias for loader v3.2.0 so existing
+callers receive the same behavior. New callers should use the normal role entry point. The alias
+will be removed in loader v4.0.0.
+
+## Single-manager scope
+
+This role deliberately accepts and renders exactly one manager endpoint. This is a limitation of
+the role, not of Wazuh: Wazuh supports multiple `<server>` blocks for agent failover.
+
+Adding failover later also requires correcting the existing manager-block replacement logic. Its
+non-greedy `(?ms)^(\s*<client>\s*)<server>.*?</server>\s*` pattern rewrites only the first
+`<server>` block in a configuration that already contains several and leaves later blocks in
+place. The Windows ownership pattern has the same first-block behavior. Multi-manager support
+must replace these patterns and their single-block guards together so convergence cannot be
+partial or silent.
 
 ## Per-env S3 keys
 
@@ -81,8 +103,8 @@ transport and has the same crypto guarantees but no delivery guarantees.
 
 ## File integrity monitoring
 
-The vendor default monitors `/etc` on a scheduled 12-hour scan. For immediate lab
-validation or targeted production monitoring, set:
+The role watches `/etc` in real time by default so its alternate FIM trigger entry point can
+produce an immediate event. Override the list for targeted monitoring:
 
 ```yaml
 wazuh_agent:
@@ -94,6 +116,22 @@ wazuh_agent:
 The VMware lab inventory enables this for `/etc/hosts` so a harmless hosts-file change
 generates a real-time syscheck alert.
 
+After the agent is deployed, the Linux and Windows trigger entry points can be called without
+`ENV` or AWS credentials. They reuse `wazuh_agent_running` from the deployment when available
+and fall back to role defaults plus a `wazuh_agent` override when invoked standalone:
+
+```yaml
+- name: 'Trigger Linux FIM'
+  ansible.builtin.include_role:
+    name: 'wazuh_agent'
+    tasks_from: 'fim_trigger'
+
+- name: 'Trigger Windows FIM'
+  ansible.builtin.include_role:
+    name: 'wazuh_agent'
+    tasks_from: 'fim_trigger_windows'
+```
+
 ## Example
 
 ```yaml
@@ -101,8 +139,10 @@ generates a real-time syscheck alert.
   roles:
     - role: 'wazuh_agent'
       vars:
-        ENV: 'int'
+        ENV: 'dev'
         wazuh_agent:
+          manager:
+            host: 'wazuh-manager.example.internal'
           fim:
             realtime_paths:
               - '/etc/hosts'

@@ -4,7 +4,7 @@ The **step-0 storage initializer**. Given a machine with attached-but-blank data
 **partitions → formats → labels → mounts** each declared disk, then the application role (e.g.
 `wazuh_server`) consumes the mounted volume at `/mnt/data`.
 
-Framework-compatible role: ships the ansible-framework **v3.1.0** generic loader
+Framework-compatible role: ships the ansible-framework **v3.2.0** generic loader
 (`tasks/main.yml`, byte-identical — never edit), merged-config guards in `tasks/validate.yml`,
 and `present_redhat.yml` / `clean_redhat.yml`. AWS Function-tag resolution is isolated in
 `tasks/resolve_aws.yml`.
@@ -69,7 +69,7 @@ Each `disks[]` entry:
 
 ```bash
 # step 0 — provision the data disk, then deploy the stack
-ansible-playbook -i lab/inventory.yml playbooks/linux_disk_manager.yml -e env=int
+ansible-playbook -i lab/inventory.yml playbooks/linux_disk_manager.yml -e ENV=dev
 ```
 
 ## Requirements

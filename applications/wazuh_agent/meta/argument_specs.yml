@@ -1,8 +1,9 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/meta/argument_specs.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
-# Formal input specification for the `wazuh_agent:` dict — documents the input contract. Runtime
-# input guards (S3 coords, enrollment IP, not-on-manager) live in present_redhat.yml's BEGIN region.
+# Formal input specification for the `wazuh_agent:` dict — documents the input contract.
+# State-conditional manager/S3 guards live in tasks/validate.yml; endpoint-specific guards live in
+# the installers.
 # =========================================================================================== #
 
 argument_specs:
@@ -40,8 +41,17 @@ argument_specs:
           manager:
             type: 'dict'
             required: false
+            description: >-
+              Wazuh manager connection and enrollment settings. `host` is required when
+              state=present; tasks/validate.yml enforces the conditional requirement before
+              OS dispatch.
             options:
-              host: { type: 'str', required: false }
+              host:
+                type: 'str'
+                required: false
+                description: >-
+                  Explicit routable manager IP address or DNS name. This role does not infer a
+                  manager from consumer inventory.
               port: { type: 'int', required: false }
               protocol: { type: 'str', required: false, choices: ['tcp', 'udp'] }
               enrollment_port: { type: 'int', required: false }
@@ -67,13 +77,16 @@ argument_specs:
                 type: 'list'
                 elements: 'str'
                 required: false
+              demo_dir:
+                type: 'str'
+                required: false
 
           windows:
             type: 'dict'
             required: false
             description: >-
-              Windows agent settings, consumed only by the Windows entry point
-              (tasks/main_windows.yml). The MSI S3 coordinates (bucket + agent_msi_key +
+              Windows agent settings, consumed when the shared loader dispatches
+              tasks/present_windows.yml. The MSI S3 coordinates (bucket + agent_msi_key +
               agent_msi_sha256) come from vars/windows_<env>.yml, like the Linux RPM overlay.
             options:
               msi_dest: { type: 'str', required: false }

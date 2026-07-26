@@ -80,6 +80,7 @@
 !/operating_systems/RedHat_Rocky_8/
 !/operating_systems/RedHat_Rocky_9/
 !/operating_systems/Windows_Server_2025/
+!/operating_systems/os_bootstrap/
 !/operating_systems/*/.gitkeep
 !/operating_systems/RedHat_Rocky_10/defaults/
 !/operating_systems/RedHat_Rocky_10/files/
@@ -117,6 +118,7 @@
 !/operating_systems/Windows_Server_2025/templates/
 !/operating_systems/Windows_Server_2025/tests/
 !/operating_systems/Windows_Server_2025/vars/
+!/operating_systems/os_bootstrap/**
 !/operating_systems/*/*/*.yml
 !/operating_systems/*/*/.gitkeep
 !/operating_systems/*/tests/inventory
