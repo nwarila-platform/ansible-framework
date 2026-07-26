@@ -309,6 +309,7 @@
       ansible.builtin.file:
         path: "{{ item }}"
         state: 'directory'
+        mode: '0755'
 
     # No `when:` gate -- this must run even when realtime_paths is empty so an emptied list
     # actually removes the managed block. ansible.builtin.blockinfile treats a missing/empty
