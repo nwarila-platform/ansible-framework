@@ -53,13 +53,11 @@ wazuh_agent_defaults:
   #endregion --- [ Services ] ------------------------------------------------------------------- #
 
   #region ------ [ File Integrity Monitoring ] -------------------------------------------------- #
-  # Real-time paths used by the role's FIM trigger entry point. The vendor default monitors /etc
-  # on a 12-hour schedule, so a change under the demo directory is not immediate unless /etc is
-  # explicitly watched in real time.
+  # Real-time paths managed by this role in the agent's ossec.conf. The vendor default monitors
+  # /etc on a 12-hour schedule; declaring it here also enables immediate change events.
   fim:
     realtime_paths:
       - '/etc'
-    demo_dir: '/etc/wazuh-fim-demo'
   #endregion --- [ File Integrity Monitoring ] -------------------------------------------------- #
 
   #region ------ [ Windows agent (native win_* path) ] ----------------------------------------- #
@@ -78,7 +76,6 @@ wazuh_agent_defaults:
     # END (win) connection-verify gate in tasks/present_windows.yml polls this for status='connected'.
     state_file: 'C:\Program Files (x86)\ossec-agent\wazuh-agent.state'
     # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.
-    # tasks/fim_trigger_windows.yml writes into the first declared directory.
     fim_realtime_paths:
       - 'C:\Windows\System32\drivers\etc'
   #endregion --- [ Windows agent ] -------------------------------------------------------------- #

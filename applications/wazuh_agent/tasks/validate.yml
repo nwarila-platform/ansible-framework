@@ -27,6 +27,40 @@
       topology. Set wazuh_agent.manager.host explicitly to the routable Wazuh manager endpoint.
     quiet: true
 
+# Cross-host collision check: if two endpoints targeted by this play resolve to the same
+# effective agent_name, the second enrollment overwrites the first in the manager's shared
+# client.keys -- Wazuh keys it by name only, not by OS. The host set comes from the play, not
+# consumer-specific inventory groups, so this one validation covers Linux and Windows endpoints
+# before platform dispatch.
+#
+# Reads the LOADER-MERGED config (wazuh_agent_running), not the raw wazuh_agent override dict: an
+# agent_name set at an OS overlay layer is invisible to a raw-dict read but fully present in the
+# merged config, and enrollment resolves from that merged config too. The `config` fallback is
+# retained only as a defensive read for a direct legacy invocation of this task file.
+#
+# This is intentionally play-scoped. A host deployed by a separate play is outside this check;
+# consumers that split deployment across plays must enforce uniqueness across those plays.
+- name: 'BEGIN | Assert Agent Name Is Unique Across This Play'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  run_once: true
+  vars:
+    __effective_names__: >-
+      {%- set out = [] -%}
+      {%- for h in ansible_play_hosts_all -%}
+        {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
+        {%- set explicit = merged.agent_name | default('') | string | trim -%}
+        {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
+      {%- endfor -%}
+      {{ out }}
+  ansible.builtin.assert:
+    that:
+      - (__effective_names__ | length) == (__effective_names__ | unique | length)
+    fail_msg: >-
+      Two or more hosts in this play resolve to the same wazuh_agent.agent_name. Each endpoint
+      must produce a unique agent name because the manager keys client.keys by name. Effective
+      names: {{ __effective_names__ }}.
+    quiet: true
+
 - name: 'BEGIN | Assert Shared Agent S3 Inputs Are Complete'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:

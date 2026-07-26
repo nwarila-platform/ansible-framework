@@ -33,6 +33,18 @@ The normal role entry point supports both Linux and Windows hosts in the same pl
 the platform facts needed for per-host dispatch, uses POSIX package and staging tasks only on
 non-Windows hosts, and selects the appropriate RPM or MSI validation contract.
 
+## Agent-name uniqueness scope
+
+The role rejects duplicate effective `wazuh_agent.agent_name` values among endpoints targeted by
+the current play. It derives that host set from `ansible_play_hosts_all`, not inventory group
+names, so the check is independent of a consumer's inventory topology and covers Linux and
+Windows endpoints in the supported mixed-play shape.
+
+This detection is intentionally play-scoped. It cannot see an endpoint that a consumer deploys
+in a separate play, so consumers that split agent deployment across plays must enforce global
+agent-name uniqueness themselves. Keeping all endpoint deployment in one mixed play lets the
+normal Windows-safe loader provide the complete host set to this guard.
+
 `tasks_from: main_windows` remains as a deprecated forwarding alias for loader v3.2.0 so existing
 callers receive the same behavior. New callers should use the normal role entry point. The alias
 will be removed in loader v4.0.0.
@@ -103,8 +115,8 @@ transport and has the same crypto guarantees but no delivery guarantees.
 
 ## File integrity monitoring
 
-The role watches `/etc` in real time by default so its alternate FIM trigger entry point can
-produce an immediate event. Override the list for targeted monitoring:
+The role configures `/etc` for real-time monitoring by default. Override the list for targeted
+monitoring:
 
 ```yaml
 wazuh_agent:
@@ -113,44 +125,10 @@ wazuh_agent:
       - '/etc/hosts'
 ```
 
-The VMware lab inventory enables this for `/etc/hosts` so a harmless hosts-file change
-generates a real-time syscheck alert.
-
-After the agent is deployed, the Linux and Windows trigger entry points can be called without
-`ENV` or AWS credentials. They reuse `wazuh_agent_running` from the deployment when available
-and fall back to role defaults plus a `wazuh_agent` override when invoked standalone:
-
-```yaml
-- name: 'Trigger Linux FIM'
-  ansible.builtin.include_role:
-    name: 'wazuh_agent'
-    tasks_from: 'fim_trigger'
-
-- name: 'Trigger Windows FIM'
-  ansible.builtin.include_role:
-    name: 'wazuh_agent'
-    tasks_from: 'fim_trigger_windows'
-```
-
-Each trigger publishes three host facts for a downstream ledger:
-
-| Host fact | Contract |
-|---|---|
-| `__fim_marker__` | Marker containing one decimal random draw from `[0, 2^128)`. The draw occurs once. |
-| `__fim_path__` | Monitored file path derived from that fixed marker. |
-| `__fim_triggered_at__` | UTC trigger boundary captured after real-time monitoring is armed and immediately before the marker write. |
-
-`__fim_triggered_at__` uses RFC 3339/ISO 8601 format
-`YYYY-MM-DDTHH:MM:SS.ffffffZ` (for example, `2000-01-02T03:04:05.123456Z`). The explicit UTC
-designator and fixed-width fractional seconds let an OpenSearch range query compare it directly
-with `@timestamp`. Consumers must persist the fact with its marker and path and constrain proof
-queries to `@timestamp >= triggered_at`; marker uniqueness alone is defense in depth, not the
-freshness boundary.
-
 ## Example
 
 ```yaml
-- hosts: wazuh_agents
+- hosts: monitored_endpoints
   roles:
     - role: 'wazuh_agent'
       vars:

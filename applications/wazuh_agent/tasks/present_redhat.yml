@@ -85,41 +85,6 @@
           for the manager's anti-impersonation binding.
         quiet: true
 
-    # Cross-host collision check: if two endpoints across the Linux (wazuh_agents) and
-    # Windows (wazuh_agents_windows) groups end up resolving to the same effective agent_name
-    # (both defaulted to a duplicated inventory_hostname, or an overlay/override sets
-    # wazuh_agent.agent_name identically for more than one host), the second enrollment
-    # overwrites the first in the manager's shared client.keys -- Wazuh keys it by name only,
-    # not by OS. Catch it here instead of silently re-keying one of the agents.
-    #
-    # Reads the LOADER-MERGED config (wazuh_agent_running), not the raw wazuh_agent override
-    # dict: an agent_name set at the OVERLAY layer (vars/redhat_<env>.yml / vars/windows_<env>.yml)
-    # is invisible to a raw-dict read but fully present in the merged config, and enrollment
-    # itself (__agent_name__ above) already resolves from merged config -- the guard has to
-    # match what enrollment actually does or it can wrongly call a real collision "unique".
-    #
-    # Windows hosts persist the merged config as wazuh_agent_running. The `config` fallback is
-    # retained only as a defensive read for legacy hostvars; it is not written by main_windows.yml.
-    - name: 'BEGIN | Assert Agent Name Is Unique Across wazuh_agents + wazuh_agents_windows'
-      run_once: true
-      vars:
-        __effective_names__: >-
-          {%- set out = [] -%}
-          {%- for h in ((groups['wazuh_agents'] | default([])) + (groups['wazuh_agents_windows'] | default([]))) -%}
-            {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
-            {%- set explicit = merged.agent_name | default('') | string | trim -%}
-            {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
-          {%- endfor -%}
-          {{ out }}
-      ansible.builtin.assert:
-        that:
-          - (__effective_names__ | length) == (__effective_names__ | unique | length)
-        fail_msg: >-
-          Two or more hosts across `wazuh_agents`/`wazuh_agents_windows` resolve to the same
-          wazuh_agent.agent_name. Each endpoint must produce a unique agent name because the
-          manager keys client.keys by name. Effective names: {{ __effective_names__ }}.
-        quiet: true
-
     #endregion --- [ Initialization: Input Guards ] ------------------------------------------ #
 
     #endregion --- [ Initialization ] -------------------------------------------------------- #

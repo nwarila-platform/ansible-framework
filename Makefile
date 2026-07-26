@@ -59,7 +59,8 @@ yamllint:
 
 ansible-lint:
 	@files=$$(git ls-files --cached --others --exclude-standard -- applications operating_systems \
-	  | grep -E '\.ya?ml$$' | sort); \
+	  | grep -E '\.ya?ml$$' | sort \
+	  | while IFS= read -r file; do [ -f "$$file" ] && printf '%s\n' "$$file"; done); \
 	if [ -z "$$files" ]; then \
 	  printf 'ERROR: no cached or visible role YAML files found for ansible-lint\n'; \
 	  exit 1; \
