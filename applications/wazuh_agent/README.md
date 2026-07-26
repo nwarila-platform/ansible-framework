@@ -132,6 +132,21 @@ and fall back to role defaults plus a `wazuh_agent` override when invoked standa
     tasks_from: 'fim_trigger_windows'
 ```
 
+Each trigger publishes three host facts for a downstream ledger:
+
+| Host fact | Contract |
+|---|---|
+| `__fim_marker__` | Marker containing one decimal random draw from `[0, 2^128)`. The draw occurs once. |
+| `__fim_path__` | Monitored file path derived from that fixed marker. |
+| `__fim_triggered_at__` | UTC trigger boundary captured after real-time monitoring is armed and immediately before the marker write. |
+
+`__fim_triggered_at__` uses RFC 3339/ISO 8601 format
+`YYYY-MM-DDTHH:MM:SS.ffffffZ` (for example, `2000-01-02T03:04:05.123456Z`). The explicit UTC
+designator and fixed-width fractional seconds let an OpenSearch range query compare it directly
+with `@timestamp`. Consumers must persist the fact with its marker and path and constrain proof
+queries to `@timestamp >= triggered_at`; marker uniqueness alone is defense in depth, not the
+freshness boundary.
+
 ## Example
 
 ```yaml

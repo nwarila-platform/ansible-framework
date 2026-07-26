@@ -29,20 +29,21 @@
         group: 'root'
         mode: '0755'
 
-    # A per-run unique filename makes each invocation a distinct, unambiguous event to search
-    # for — no risk of matching a stale alert from an earlier run. inventory_hostname + a random
-    # suffix keeps it readable in the dashboard. (No Date/epoch: keep it deterministic-free.)
-    # __fim_path__ is recorded alongside the marker (not re-derived later) so the ledger play
-    # below — a SEPARATE play against a SEPARATE host group — can read both straight off
-    # hostvars without duplicating this play's directory convention.
-    - name: 'TRIGGER | Compute A Unique Marker For This Run (draw the random ONCE)'
+    # A per-trigger filename makes each invocation a distinct event to search for. The 128-bit
+    # numeric suffix makes accidental collisions vanishingly unlikely, while the separately
+    # recorded trigger timestamp prevents an older alert from proving a newer ledger entry even
+    # if a collision occurs. The marker and derived path land on hostvars so a separate ledger
+    # entry point against a separate host group can read them without duplicating this task
+    # file's directory convention.
+    - name: 'TRIGGER | Compute A High-Entropy Marker (draw the random ONCE)'
       # `| random` RE-EVALUATES on every reference, so the random must be drawn once into a
       # concrete fact here and the path DERIVED from that fact (next task). Referencing a single
       # `{{ ... | random }}` vars entry twice yields two different numbers — the ledger records
       # one, the file on disk gets the other, and the FIM proof never matches (Windows failed
       # exactly this way; Linux passed only when the two draws happened to line up).
       ansible.builtin.set_fact:
-        __fim_marker__: "fim-proof-{{ inventory_hostname }}-{{ 9999999999 | random }}"
+        __fim_marker__: >-
+          fim-proof-{{ inventory_hostname }}-{{ 340282366920938463463374607431768211456 | random }}
 
     - name: 'TRIGGER | Derive The Monitored Path From The Fixed Marker'
       ansible.builtin.set_fact:
@@ -59,12 +60,11 @@
     # A NAIVE "does this line exist anywhere in ossec.log" check is NOT sufficient — the agent
     # can arm MORE THAN ONCE per lifetime (e.g. a config change that restarts the service), and a
     # stale line from a PRIOR arming (watching a DIFFERENT, now-superseded config) satisfies a
-    # plain existence check instantly, before the CURRENT process has armed at all. This is
-    # structural on Windows (see that play's identical task): the role always installs the MSI
-    # with its stock config first, then restarts once our syscheck block is injected. Linux
-    # agents in this codebase install with the final config from the start, so double-arming is
-    # not expected here today — but the check below is written to be correct regardless, rather
-    # than relying on that happening to be true.
+    # plain existence check instantly, before the CURRENT process has armed at all. Current Linux
+    # and Windows installation paths apply the final FIM config before the first managed service
+    # start, so double-arming is not expected on a fresh deployment. It can still occur after a
+    # later config change restarts the service, so the check below remains process-aware rather
+    # than relying on one arming per host lifetime.
     #
     # THE FIX: compare the LAST "(6012)" line's timestamp against the wazuh-agent SERVICE's own
     # ActiveEnterTimestamp (`systemctl show wazuh-agent --property=ActiveEnterTimestamp` — unit
@@ -110,6 +110,10 @@
         else
           echo 'NOT_ARMED (latest 6012 predates the current wazuh-agent service start; stale arming)'
         fi
+
+    - name: 'TRIGGER | Capture The UTC Timestamp Immediately Before The Marker Write'
+      ansible.builtin.set_fact:
+        __fim_triggered_at__: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%S.%fZ') }}"
 
     - name: 'TRIGGER | Create The File (This Is The FIM Event The Agent Detects In Real Time)'
       ansible.builtin.copy:
