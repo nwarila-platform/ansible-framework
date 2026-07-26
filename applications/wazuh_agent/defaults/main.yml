@@ -13,9 +13,9 @@
 #   - The Wazuh agent RPM is uploaded to S3 at `s3://<bucket>/applications/wazuh-agent/`
 #     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
 #     consume the central wazuh-offline.tar.gz bundle.
-#   - `ENV` (uppercase) is passed via --extra-vars; see tasks/main.yml's assert. AWS credentials
-#     are sourced from the runner env by playbooks/aws_runner_env.yml;
-#     `AWS_SESSION_TOKEN` is optional.
+#   - The consumer's initial play propagates `ENV` (uppercase) and the runner's AWS credential
+#     environment values to every target as facts before invoking this role; see tasks/main.yml's
+#     ENV assertion. `AWS_SESSION_TOKEN` remains optional.
 # =========================================================================================== #
 
 wazuh_agent_defaults:
