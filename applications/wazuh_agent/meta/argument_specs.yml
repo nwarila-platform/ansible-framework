@@ -77,9 +77,6 @@ argument_specs:
                 type: 'list'
                 elements: 'str'
                 required: false
-              demo_dir:
-                type: 'str'
-                required: false
 
           windows:
             type: 'dict'
