@@ -3,7 +3,7 @@
 # File: '{{ role_path }}/defaults/main.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Lowest-precedence configuration for the linux_disk_manager role, merged by the v3.1.0 loader
+# Lowest-precedence configuration for the linux_disk_manager role, merged by the v3.2.0 loader
 # into 'linux_disk_manager_running' (defaults -> vars/<family>[_<dist>[_<ver>]][_<env>].yml
 # overlays -> playbook 'linux_disk_manager:' override dict). Task files receive the merged
 # result as 'config'.

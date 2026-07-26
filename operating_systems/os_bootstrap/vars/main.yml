@@ -1,0 +1,7 @@
+---
+
+# Routing is deliberately based on OS family, not distribution or release. The selected
+# bootstrap role owns strict support validation and must reject unsupported releases itself.
+os_bootstrap_role_map:
+  RedHat: 'RedHat_Rocky_8'
+  Windows: 'Windows_Server_2025'

@@ -1,12 +1,12 @@
 ---
 # Per-env overlay for the WINDOWS agent path, ENV=test. Fill in the real MSI key + sha256 for
-# this environment (see windows_int.yml for the shape and the bump procedure).
+# this environment (see windows_dev.yml for the shape and the bump procedure).
 #
 # s3.bucket is the EXCEPTION: it is RUNTIME-SUBSTITUTED (secure-wazuh ADR-0004), not
-# operator-filled — see windows_int.yml's header for the full rationale. Do NOT replace it with
+# operator-filled — see windows_dev.yml's header for the full rationale. Do NOT replace it with
 # CHANGE_ME-style text or a real bucket name: it is a deliberate fail-fast TRIPWIRE. (Previously
 # this and prod carried an env-suffixed `CHANGE_ME-ansible-test`/`-prod` shape that contradicted
-# int's non-suffixed `<account-id>-ansible` and the IAM `*-ansible` wildcard; normalized to the
+# dev's non-suffixed `<account-id>-ansible` and the IAM `*-ansible` wildcard; normalized to the
 # one convention.)
 s3:
   bucket: '<account-id>-ansible'
