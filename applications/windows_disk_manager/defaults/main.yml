@@ -8,9 +8,9 @@
 # 'windows_disk_manager:' override dict). Task files receive the merged result as 'config'.
 #
 # WHAT THIS ROLE IS
-#   The Windows sibling of linux_disk_manager. WDM-02a validates literal disk identities,
-#   resolves attached disks, applies an idempotent online/writable fixup, and refuses foreign
-#   layouts. Non-empty declarations still fail closed before provisioning, deferred to WDM-02b.
+#   The Windows sibling of linux_disk_manager. It trusts each declared literal disk identity,
+#   resolves the attached disk, applies an idempotent online/writable fixup, and provisions an
+#   NTFS volume. A matching NTFS label is skipped for idempotency.
 #
 # =========================================================================================== #
 windows_disk_manager_defaults:
@@ -36,9 +36,10 @@ windows_disk_manager_defaults:
   #                      colon: D, D:, or D:\ (case-insensitive).
   #     label:           NTFS volume label.
   #     allocation_unit: Allocation-unit size in bytes (default 4096).
-  #     fstype:          Filesystem type (default 'NTFS').
+  #     fstype:          Reserved/ignored; this role currently provisions NTFS only.
   #
-  # WDM-02a supports literal unique_id safety resolution and classification. AWS Function-tag
-  # resolution and the initialization/partitioning/formatting pipeline are deferred to WDM-02b.
+  # Literal unique_id values are trusted configuration. AWS Function-tag resolution remains
+  # deferred; entries resolved by unique_id are initialized, partitioned, and formatted unless
+  # an NTFS volume with the declared label already exists on that disk.
   disks: []
   #endregion --- [ Managed disks ] -------------------------------------------------------------- #
