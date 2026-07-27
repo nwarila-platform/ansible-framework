@@ -8,9 +8,9 @@
 # 'windows_disk_manager:' override dict). Task files receive the merged result as 'config'.
 #
 # WHAT THIS ROLE IS
-#   The Windows sibling of linux_disk_manager. WDM-01 establishes the caller-facing disk
-#   contract and validates it, but deliberately performs no disk mutation. Non-empty disk
-#   declarations fail closed until provisioning is implemented in WDM-02.
+#   The Windows sibling of linux_disk_manager. WDM-02a validates literal disk identities,
+#   resolves attached disks, applies an idempotent online/writable fixup, and refuses foreign
+#   layouts. Non-empty declarations still fail closed before provisioning, deferred to WDM-02b.
 #
 # =========================================================================================== #
 windows_disk_manager_defaults:
@@ -38,7 +38,7 @@ windows_disk_manager_defaults:
   #     allocation_unit: Allocation-unit size in bytes (default 4096).
   #     fstype:          Filesystem type (default 'NTFS').
   #
-  # WDM-01 is guard-only and rejects every non-empty list. WDM-02 will implement resolution,
-  # initialization, partitioning, and formatting against this contract.
+  # WDM-02a supports literal unique_id safety resolution and classification. AWS Function-tag
+  # resolution and the initialization/partitioning/formatting pipeline are deferred to WDM-02b.
   disks: []
   #endregion --- [ Managed disks ] -------------------------------------------------------------- #

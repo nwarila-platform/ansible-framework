@@ -1,9 +1,9 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/tasks/present_windows.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
-# Windows / state=present guard-only scaffold. Receives merged configuration as 'config'.
-# WDM-01 performs no disk mutation: it verifies platform targeting, then fails closed if any
-# disk provisioning was requested. WDM-02 will add the provisioning pipeline.
+# Windows / state=present provider. Receives merged configuration as 'config'.
+# WDM-02a resolves literal disk identities, makes declared disks online/writable, and proves
+# each disk is safe to provision or adopt. Layout mutation remains deferred to WDM-02b.
 # =========================================================================================== #
 
 #region ------ [ Script ] -------------------------------------------------------------------- #
@@ -26,9 +26,166 @@
           '{{ ansible_facts.system_vendor | default('<missing>') }}'.
         quiet: true
 
-    - name: 'BEGIN | Refuse Deferred Disk Provisioning'
+    # AWS Function-tag resolution is deliberately outside this stage. This guard must run
+    # before disk facts or the online/writable fixup so an absent ID can never become an empty
+    # Get-Disk match.
+    - name: 'BEGIN | Assert Every Disk Has A Literal Unique ID'
+      loop: "{{ config.disks }}"
+      loop_control:
+        loop_var: 'disk'
+        label: "{{ disk.unique_id | default(disk.function | default('<missing>')) }}"
+      ansible.builtin.assert:
+        that:
+          - disk.function is not defined
+          - disk.unique_id is defined
+          - (disk.unique_id | default('') | string | trim | length) > 0
+        fail_msg: 'AWS function resolution not yet implemented (deferred)'
+        quiet: true
+
+    - name: 'BEGIN | Load Disk, Partition And Volume Facts'
+      community.windows.win_disk_facts:
+        filter:
+          - 'physical_disk'
+          - 'partitions'
+          - 'volumes'
+
+    - name: 'BEGIN | Assert Declared Disks Are Attached'
+      loop: "{{ config.disks }}"
+      loop_control:
+        loop_var: 'disk'
+        label: "{{ disk.unique_id }}"
+      vars:
+        __matches__: >-
+          {{ ansible_facts.disks
+          | selectattr('unique_id', 'defined')
+          | selectattr('unique_id', 'equalto', disk.unique_id)
+          | list }}
+      ansible.builtin.assert:
+        that:
+          - __matches__ | length == 1
+        fail_msg: >-
+          Expected exactly one attached disk matching unique_id '{{ disk.unique_id }}', but
+          found {{ __matches__ | length }}. Attached disks:
+          {% for attached in ansible_facts.disks %}
+          number={{ attached.number | default('unknown') }},
+          unique_id={{ attached.unique_id | default('unknown') }}{%- if not loop.last %};
+          {% endif %}
+          {% endfor %}
+        quiet: true
+
+    # An offline disk may expose no partitions. Clear read-only first, then offline, and emit
+    # the changed sentinel only after every requested transition has completed successfully.
+    - name: 'BEGIN | Bring Declared Disks Online And Writable'
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        $changed = $false
+        foreach ($id in ($env:DISK_IDS -split ';' | Where-Object { $_ })) {
+            $disk = Get-Disk -ErrorAction Stop | Where-Object { $_.UniqueId -eq $id }
+            if ($disk.IsReadOnly) {
+                Set-Disk -Number $disk.Number -IsReadOnly $false -ErrorAction Stop
+                $changed = $true
+            }
+            if ($disk.IsOffline) {
+                Set-Disk -Number $disk.Number -IsOffline $false -ErrorAction Stop
+                $changed = $true
+            }
+        }
+        if ($changed) {
+            Write-Output 'changed'
+        } else {
+            Write-Output 'nochange'
+        }
+      environment:
+        DISK_IDS: "{{ config.disks | map(attribute='unique_id') | join(';') }}"
+      register: '__disk_online__'
+      changed_when: (__disk_online__.stdout | trim) == 'changed'
+
+    - name: 'BEGIN | Re-load Disk Facts After Online/Writable Fixup'
+      community.windows.win_disk_facts:
+        filter:
+          - 'physical_disk'
+          - 'partitions'
+          - 'volumes'
+
+    # Canonical bearer model: only volume records bear filesystems. UNKNOWN takes precedence
+    # over the positive OURS/PRISTINE predicates; everything else is FOREIGN.
+    - name: 'MAIN | Assert Each Disk Is Safe To Provision Or Adopt'
+      loop: "{{ config.disks }}"
+      loop_control:
+        loop_var: 'disk'
+        label: "{{ disk.unique_id }} ({{ __observed_state__ }})"
+      vars:
+        __matches__: >-
+          {{ ansible_facts.disks
+          | selectattr('unique_id', 'defined')
+          | selectattr('unique_id', 'equalto', disk.unique_id)
+          | list }}
+        __attached__: "{{ __matches__ | first }}"
+        __parts__: "{{ __attached__.partitions | default([], true) }}"
+        __volumes__: "{{ __attached__.volumes | default([], true) }}"
+        __observed_state__: >-
+          {%- set scan = namespace(missing_fs=false, unrecognized=false, allowed=[]) -%}
+          {%- set allowlist = ['NTFS', 'FAT', 'FAT32', 'EXFAT', 'REFS'] -%}
+          {%- for volume in __volumes__ -%}
+            {%- if volume.file_system is not defined -%}
+              {%- set scan.missing_fs = true -%}
+            {%- else -%}
+              {%- set fs = volume.file_system | default('', true) | string | trim | upper -%}
+              {%- if fs | length > 0 and fs not in allowlist -%}
+                {%- set scan.unrecognized = true -%}
+              {%- elif fs in allowlist -%}
+                {%- set scan.allowed = scan.allowed + [{'fs': fs, 'label':
+                  volume.label | default('', true) | string}] -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {%- set raw = (__attached__.partition_style | default('') | string | upper) == 'RAW' -%}
+          {%- set contradictory = raw and ((__parts__ | length > 0) or
+            (__volumes__ | length > 0)) -%}
+          {%- if __attached__.partition_style is not defined or scan.missing_fs
+            or scan.unrecognized or contradictory -%}
+            UNKNOWN
+          {%- elif scan.allowed | length == 1 and scan.allowed[0].fs == 'NTFS'
+            and (scan.allowed[0].label | lower) == (disk.label | string | lower) -%}
+            OURS
+          {%- elif raw and (__parts__ | length == 0) and (__volumes__ | length == 0) -%}
+            PRISTINE
+          {%- else -%}
+            FOREIGN
+          {%- endif -%}
+      ansible.builtin.assert:
+        that:
+          - (__observed_state__ | trim) in ['PRISTINE', 'OURS']
+        fail_msg: >-
+          Refusing disk unique_id '{{ disk.unique_id }}': observed state
+          '{{ __observed_state__ | trim }}'; expected PRISTINE or OURS (one NTFS volume
+          labelled '{{ disk.label }}', case-insensitive).
+        quiet: true
+
+    - name: 'MAIN | Assert Matched Disk Numbers Are Distinct'
+      vars:
+        __matched_numbers_json__: >-
+          {%- set found = namespace(numbers=[]) -%}
+          {%- for declared in config.disks -%}
+            {%- set matches = ansible_facts.disks
+              | selectattr('unique_id', 'defined')
+              | selectattr('unique_id', 'equalto', declared.unique_id)
+              | list -%}
+            {%- set found.numbers = found.numbers + [(matches | first).number] -%}
+          {%- endfor -%}
+          {{ found.numbers | to_json }}
+        __matched_numbers__: "{{ __matched_numbers_json__ | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - (__matched_numbers__ | unique | length) == (__matched_numbers__ | length)
+        fail_msg: >-
+          Two or more declared unique_id values resolve to the same physical disk number:
+          {{ __matched_numbers__ }}. Each entry must resolve to a distinct disk.
+        quiet: true
+
+    - name: 'MAIN | Refuse Deferred Provisioning Pipeline'
       when: (config.disks | length) > 0
       ansible.builtin.fail:
-        msg: 'windows_disk_manager: disk provisioning deferred to WDM-02; disks must be empty for the WDM-01 scaffold'
+        msg: 'provisioning pipeline deferred to WDM-02b'
 
 #endregion --- [ Script ] -------------------------------------------------------------------- #
