@@ -31,8 +31,8 @@
 #region ------ [ Disk contract guards ] ------------------------------------------------------ #
 
 # Declaring both identities is ambiguous: a literal unique_id and an AWS Function tag could
-# identify different disks. WDM-02a's provider guard rejects Function-only or missing literal
-# unique_id entries before gathering disk facts or applying the online/writable fixup.
+# identify different disks. The provider accepts only literal unique_id entries until AWS
+# Function-tag resolution is implemented.
 - name: 'BEGIN | Reject Ambiguous Disk Identity Declarations'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
