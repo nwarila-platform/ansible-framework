@@ -1,0 +1,94 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the v3.2.0 loader's
+# 'INIT | Validating Merged Configuration' hook after configuration merging and before an
+# OS-specific task file. Receives the fully merged config as 'config'.
+#
+# STATE SCOPE: the loader runs this file for every state. Every guard is deliberately scoped
+# to state=present so state=clean remains a supported no-op with the default empty platform.
+# =========================================================================================== #
+
+#region ------ [ Platform guard ] ------------------------------------------------------------- #
+
+- name: 'BEGIN | Assert Platform Is Declared And Supported'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __platform__: "{{ config.platform | default('') | string | trim }}"
+  ansible.builtin.assert:
+    that:
+      - (__platform__ | length) > 0
+      - (__platform__ | lower) in ['vmware', 'aws']
+    fail_msg: >-
+      windows_disk_manager.platform is
+      {{ 'unset/empty' if (__platform__ | length) == 0 else ("'" ~ __platform__ ~ "'") }}.
+      Set 'platform' in the windows_disk_manager override dict to vmware or aws. Proxmox is
+      intentionally unsupported until its Windows disk-identity path has been measured.
+    quiet: true
+
+#endregion --- [ Platform guard ] ------------------------------------------------------------- #
+
+#region ------ [ Disk contract guards ] ------------------------------------------------------ #
+
+# Declaring both identities is ambiguous: a literal unique_id and an AWS Function tag could
+# identify different disks. Missing identity is intentionally deferred to the WDM-02 device
+# pipeline; WDM-01 refuses all non-empty disk lists in present_windows.yml.
+- name: 'BEGIN | Reject Ambiguous Disk Identity Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __disks__: "{{ config.disks | default([], true) }}"
+    __ambiguous_identity__: >-
+      {{ __disks__ | selectattr('unique_id', 'defined') | selectattr('function', 'defined')
+      | map(attribute='drive_letter', default='<no drive_letter>') | list }}
+  ansible.builtin.assert:
+    that:
+      - __ambiguous_identity__ | length == 0
+    fail_msg: >-
+      {{ __ambiguous_identity__ | length }} entry(ies) in windows_disk_manager.disks declare
+      BOTH `unique_id` and `function` (drive letter(s):
+      {{ __ambiguous_identity__ | join(', ') }}). Declare at most one identity per disk.
+    quiet: true
+
+# The grammar check must precede canonicalization. A first-character-only transform would
+# otherwise silently accept malformed values such as Data, D::, D\, or D:\path.
+- name: 'BEGIN | Assert Drive Letter Grammar'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ config.disks | default([], true) }}"
+  loop_control:
+    loop_var: 'disk'
+    label: "{{ disk.drive_letter | default('<missing>') }}"
+  ansible.builtin.assert:
+    that:
+      - disk.drive_letter is defined
+      - (disk.drive_letter | string) is match('^[A-Za-z](?::\\\\?)?$')
+    fail_msg: >-
+      windows_disk_manager.disks drive_letter
+      '{{ disk.drive_letter | default('<missing>') }}' is invalid. Use one ASCII letter with
+      an optional colon and an optional single backslash after the colon (for example D, D:,
+      or D:\).
+    quiet: true
+
+# Drive letters are canonicalized only after the grammar guard: accepted forms all reduce to
+# their first character uppercased (D, d, D:, d:, D:\, and d:\ all become D).
+- name: 'BEGIN | Reject Duplicate Disk Identities And Drive Letters'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __disks__: "{{ config.disks | default([], true) }}"
+    __unique_ids__: "{{ __disks__ | selectattr('unique_id', 'defined') | map(attribute='unique_id') | list }}"
+    __functions__: "{{ __disks__ | selectattr('function', 'defined') | map(attribute='function') | list }}"
+    __drive_letters__: >-
+      {{ __disks__ | map(attribute='drive_letter', default='') |
+      map('regex_search', '^[A-Za-z]') | map('upper') | list }}
+  ansible.builtin.assert:
+    that:
+      - (__unique_ids__ | unique | length) == (__unique_ids__ | length)
+      - (__functions__ | unique | length) == (__functions__ | length)
+      - (__drive_letters__ | unique | length) == (__drive_letters__ | length)
+    fail_msg: >-
+      windows_disk_manager.disks declares a duplicate unique_id, function, or canonical drive
+      letter. Every entry must target a distinct disk and drive letter. unique_id values:
+      {{ __unique_ids__ }}; function values: {{ __functions__ }}; canonical drive letters:
+      {{ __drive_letters__ }}.
+    quiet: true
+
+#endregion --- [ Disk contract guards ] ------------------------------------------------------ #

@@ -1,0 +1,34 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Windows / state=present guard-only scaffold. Receives merged configuration as 'config'.
+# WDM-01 performs no disk mutation: it verifies platform targeting, then fails closed if any
+# disk provisioning was requested. WDM-02 will add the provisioning pipeline.
+# =========================================================================================== #
+
+#region ------ [ Script ] -------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (present_windows - windows_disk_manager)'
+  block:
+
+    - name: 'BEGIN | Assert Detected Vendor Matches Declared Platform'
+      vars:
+        __platform__: "{{ config.platform | string | lower | trim }}"
+        __expected_vendors__:
+          vmware: 'VMware, Inc.'
+          aws: 'Amazon EC2'
+      ansible.builtin.assert:
+        that:
+          - (ansible_facts.system_vendor | default('')) == __expected_vendors__[__platform__]
+        fail_msg: >-
+          windows_disk_manager platform '{{ __platform__ }}' expects system vendor
+          '{{ __expected_vendors__[__platform__] }}', but detected
+          '{{ ansible_facts.system_vendor | default('<missing>') }}'.
+        quiet: true
+
+    - name: 'BEGIN | Refuse Deferred Disk Provisioning'
+      when: (config.disks | length) > 0
+      ansible.builtin.fail:
+        msg: 'windows_disk_manager: disk provisioning deferred to WDM-02; disks must be empty for the WDM-01 scaffold'
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

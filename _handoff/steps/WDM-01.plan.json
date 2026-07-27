@@ -1,0 +1,73 @@
+{
+  "piece": "WDM-01",
+  "repo": "nwarila-platform/ansible-framework",
+  "module": "role scaffold (no disk mutation) — establishes applications/windows_disk_manager",
+  "status": "P0 rev5 2026-07-27 (folded Codex P2 r1-r4 — drive_letter grammar now exact regex ^[A-Za-z](?::\\?)?$); awaiting Codex P2 r5",
+  "goal": "Create applications/windows_disk_manager in the framework as the Windows sibling of linux_disk_manager, mirroring its IDENTITY/LIFECYCLE contract with Windows-specific destination/format fields, GUARD-ONLY (no disk mutation this piece). Establishes the canonical home + composition path so pdq (and later wsus) compose it instead of carrying local copies.",
+  "why": "Director (2026-07-27): windows_disk_manager's home is the framework, mirroring linux_disk_manager; app repos compose it. Smallest step: stand up the role skeleton + config contract + state-scoped guards + a FAIL-CLOSED guard-only present_windows, prove it lints/resolves and that a non-empty disks list is refused (not silently green) — BEFORE any disk-provisioning logic (WDM-02+). The framework compose-guard then auto-refuses pdq's local copy once this is tracked.",
+  "contract": {
+    "platform": "vmware | aws ONLY (Codex P2 r1 #1). Proxmox is deliberately EXCLUDED until the Windows Proxmox disk-identity path is measured — matches the current windows_disk_manager (wsus) which asserts platform in [vmware, aws] with 'proxmox intentionally not accepted until measured'. linux_disk_manager accepts proxmox because its by-id path is measured on Linux; Windows is not, so WDM-01 must not accept it.",
+    "disks": "disks list ([] default). IDENTITY/LIFECYCLE MIRROR of linux_disk_manager, NOT field-identical: RETAINED — unique_id | function (exactly-one identity), label, fstype; SWAPPED — linux mount_point/opts/mode/passno REPLACED by Windows drive_letter + allocation_unit. Per entry: unique_id (VMware whole-disk id 'eui.<hex>'; required on vmware) OR function (AWS EBS Function tag, resolved in a LATER piece); drive_letter; label (NTFS volume label); allocation_unit (bytes, DEFAULT 4096 = NTFS default, overridable); fstype (DEFAULT NTFS).",
+    "drive_letter_grammar": "ENFORCED by validate.yml via an anchored regex (Codex P2 r2 #1 + r3 #1): EXACT REGEX ^[A-Za-z](?::\\\\?)?$ — one ASCII letter A-Za-z, then an OPTIONAL group of a colon that may itself be followed by a single backslash. A backslash is permitted ONLY after a colon; a bare letter+backslash ('D\\', no colon) is INVALID. Accepted forms: 'D', 'd', 'D:', 'd:', 'D:\\', 'd:\\'. CANONICAL FORM = that leading letter, uppercased. Malformed values (e.g. 'Data', 'D::', a letter-colon followed by extra path characters, empty) MUST be REJECTED by the grammar assert — first-character canonicalization ALONE would wrongly accept them, so the anchored regex is required, not just a canonicalization. All dedup + downstream drive-letter use operate on the canonical form.",
+    "note": "This REPLACES the current per-consumer shape (pdq.deploy_disk_id / data_disks). The pdq playbook reshape + pin bump is a SEPARATE follow-on pdq piece, and it can only pass a NON-EMPTY disks list once WDM-02 (mutation) exists — see proofs."
+  },
+  "smallestStep": "Scaffold only: v3.2.0 loader (byte-identical to linux_disk_manager) + validate.yml (state-scoped guards) + present_windows.yml (FAIL-CLOSED: platform-vendor assert on the empty/guard path, plus an explicit fail when disks is non-empty) + defaults/vars/meta/README + skeleton dirs + tests. No resolve_aws, no init/partition/format.",
+  "research": [
+    "linux_disk_manager is the template: framework v3.2.0 loader (tasks/main.yml), defaults (platform + disks list), validate.yml (state-scoped platform enum + ambiguous-identity + duplicate guards), present_redhat.yml (shared by-id provider), resolve_aws.yml (function->volume-id->by-id serial, controller-side ec2_vol_info), vars/main.yml (empty by-design), meta (description-only), tests/{inventory,test.yml}, skeleton .gitkeep dirs.",
+    "Windows disk primitives (DEFERRED to WDM-02+, informs the contract only): win_disk_facts.unique_id = 'eui.<hex>' (VMware NVMe); win_initialize_disk (GPT, uniqueid=) -> win_partition (drive_letter, partition_size:-1) -> win_format (NTFS, label, allocation_unit). windows-wsus C02 arc + that repo's RESTART section 6 (win_partition/win_format traps).",
+    "The current windows_disk_manager (wsus/pdq copy) already restricts platform to [vmware, aws] and vendor-maps vmware='VMware, Inc.'/aws='Amazon EC2' — seed the vendor map + platform enum from it (NOT the broader linux proxmox set)."
+  ],
+  "invariants": [
+    "tasks/main.yml is the framework v3.2.0 loader — BYTE-IDENTICAL to linux_disk_manager/tasks/main.yml (proven by cmp); NOT edited (governance surface).",
+    "present_windows.yml performs NO disk mutation. It is FAIL-CLOSED (Codex P2 r1 #2/#11): (a) platform-vendor assert (vmware=='VMware, Inc.' | aws=='Amazon EC2'); (b) an explicit ansible.builtin.fail when (config.disks | length) > 0 with a 'disk provisioning deferred to WDM-02; disks must be empty for the WDM-01 scaffold' message. Only an EMPTY disks list executes green.",
+    "validate.yml guards are ALL state-scoped to present (Codex P2 r1 #5) — a state=clean run with the default empty platform must NOT be blocked. Guards: (1) platform enum in [vmware, aws]; (2) reject entries declaring BOTH unique_id and function; (3) drive_letter GRAMMAR assert — every entry's drive_letter must match the anchored regex in contract.drive_letter_grammar, rejecting malformed values BEFORE canonicalization (Codex P2 r3 #1); (4) reject duplicate unique_id / duplicate function / duplicate CANONICAL drive_letter. Missing identity is NOT pre-asserted here (caught by present_windows' non-empty refusal in WDM-01, and by the resolver/device pipeline in WDM-02+) — the plan does NOT claim exact-one enforcement in validate (Codex P2 r1 #3).",
+    "No other framework role/file touched; no shared lint config, no consumer playbook, no framework pin, no local-role removal (Codex P2 r1 #12)."
+  ],
+  "scopeLock": {
+    "fileAllowlist": [
+      "applications/windows_disk_manager/README.md",
+      "applications/windows_disk_manager/defaults/main.yml",
+      "applications/windows_disk_manager/vars/main.yml",
+      "applications/windows_disk_manager/meta/main.yml",
+      "applications/windows_disk_manager/tasks/main.yml",
+      "applications/windows_disk_manager/tasks/validate.yml",
+      "applications/windows_disk_manager/tasks/present_windows.yml",
+      "applications/windows_disk_manager/tasks/clean_windows.yml",
+      "applications/windows_disk_manager/files/.gitkeep",
+      "applications/windows_disk_manager/handlers/.gitkeep",
+      "applications/windows_disk_manager/library/.gitkeep",
+      "applications/windows_disk_manager/lookup_plugins/.gitkeep",
+      "applications/windows_disk_manager/module_utils/.gitkeep",
+      "applications/windows_disk_manager/molecule/.gitkeep",
+      "applications/windows_disk_manager/templates/.gitkeep",
+      "applications/windows_disk_manager/tests/inventory",
+      "applications/windows_disk_manager/tests/test.yml",
+      "_handoff/steps/WDM-01.plan.json"
+    ],
+    "forbidden": "any existing role (linux_disk_manager, python3_pip, wazuh_agent), the shared loader elsewhere, ansible.cfg, .yamllint.yml/.ansible-lint, operating_systems/*, any consumer repo/playbook, .framework-pin/local-copy removal (all follow-on)"
+  },
+  "proofs": [
+    "cmp -s applications/linux_disk_manager/tasks/main.yml applications/windows_disk_manager/tasks/main.yml -> exit 0 (loader byte-identical; lint alone does NOT prove this) (Codex P2 r1 #7).",
+    "yamllint -c .yamllint.yml applications/windows_disk_manager -> clean; ansible-lint applications/windows_disk_manager -> clean under the framework profile.",
+    "POSITIVE (falsifiable, Codex P2 r1 #8): a play including windows_disk_manager with platform=vmware and empty disks on the VMware host reaches present_windows; CAPTURE the vendor-assert task result (registered/verbose) proving it actually RAN and PASSED (not a skipped no-op); recap changed=0 failed=0.",
+    "NEGATIVE vendor mismatch: same play with platform=aws on the VMware host -> present_windows vendor assert FAILS loudly.",
+    "NEGATIVE silent-green closed (Codex P2 r1 #2): platform=vmware with a NON-EMPTY disks list -> present_windows fails with the 'deferred to WDM-02' message (proves no false green).",
+    "NEGATIVE platform: platform='' or 'proxmox' or other -> validate.yml fails at loader INIT (not a silent green skip).",
+    "NEGATIVE identity/duplicate (Codex P2 r1 #9): entry with BOTH unique_id+function -> fail; duplicate unique_id -> fail; duplicate function -> fail.",
+    "NEGATIVE drive_letter GRAMMAR (Codex P2 r3 #2): malformed values 'Data', 'D::', 'D\\' (bare backslash, no colon), a letter-colon-plus-extra-path, and empty each FAIL the grammar assert.",
+    "NEGATIVE drive_letter CANONICAL duplicate (Codex P2 r2 #1, r3 #2): 'D' vs 'd', 'D' vs 'D:', 'D' vs 'd:', and 'D' vs the d-colon-backslash form each FAIL as duplicate (all canonicalize to 'D').",
+    "STATE scope (Codex P2 r1 #5): a -e state=clean run with the default empty platform -> guards SKIP, clean_windows no-op runs, recap failed=0.",
+    "FOLLOW-ON (separate pdq piece, NOT WDM-01): after WDM-02 (mutation) exists, pdq bumps .framework-pin, removes its local windows_disk_manager copy (compose-guard else refuses), reshapes pdq.yml to a disks list with the 3 captured eui ids, and re-proves P01 with REAL disk provisioning. An optional interim composition-only proof (pdq passing empty disks) can run after WDM-01."
+  ],
+  "judgementCalls": [
+    "platform = vmware|aws only; proxmox excluded until Windows-measured (Codex P2 r1 #1) — matches the seed role, diverges from linux deliberately.",
+    "present_windows is guard-ONLY AND FAIL-CLOSED on non-empty disks (Codex P2 r1 #2) — closes the silent-green gap; only empty disks greens. init/partition/format land in WDM-02+.",
+    "Contract is an IDENTITY/LIFECYCLE mirror, NOT field-identical (Codex P2 r1 #6): drive_letter + allocation_unit replace mount_point/opts/mode/passno; allocation_unit defaults 4096, fstype defaults NTFS; documented unambiguously in README/defaults.",
+    "drive_letter has an ENFORCED anchored grammar (letter + optional colon + optional backslash) validated BEFORE first-char-uppercase canonicalization, so malformed values are rejected not silently coerced (Codex P2 r2 #1 + r3 #1-2).",
+    "Use the framework's canonical v3.2.0 loader (byte-copy) — pdq adopts it via the pin bump, not a per-role edit.",
+    "resolve_aws.yml DEFERRED — and safe because a non-empty (incl. AWS function) disks list is refused in WDM-01 (Codex P2 r1 #11)."
+  ],
+  "blastRadius": "Very low — purely additive new role directory; no existing framework role/file modified; guard-only + fail-closed, no target-side effect. Framework CI (lint) must pass.",
+  "risk": "Low. Residual risks + mitigations: contract drift from linux_disk_manager (mirror identity/lifecycle fields, document the Windows swaps); loader mis-copy (cmp byte-identity proof); silent-green (fail-closed non-empty-disks refusal); malformed/case-variant drive letters (anchored grammar assert + canonical dedup).",
+  "directorNotes": "P1 contract decision given (mirror disks-list; vmware manual, aws function). Codex P2 r1 (12 pts) + r2 (#1) + r3 (#1-2) all folded; re-running P2. Framework cycle uses the SYSTEM codex (Director 2026-07-27), gpt-5.6-sol. Flag at P4.5: proxmox dropped from the Windows contract; present_windows fails-closed on non-empty disks so the pdq real-disk repoint waits for WDM-02."
+}
