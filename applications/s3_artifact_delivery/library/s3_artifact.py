@@ -135,6 +135,7 @@ def _download(module, client):
             module.params["object_key"],
             temporary_path,
         )
+        os.chmod(temporary_path, 0o600)
         os.replace(temporary_path, dest)
     except Exception:
         try:
