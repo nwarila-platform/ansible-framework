@@ -127,10 +127,10 @@
         dest: "{{ __agent_rpm_path__ }}"
         mode: 'get'
         overwrite: 'different'
-        # Least-privilege artifact-reader session: s3:GetObject on the pinned key only.
-        # s3_object's default HeadBucket existence precheck needs unconditional s3:ListBucket and
-        # 403s under the prefix-scoped grant — skip it (this flag exists for GetObject-only
-        # identities) rather than widen IAM to list the whole shared artifact bucket.
+        # Least-privilege deploy identity: s3:GetObject on the pinned key only. s3_object's
+        # default HeadBucket existence precheck needs unconditional s3:ListBucket and 403s
+        # under our prefix-scoped grant — skip it (this flag exists for GetObject-only identities)
+        # rather than widen IAM to list the whole shared artifact bucket.
         ignore_nonexistent_bucket: true
 
     # Trust-on-first-use: the SHA256 in the per-env overlay is the operator's
