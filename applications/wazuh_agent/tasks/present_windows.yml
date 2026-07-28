@@ -83,10 +83,10 @@
     # AWS creds are passed as no_log module args (never target/controller shell env). The task runs
     # on the controller (delegate_to localhost), whose interpreter is the venv running ansible-playbook
     # and therefore already has boto3 — no per-task interpreter override needed (unlike the Linux
-    # target, which must borrow /opt/ansible/venv). ignore_nonexistent_bucket: the deploy identity is
-    # GetObject-only, so skip the HeadBucket precheck (see present_redhat.yml for the full rationale).
-    # run_once: the fetch + verify below are the same idempotent action regardless of how many
-    # Windows hosts this play targets — see the staging-directory tasks above.
+    # target, which must borrow /opt/ansible/venv). ignore_nonexistent_bucket: the artifact-reader
+    # session is GetObject-only, so skip the HeadBucket precheck (see present_redhat.yml for the
+    # full rationale). run_once: the fetch + verify below are the same idempotent action regardless
+    # of how many Windows hosts this play targets — see the staging-directory tasks above.
     - name: 'S3 (win) | Fetch Agent MSI From S3 To The Controller'
       delegate_to: 'localhost'
       become: false
