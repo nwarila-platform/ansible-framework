@@ -90,7 +90,8 @@ allowlist-check:
 	  case "$$p" in \
 	    */) git ls-files --cached --others --exclude-standard -- "$${p%/}" | grep -q . \
 	          || echo "$$p" ;; \
-	    *)  git ls-files --error-unmatch "$$p" >/dev/null 2>&1 || echo "$$p" ;; \
+	    *)  git ls-files --cached --others --exclude-standard -- "$$p" | grep -q . \
+	          || echo "$$p" ;; \
 	  esac; \
 	done); \
 	if [ -n "$$orphans" ]; then \
