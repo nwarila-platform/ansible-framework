@@ -32,6 +32,7 @@
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
 !/applications/python3_pip/
+!/applications/s3_artifact_delivery/
 !/applications/wazuh_agent/
 !/applications/*/*.md
 !/applications/*/.gitkeep
@@ -71,6 +72,18 @@
 !/applications/python3_pip/templates/
 !/applications/python3_pip/tests/
 !/applications/python3_pip/vars/
+!/applications/s3_artifact_delivery/defaults/
+!/applications/s3_artifact_delivery/files/
+!/applications/s3_artifact_delivery/handlers/
+!/applications/s3_artifact_delivery/library/
+!/applications/s3_artifact_delivery/lookup_plugins/
+!/applications/s3_artifact_delivery/meta/
+!/applications/s3_artifact_delivery/module_utils/
+!/applications/s3_artifact_delivery/molecule/
+!/applications/s3_artifact_delivery/tasks/
+!/applications/s3_artifact_delivery/templates/
+!/applications/s3_artifact_delivery/tests/
+!/applications/s3_artifact_delivery/vars/
 !/applications/wazuh_agent/defaults/
 !/applications/wazuh_agent/files/
 !/applications/wazuh_agent/handlers/
@@ -86,6 +99,14 @@
 !/applications/*/*/*.j2
 !/applications/*/*/.gitkeep
 !/applications/*/tests/inventory
+!/applications/s3_artifact_delivery/library/s3_artifact.py
+!/applications/s3_artifact_delivery/tests/fixtures/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/modules/
+!/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/modules/sts_assume_role.py
 !/applications/wazuh_agent/files/GPG-KEY-WAZUH
 
 !/operating_systems/
