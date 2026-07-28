@@ -11,8 +11,9 @@ galaxy_info:
   namespace: 'ansible_framework'
   author: 'HellBomb'
   description: >-
-    Guard-only Windows disk-manager scaffold with stable disk identity and drive-letter
-    contract for VMware and AWS.
+    Windows NTFS disk provisioning (initialize, partition, format) with stable disk identity
+    and drive-letter contract for VMware and AWS; idempotent skip of already-provisioned
+    volumes, fail-closed validation, Windows sibling of linux_disk_manager.
 
   license: 'MIT'
   min_ansible_version: '2.16'

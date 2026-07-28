@@ -22,7 +22,8 @@ GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\
 LOADER_PATHS := \
 	applications/linux_disk_manager/tasks/main.yml \
 	applications/python3_pip/tasks/main.yml \
-	applications/wazuh_agent/tasks/main.yml
+	applications/wazuh_agent/tasks/main.yml \
+	applications/windows_disk_manager/tasks/main.yml
 
 # ---------------------------------------------------------------------------
 # Help

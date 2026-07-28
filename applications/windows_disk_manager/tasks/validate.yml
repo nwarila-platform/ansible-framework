@@ -68,6 +68,49 @@
       or D:\).
     quiet: true
 
+# Validate labels before disk mutation because win_format otherwise rejects an invalid NTFS
+# volume label only after the disk has been brought online, initialized, and partitioned.
+- name: 'BEGIN | Assert Volume Label Grammar'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ config.disks | default([], true) }}"
+  loop_control:
+    loop_var: 'disk'
+    label: "{{ disk.drive_letter | default('<missing>') }}"
+  ansible.builtin.assert:
+    that:
+      - disk.label is defined
+      - disk.label is string
+      - (disk.label | trim | length) >= 1
+      - (disk.label | trim | length) <= 32
+    fail_msg: >-
+      windows_disk_manager.disks entry for drive_letter
+      '{{ disk.drive_letter | default('<missing>') }}' has an invalid label. Label must be a
+      string whose trimmed length is between 1 and 32 characters (the NTFS volume-label limit).
+    quiet: true
+
+# Validate classic NTFS cluster sizes before mutation; larger newer-Windows sizes are unmeasured
+# for the role's standard NTFS data volumes and are rejected fail-closed.
+- name: 'BEGIN | Assert Allocation Unit Is A Valid NTFS Cluster Size'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ config.disks | default([], true) }}"
+  loop_control:
+    loop_var: 'disk'
+    label: "{{ disk.drive_letter | default('<missing>') }}"
+  ansible.builtin.assert:
+    that:
+      - >-
+        disk.allocation_unit is not defined or
+        (disk.allocation_unit | string) is match('^[0-9]+$')
+      - >-
+        disk.allocation_unit is not defined or
+        (disk.allocation_unit | int) in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+    fail_msg: >-
+      windows_disk_manager.disks entry for drive_letter
+      '{{ disk.drive_letter | default('<missing>') }}' has invalid allocation_unit
+      '{{ disk.allocation_unit | default('<missing>') }}'. Accepted NTFS cluster sizes are
+      512, 1024, 2048, 4096, 8192, 16384, 32768, and 65536 bytes.
+    quiet: true
+
 # Drive letters are canonicalized only after the grammar guard: accepted forms all reduce to
 # their first character uppercased (D, d, D:, d:, D:\, and d:\ all become D).
 - name: 'BEGIN | Reject Duplicate Disk Identities And Drive Letters'
