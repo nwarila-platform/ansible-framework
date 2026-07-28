@@ -13,9 +13,9 @@
 #   - The Wazuh agent RPM is uploaded to S3 at `s3://<bucket>/applications/wazuh-agent/`
 #     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
 #     consume the central wazuh-offline.tar.gz bundle.
-#   - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session through
-#     the generic AWS module-option variables before invoking this role; see tasks/main.yml's ENV
-#     assertion. No standing instance access or deploy credential is required on a target.
+#   - The consumer's initial play propagates `ENV` (uppercase) and the runner's AWS credential
+#     environment values to every target as facts before invoking this role; see tasks/main.yml's
+#     ENV assertion. `AWS_SESSION_TOKEN` remains optional.
 # =========================================================================================== #
 
 wazuh_agent_defaults:
@@ -65,7 +65,7 @@ wazuh_agent_defaults:
   # comes from S3 exactly like the Linux RPM — the pinned key + sha256 live in
   # vars/windows_<env>.yml. Because a Windows target can't run boto3, present_windows.yml
   # downloads the MSI with amazon.aws.s3_object delegated to the controller (which has the venv
-  # boto3 and the supplied scoped session), verifies the sha256, then win_copy pushes it.
+  # boto3 + runner AWS creds), verifies the sha256, then win_copy pushes it.
   windows:
     msi_dest: 'C:\Windows\Temp\wazuh-agent.msi'
     ossec_conf: 'C:\Program Files (x86)\ossec-agent\ossec.conf'
