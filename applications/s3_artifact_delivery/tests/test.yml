@@ -33,6 +33,7 @@
           - __s3_artifact_delivery_presign_result__ == ''
           - __s3_artifact_delivery_fetch_result__ == ''
           - __s3_artifact_delivery_session_result__ == ''
+          - __s3_artifact_delivery_error_code__ | default('') == ''
           - ansible_failed_result == ''
           - __s3_artifact_delivery_succeeded__ | bool == (inventory_hostname == 'control')
         quiet: true

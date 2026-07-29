@@ -78,6 +78,7 @@ dest:
 """
 
 import os
+import re
 import tempfile
 
 from ansible.module_utils.basic import AnsibleModule
@@ -85,9 +86,44 @@ from ansible.module_utils.basic import AnsibleModule
 try:
     import boto3
     from botocore.config import Config
+    from botocore.exceptions import ClientError
 except ImportError:
     boto3 = None
     Config = None
+    ClientError = None
+
+
+ARGUMENT_SPEC = {
+    "mode": {
+        "type": "str",
+        "required": True,
+        "choices": ["presign", "get"],
+    },
+    "bucket": {"type": "str", "required": True},
+    "object_key": {"type": "str", "required": True},
+    "region": {"type": "str", "required": True},
+    # The access-key identifier and session token are embedded in every temporary-credential
+    # presigned URL. Adding no_log to either option would make exit_json replace the same value
+    # inside the URL and corrupt its signature. Module-wide no_log suppresses output without
+    # adding either value to the remove_values set. The secret key is never part of the URL.
+    "access_key": {"type": "str", "required": True},
+    "secret_key": {"type": "str", "required": True, "no_log": True},
+    "session_token": {"type": "str", "required": True},
+    "expires_in": {"type": "int", "default": 900},
+    "dest": {"type": "path"},
+}
+
+AWS_ERROR_CODE_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _fail(module, message, error=None):
+    failure = {"msg": message}
+    if ClientError is not None and isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code")
+        if isinstance(code, str) and AWS_ERROR_CODE_PATTERN.fullmatch(code):
+            failure["msg"] = f"{message} AWS error code: {code}."
+            failure["error_code"] = code
+    module.fail_json(**failure)
 
 
 def _client(params):
@@ -112,11 +148,11 @@ def _presign(module, client):
             ExpiresIn=module.params["expires_in"],
             HttpMethod="GET",
         )
-    except Exception:
-        module.fail_json(msg="Unable to presign the requested S3 object.")
+    except Exception as error:
+        _fail(module, "Unable to presign the requested S3 object.", error)
 
     if not url.startswith("https://"):
-        module.fail_json(msg="The SDK returned a non-HTTPS artifact URL.")
+        _fail(module, "The SDK returned a non-HTTPS artifact URL.")
     module.exit_json(changed=False, url=url)
 
 
@@ -124,7 +160,7 @@ def _download(module, client):
     dest = module.params["dest"]
     dest_dir = os.path.dirname(dest)
     if not os.path.isdir(dest_dir):
-        module.fail_json(msg="The controller destination directory does not exist.")
+        _fail(module, "The controller destination directory does not exist.")
 
     fd, temporary_path = tempfile.mkstemp(prefix=".s3-artifact-", dir=dest_dir)
     os.close(fd)
@@ -137,51 +173,33 @@ def _download(module, client):
         )
         os.chmod(temporary_path, 0o600)
         os.replace(temporary_path, dest)
-    except Exception:
+    except Exception as error:
         try:
             os.unlink(temporary_path)
         except FileNotFoundError:
             pass
-        module.fail_json(msg="Unable to download the requested S3 object.")
+        _fail(module, "Unable to download the requested S3 object.", error)
 
     module.exit_json(changed=True, dest=dest)
 
 
 def main():
     module = AnsibleModule(
-        argument_spec={
-            "mode": {
-                "type": "str",
-                "required": True,
-                "choices": ["presign", "get"],
-            },
-            "bucket": {"type": "str", "required": True},
-            "object_key": {"type": "str", "required": True},
-            "region": {"type": "str", "required": True},
-            # The access-key identifier and session token are embedded in every temporary-
-            # credential presigned URL. Marking either no_log here makes Ansible's exit_json
-            # redaction replace that same value inside the returned URL, corrupting the
-            # signature. The caller treats the whole bearer URL as secret with task-level
-            # no_log. The secret key never appears in the URL and remains redacted here.
-            "access_key": {"type": "str", "required": True},
-            "secret_key": {"type": "str", "required": True, "no_log": True},
-            "session_token": {"type": "str", "required": True},
-            "expires_in": {"type": "int", "default": 900},
-            "dest": {"type": "path"},
-        },
+        argument_spec=ARGUMENT_SPEC,
         required_if=[("mode", "get", ["dest"])],
         supports_check_mode=False,
+        no_log=True,
     )
 
     if boto3 is None:
-        module.fail_json(msg="boto3 and botocore are required on the Ansible controller.")
+        _fail(module, "boto3 and botocore are required on the Ansible controller.")
     if not 1 <= module.params["expires_in"] <= 3600:
-        module.fail_json(msg="expires_in must be between 1 and 3600 seconds.")
+        _fail(module, "expires_in must be between 1 and 3600 seconds.")
 
     try:
         client = _client(module.params)
-    except Exception:
-        module.fail_json(msg="Unable to initialize the S3 client.")
+    except Exception as error:
+        _fail(module, "Unable to initialize the S3 client.", error)
     if module.params["mode"] == "presign":
         _presign(module, client)
     _download(module, client)
