@@ -117,6 +117,7 @@
     __s3_artifact_delivery_fetch_result__: ''
     __s3_artifact_delivery_terminal_failure__: false
     __s3_artifact_delivery_redaction_detected__: false
+    __s3_artifact_delivery_error_code__: ''
 
 - name: 'S3 FETCH | Run Fresh-Signature Attempt 1'
   vars:
@@ -155,7 +156,16 @@
           {{
             'The signer output failed the bearer-URL redaction guard.'
             if (__s3_artifact_delivery_redaction_detected__ | bool)
-            else 'The artifact could not be fetched after three fresh-signature attempts.'
+            else (
+              'The artifact could not be fetched after three fresh-signature attempts.'
+              ~ (
+                ' AWS error code: '
+                ~ (__s3_artifact_delivery_error_code__ | string)
+                ~ '.'
+                if (__s3_artifact_delivery_error_code__ | string | length > 0)
+                else ''
+              )
+            )
           }}
   always:
     - name: 'S3 FETCH | Scrub The Retry State'
@@ -164,3 +174,4 @@
         __s3_artifact_delivery_fetch_result__: ''
         __s3_artifact_delivery_terminal_failure__: ''
         __s3_artifact_delivery_redaction_detected__: ''
+        __s3_artifact_delivery_error_code__: ''

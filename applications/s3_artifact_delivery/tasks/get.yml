@@ -153,6 +153,7 @@
   no_log: true
   ansible.builtin.set_fact:
     __s3_artifact_delivery_get_succeeded__: false
+    __s3_artifact_delivery_error_code__: ''
 
 - name: 'S3 GET | Run The Scoped Controller Download'
   no_log: true
@@ -188,6 +189,14 @@
     - name: 'S3 GET | Record The Failed Controller Download'
       ansible.builtin.set_fact:
         __s3_artifact_delivery_get_succeeded__: false
+        __s3_artifact_delivery_error_code__: >-
+          {{
+            (ansible_failed_result.error_code | default('') | string)
+            if (
+              ansible_failed_result.error_code | default('') | string
+            ) is match('^[A-Za-z0-9._-]+$')
+            else ''
+          }}
 
   always:
     - name: 'S3 GET | Scrub The Automatic Failure Result'
@@ -207,8 +216,18 @@
           - __s3_artifact_delivery_get_succeeded__ | bool
         quiet: true
         fail_msg: >-
-          One or more controller artifacts could not be downloaded.
+          {{
+            'One or more controller artifacts could not be downloaded.'
+            ~ (
+              ' AWS error code: '
+              ~ (__s3_artifact_delivery_error_code__ | string)
+              ~ '.'
+              if (__s3_artifact_delivery_error_code__ | string | length > 0)
+              else ''
+            )
+          }}
   always:
     - name: 'S3 GET | Scrub The Controller Download State'
       ansible.builtin.set_fact:
         __s3_artifact_delivery_get_succeeded__: ''
+        __s3_artifact_delivery_error_code__: ''

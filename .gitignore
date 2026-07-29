@@ -60,6 +60,7 @@
 !/applications/python3_pip/tests/
 !/applications/python3_pip/vars/
 !/applications/s3_artifact_delivery/defaults/
+!/applications/s3_artifact_delivery/action_plugins/
 !/applications/s3_artifact_delivery/files/
 !/applications/s3_artifact_delivery/handlers/
 !/applications/s3_artifact_delivery/library/
@@ -86,7 +87,9 @@
 !/applications/*/*/*.j2
 !/applications/*/*/.gitkeep
 !/applications/*/tests/inventory
+!/applications/s3_artifact_delivery/action_plugins/s3_artifact.py
 !/applications/s3_artifact_delivery/library/s3_artifact.py
+!/applications/s3_artifact_delivery/tests/test_s3_artifact.py
 !/applications/s3_artifact_delivery/tests/fixtures/
 !/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/
 !/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/

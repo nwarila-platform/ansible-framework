@@ -72,6 +72,14 @@
         __s3_artifact_delivery_succeeded__: false
         __s3_artifact_delivery_terminal_failure__: >-
           {{ __s3_artifact_delivery_redaction_detected__ | default(false) | bool }}
+        __s3_artifact_delivery_error_code__: >-
+          {{
+            (ansible_failed_result.error_code | default('') | string)
+            if (
+              ansible_failed_result.error_code | default('') | string
+            ) is match('^[A-Za-z0-9._-]+$')
+            else ''
+          }}
 
   always:
     - name: 'S3 FETCH | Scrub The Bearer URL Fact'
