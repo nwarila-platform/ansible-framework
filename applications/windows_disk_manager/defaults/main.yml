@@ -1,0 +1,45 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Lowest-precedence configuration for the windows_disk_manager role, merged by the v3.2.0
+# loader into 'windows_disk_manager_running' (defaults -> OS overlays -> playbook
+# 'windows_disk_manager:' override dict). Task files receive the merged result as 'config'.
+#
+# WHAT THIS ROLE IS
+#   The Windows sibling of linux_disk_manager. It trusts each declared literal disk identity,
+#   resolves the attached disk, applies an idempotent online/writable fixup, and provisions an
+#   NTFS volume. A matching NTFS label is skipped for idempotency.
+#
+# =========================================================================================== #
+windows_disk_manager_defaults:
+
+  #region ------ [ Lifecycle ] ------------------------------------------------------------------ #
+  state: 'present'
+  #endregion --- [ Lifecycle ] ------------------------------------------------------------------ #
+
+  #region ------ [ Platform targeting ] --------------------------------------------------------- #
+  # Declared infrastructure platform (vmware | aws). REQUIRED in the windows_disk_manager:
+  # override dict; no default is safe. Proxmox is intentionally excluded until its Windows
+  # disk-identity path has been measured.
+  platform: ''
+  #endregion --- [ Platform targeting ] --------------------------------------------------------- #
+
+  #region ------ [ Managed disks ] -------------------------------------------------------------- #
+  # Declared disks to manage. Empty by default. Each entry has this contract:
+  #
+  #   - unique_id:       VMware whole-disk identity ('eui.<hex>'); required on vmware.
+  #     function:        AWS EBS Function tag; alternative identity to unique_id.
+  #                      Do not declare both unique_id and function.
+  #     drive_letter:    One ASCII letter with optional colon and optional backslash after the
+  #                      colon: D, D:, or D:\ (case-insensitive).
+  #     label:           NTFS volume label.
+  #     allocation_unit: Allocation-unit size in bytes (default 4096).
+  #     fstype:          Reserved/ignored; this role currently provisions NTFS only.
+  #
+  # Literal unique_id values are trusted configuration. AWS Function-tag resolution remains
+  # deferred; entries resolved by unique_id are initialized, partitioned, and formatted unless
+  # an NTFS volume with the declared label already exists on that disk.
+  disks: []
+  #endregion --- [ Managed disks ] -------------------------------------------------------------- #
