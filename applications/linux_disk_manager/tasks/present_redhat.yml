@@ -1,0 +1,315 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_redhat.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# RHEL-family implementation of linux_disk_manager, resolved by the v3.2.0 loader via
+# first_found. Receives the merged running config as 'config'.
+#
+# TWO KINDS OF LOGIC, kept distinct:
+#   * TARGETING (the role's function — kept explicit and robust): dispatch to the declared
+#     `platform` provider, and target each SPECIFIC disk by its stable, globally-unique
+#     `unique_id` (a /dev/disk/by-id/ name — the VMware disk WWN, the Proxmox/QEMU by-id
+#     serial, the AWS NVMe/EBS serial), operating entirely through /dev/disk/by-id/<unique_id>
+#     and writing fstab by filesystem UUID. NEVER /dev/sdX / /dev/nvmeXnY (Nitro failure mode).
+#   * DEFENSIVE VALIDATION (CI/CD's responsibility — mostly NOT done here): the role trusts
+#     the declared inputs and lets the modules fail loudly on bad input. No input re-checks,
+#     no vendor-match assert. EXCEPTION (§4c): a read-only mutation-safety guard runs
+#     immediately before the first parted mutation below and refuses a foreign/occupied disk
+#     — parted's mklabel would otherwise silently destroy it. See tasks/validate.yml for the
+#     companion platform-enum guard (loader INIT hook).
+# =========================================================================================== #
+
+#region ------ [ Script ] -------------------------------------------------------------------- #
+
+- name: 'INFO | Entering OS Tasks (present_redhat - linux_disk_manager)'
+  become: true
+  block:
+
+    #region ------ [ Provider dispatch: shared by-id provider (VMware + Proxmox + AWS) ] ----- #
+
+    # Platform TARGETING: run the SHARED by-id provider for every platform whose disk identity
+    # is a stable /dev/disk/by-id/ NAME. `vmware` (disk WWN), `proxmox` (QEMU by-id serial),
+    # and `aws` (NVMe/EBS serial) are implemented here as ONE block, not as per-platform
+    # siblings — the pipeline below (parted -> wait_for -> mkfs -> mount-by-UUID -> growfs)
+    # only ever addresses `/dev/disk/by-id/{{ disk.unique_id }}`, so it is already
+    # platform-agnostic; a new platform is added by widening this `when:` list (and the
+    # matching enum in tasks/validate.yml), never by duplicating the block. On VMware the
+    # `unique_id` is the disk WWN, which requires disk.EnableUUID=TRUE on the VM so
+    # /dev/disk/by-id/wwn-* exists; on Proxmox it is the QEMU by-id serial (e.g.
+    # `scsi-SQEMU_QEMU_HARDDISK_<serial>`); on AWS it is the NVMe/EBS serial by-id name
+    # (Nitro).
+    #
+    # An unset/unsupported platform never actually reaches this `when:` as false in practice:
+    # tasks/validate.yml (run by the loader's INIT hook, before MAIN starts) asserts platform
+    # is one of the three values above and fails the whole role loudly first. This `when:` is
+    # defense in depth, not the primary guard.
+    - name: 'MAIN | Provision Declared Disks (shared by-id provider)'
+      when: (config.platform | string | lower | trim) in ['vmware', 'proxmox', 'aws']
+      vars:
+        __platform__: "{{ config.platform | string | lower | trim }}"
+        __instance_id__: >-
+          {{ instance_id | default(ansible_host) }}
+        # R3: derive the provider's normalized list inside this block so it cannot bleed into
+        # later roles/plays as a host fact. The resolver has already asserted one match before
+        # any task consumes this lazily evaluated variable.
+        __disks__: >-
+          {%- if __platform__ == 'aws'
+              and (config.disks | selectattr('unique_id', 'undefined') | list | length) > 0 -%}
+            {%- set resolved = namespace(items=[]) -%}
+            {%- for disk in config.disks -%}
+              {%- if disk.unique_id is defined -%}
+                {%- set resolved.items = resolved.items + [disk] -%}
+              {%- else -%}
+                {%- set matches = __aws_vol_info__.volumes
+                    | selectattr('tags')
+                    | selectattr('tags.Function', 'defined')
+                    | selectattr('tags.Function', 'equalto', disk.function)
+                    | list -%}
+                {%- set resolved.items = resolved.items + [
+                    disk | combine({
+                      'unique_id': 'nvme-Amazon_Elastic_Block_Store_'
+                        ~ (matches[0].id | replace('-', ''))
+                    })
+                  ] -%}
+              {%- endif -%}
+            {%- endfor -%}
+            {{ resolved.items }}
+          {%- else -%}
+            {{ config.disks }}
+          {%- endif -%}
+      block:
+
+        #region ------ [ AWS `function`-tag resolution, BEFORE any device probing ] ---------- #
+
+        # AWS entries may declare `function` (an EBS volume Function tag value) INSTEAD of a
+        # literal `unique_id`; resolve_aws.yml verifies the tag-to-volume match, then this
+        # block's scoped `__disks__` variable turns it into the same
+        # `nvme-Amazon_Elastic_Block_Store_<volid>` by-id name an AWS `unique_id` would supply
+        # directly. Only included when there is actually something to resolve — a non-aws
+        # platform, or an AWS entry set with every unique_id already literal, skips this file.
+        # See tasks/resolve_aws.yml for the resolution mechanics and tasks/validate.yml for the
+        # companion ambiguous-identity guard (loader INIT hook, before this file is reached).
+        - name: 'BEGIN | Resolve AWS Function-Tagged Disks To unique_id'
+          when:
+            - (config.platform | string | lower | trim) == 'aws'
+            - config.disks | selectattr('unique_id', 'undefined') | list | length > 0
+          ansible.builtin.include_tasks: 'resolve_aws.yml'
+
+        #endregion --- [ AWS `function`-tag resolution, BEFORE any device probing ] ---------- #
+
+        #region ------ [ Mutation safety: refuse a foreign/occupied disk before parted ] ----- #
+
+        # community.general.parted unconditionally prepends `mklabel gpt` whenever the on-disk
+        # partition table does not already read 'gpt' (verified at the module source). A wrong
+        # `unique_id` can therefore destroy an occupied disk before the module-protected mkfs
+        # task runs, and the play can still converge GREEN on total data loss. 'Ours' is
+        # recognized by the convention this role writes: GPT plus a partition carrying the
+        # declared `label`, never by size or partition count.
+        # NAME/FSTYPE/LABEL (+ children, always included in --json tree output regardless of
+        # --output) only — the partition-TABLE type is deliberately NOT requested here; see the
+        # blkid task immediately below for why.
+        - name: 'BEGIN | Probe Existing Disk Layout'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          register: '__disk_layout__'
+          changed_when: false
+          ansible.builtin.command:
+            argv:
+              - 'lsblk'
+              - '--json'
+              - '--output'
+              - 'NAME,FSTYPE,LABEL'
+              - "/dev/disk/by-id/{{ disk.unique_id }}"
+
+        # RHEL 8's lsblk (util-linux 2.32.1) has no PTTYPE column at all — requesting it in the
+        # probe above fails outright ('lsblk: unknown column: PTTYPE'), hard-failing Step 0
+        # before any disk work ever runs. (lsblk's PARTTYPE column, present on RHEL 8, is a
+        # different thing — a per-PARTITION type GUID populated on child partitions, not the
+        # partition-TABLE type, and useless for classifying a whole, possibly-unpartitioned
+        # disk.) The partition-table type is read here instead via `blkid -s PTTYPE`, which
+        # exists across every RHEL 8/9 util-linux/blkid this role targets. blkid exits 2 with
+        # empty stdout when the device carries no recognized partition table — a blank/RAW
+        # disk, or a whole-disk filesystem with no table — which is an expected, non-error
+        # outcome folded into __is_blank__ below, not a probe failure; any OTHER non-zero rc
+        # (bad path, permission, I/O error) still fails the play loudly, same as the lsblk
+        # probe above.
+        - name: 'BEGIN | Probe Existing Partition Table Type'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          register: '__disk_pttype__'
+          changed_when: false
+          failed_when: '__disk_pttype__.rc not in [0, 2]'
+          ansible.builtin.command:
+            argv:
+              - 'blkid'
+              - '-o'
+              - 'value'
+              - '-s'
+              - 'PTTYPE'
+              - "/dev/disk/by-id/{{ disk.unique_id }}"
+
+        # NEGATIVE PROOF: a disk carrying a foreign msdos table, an LVM PV signature, or a
+        # whole-disk filesystem fails this assert (pttype != 'gpt', or no child partition is
+        # labeled `disk.label`), and the role stops here — before parted ever runs. A
+        # blank/RAW disk (no pttype, no fstype) and a disk this role already partitioned and
+        # labeled (pttype 'gpt' with a child partition labeled `disk.label`) both pass, so
+        # re-runs stay idempotent.
+        #
+        # Half-provisioned recovery: a run that lays down the GPT label but dies before mkfs
+        # lands the filesystem + label (e.g. an mkfs failure) leaves a disk that is neither
+        # blank nor "ours" — this guard then refuses it on every later run until an operator
+        # manually wipes it (e.g. `wipefs -a`) back to a blank state.
+        - name: 'BEGIN | Assert No Foreign Disk Layout Before Partitioning'
+          loop: "{{ __disk_layout__.results }}"
+          loop_control:
+            loop_var: 'r'
+            index_var: '__idx__'
+            label: "{{ r.disk.unique_id }}"
+          vars:
+            __dev__: "{{ (r.stdout | from_json).blockdevices[0] }}"
+            __children__: "{{ __dev__.children | default([], true) }}"
+            # Zipped by index, not re-looked-up: both probes above loop over the SAME
+            # `__disks__` list, in the same order, unfiltered — so index `__idx__` into
+            # `__disk_layout__.results` (this task's own loop) names the same disk as index
+            # `__idx__` into `__disk_pttype__.results`.
+            __pttype__: "{{ __disk_pttype__.results[__idx__].stdout | default('', true) | trim }}"
+            __fstype__: "{{ __dev__.fstype | default('', true) }}"
+            __is_blank__: "{{ (__pttype__ | length) == 0 and (__fstype__ | length) == 0 }}"
+            __is_ours__: >-
+              {{ __pttype__ == 'gpt' and
+              (__children__ | selectattr('label', 'equalto', r.disk.label) | list | length) > 0 }}
+          ansible.builtin.assert:
+            that:
+              - __is_blank__ or __is_ours__
+            fail_msg: >-
+              Refusing to partition '/dev/disk/by-id/{{ r.disk.unique_id }}'
+              ({{ r.disk.mount_point }}): it is neither blank/RAW nor already provisioned by
+              this role (GPT with a partition labeled '{{ r.disk.label }}'). Detected on-disk
+              signature: pttype='{{ __pttype__ | default('none', true) }}',
+              fstype='{{ __fstype__ | default('none', true) }}',
+              partitions={{ __children__ | map(attribute='name') | list }}.
+              community.general.parted unconditionally rewrites the partition table
+              (mklabel gpt) when the on-disk table does not already match 'gpt', which would
+              DESTROY this disk's existing data. Verify 'unique_id' for this entry in
+              config.disks — it must point at a blank disk or one already labeled
+              '{{ r.disk.label }}' by this role, never a foreign or occupied disk. If this disk
+              is half-provisioned from a previously failed run (GPT but no partition labeled
+              '{{ r.disk.label }}'), confirm it holds no data, wipe it
+              (`wipefs -a /dev/disk/by-id/{{ r.disk.unique_id }}`), and re-run.
+            quiet: true
+
+        #endregion --- [ Mutation safety: refuse a foreign/occupied disk before parted ] ----- #
+
+        #region ------ [ Provision: partition → format → mount → grow ] ----------------------- #
+
+        # GPT + a single partition spanning the disk, targeted by the disk's unique_id by-id
+        # path. Idempotent: parted no-ops when the partition already exists with the same
+        # geometry.
+        - name: 'PROCESS | Ensure GPT Single-Partition Layout'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          community.general.parted:
+            device: "/dev/disk/by-id/{{ disk.unique_id }}"
+            label: 'gpt'
+            number: 1
+            part_start: '0%'
+            part_end: '100%'
+            align: 'optimal'
+            state: 'present'
+
+        # The partition's by-id node (<unique_id>-part1) is created asynchronously by udev after
+        # parted; wait for it so mkfs never races a missing device node.
+        - name: 'PROCESS | Wait For Partition Device Node'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          ansible.builtin.wait_for:
+            path: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            timeout: 20
+
+        # Create the labeled filesystem. Idempotent (no reformat when a matching fs already
+        # exists); force left false.
+        - name: 'PROCESS | Create Labeled Filesystem On Partition'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          community.general.filesystem:
+            dev: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            fstype: "{{ disk.fstype | default('xfs') }}"
+            opts: "-L {{ disk.label }}"
+
+        # Read the partition's filesystem UUID — this is what goes in fstab (never a device
+        # name), so a reboot that re-enumerates the disk still mounts the correct volume.
+        - name: 'PROCESS | Read Filesystem UUID Of Each Partition'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.unique_id }}"
+          register: '__fsuuid__'
+          changed_when: false
+          ansible.builtin.command:
+            argv:
+              - 'blkid'
+              - '-s'
+              - 'UUID'
+              - '-o'
+              - 'value'
+              - "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+
+        - name: 'PROCESS | Ensure Mount Point Directory Exists'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.mount_point }}"
+          ansible.builtin.file:
+            path: "{{ disk.mount_point }}"
+            state: 'directory'
+            mode: "{{ disk.mode | default('0755') }}"
+
+        - name: 'PROCESS | Mount Filesystem By UUID And Persist To fstab'
+          loop: "{{ __fsuuid__.results }}"
+          loop_control:
+            loop_var: 'r'
+            label: "{{ r.disk.mount_point }}"
+          ansible.posix.mount:
+            path: "{{ r.disk.mount_point }}"
+            src: "UUID={{ r.stdout | trim }}"
+            fstype: "{{ r.disk.fstype | default('xfs') }}"
+            opts: "{{ r.disk.opts | default('defaults,nodev,nosuid') }}"
+            passno: "{{ r.disk.passno | default(2) }}"
+            dump: 0
+            state: 'mounted'
+
+        # Grow the filesystem to fill its partition. Real, idempotent case this covers: a
+        # freshly-partitioned disk can hand mkfs a STALE device size (the kernel may still
+        # report the pre-partition geometry for a beat), yielding a filesystem smaller than its
+        # partition — observed as a 10G xfs on a 60G partition.
+        # NOT covered: online backing-volume expansion (VMware/EBS grow after the fact). The
+        # parted task above never sets `resize` (community.general.parted defaults it to
+        # false), so it does NOT widen an EXISTING partition to match a larger disk — growfs
+        # here only fills whatever partition parted already produced. Supporting a live volume
+        # grow would need a deliberate `resize: true` decision; not implemented.
+        # Runs AFTER the mount because xfs_growfs requires a mounted filesystem. No-op when
+        # the filesystem already spans the partition, so it stays idempotent.
+        - name: 'PROCESS | Grow Filesystem To Fill Partition'
+          loop: "{{ __disks__ }}"
+          loop_control:
+            loop_var: 'disk'
+            label: "{{ disk.mount_point }}"
+          community.general.filesystem:
+            dev: "/dev/disk/by-id/{{ disk.unique_id }}-part1"
+            fstype: "{{ disk.fstype | default('xfs') }}"
+            resizefs: true
+
+        #endregion --- [ Provision: partition → format → mount → grow ] ----------------------- #
+
+    #endregion --- [ Provider dispatch: shared by-id provider (VMware + Proxmox + AWS) ] ----- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

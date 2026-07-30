@@ -1,0 +1,13 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/main_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# DEPRECATED forwarding alias for the wazuh_agent role's shared tasks/main.yml loader.
+#
+# The shared loader is Windows-safe as of v3.2.0. Existing callers may keep selecting
+# tasks_from: main_windows during this compatibility release; this alias will be removed in
+# loader v4.0.0. New callers must use the normal role entry point.
+# =========================================================================================== #
+
+- name: 'DEPRECATED | Forward Windows Entry Point To Shared Loader'
+  ansible.builtin.include_tasks: 'main.yml'

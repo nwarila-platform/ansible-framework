@@ -1,0 +1,84 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/resolve_aws.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# AWS `function`-tag disk resolver. Included by present_redhat.yml's shared by-id provider
+# block, BEFORE any device probing, ONLY when platform is aws and at least one declared disk
+# entry lacks a literal `unique_id` (the caller's selectattr guard). Resolves each such entry's
+# `function` (an EBS volume's `Function` tag value, e.g. wazuh-data) to that ATTACHED volume's
+# stable NVMe/EBS by-id serial, so the by-id pipeline below runs completely UNCHANGED for AWS —
+# exactly as it already does for VMware/Proxmox entries that declare `unique_id` literally.
+#
+# CONTROLLER-SIDE, ONE call per HOST (never per disk): amazon.aws.ec2_vol_info, filtered to
+# THIS host's own instance-id + attachment.status=attached and controller-delegated per this
+# codebase's amazon.aws conventions. Deliberately NOT run_once: this call's result is
+# host-specific (each host's own attached volumes), not a single value shared across the play.
+#
+# The TARGET instance needs NO EBS/IAM permissions of its own — the describe runs under the
+# deploy identity's existing ec2:Describe* grant (see the product repo's
+# docs/reference/aws-iam/README.md). On-box disk identification never changes: it is still the
+# NVMe-serial /dev/disk/by-id path present_redhat.yml always used; this include validates the
+# Function-to-volume mapping before its caller's scoped variable supplies the missing `unique_id`.
+# =========================================================================================== #
+
+#region ------ [ Script ] -------------------------------------------------------------------- #
+
+# ONE describe call for the whole host — every declared `function` on this host resolves from
+# this single response, never a per-disk API call. Retries cover post-apply/OS-swap describe
+# eventual-consistency: a volume attached moments ago by Terraform, or re-attached by a
+# replace-OS-only run, may not yet be visible to DescribeVolumes on the first attempt.
+- name: 'BEGIN (aws) | Describe Attached EBS Volumes For This Instance'
+  delegate_to: 'localhost'
+  become: false
+  no_log: true
+  register: '__aws_vol_info__'
+  retries: 5
+  delay: 10
+  until: >-
+    (__declared_functions__
+    | difference(__aws_vol_info__.volumes | default([], true) | selectattr('tags')
+    | selectattr('tags.Function', 'defined') | map(attribute='tags.Function') | list)
+    | length) == 0
+  vars:
+    # Run boto3 under the SAME interpreter that runs ansible-playbook (the runner venv, which
+    # already has boto3/botocore) — the localhost analogue of the Linux target's
+    # /opt/ansible/venv override, mirroring every other delegate_to: localhost site in this
+    # codebase (see this file's header).
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+    __declared_functions__: "{{ config.disks | selectattr('unique_id', 'undefined') | map(attribute='function') | list }}"
+  amazon.aws.ec2_vol_info:
+    region: "{{ AWS_DEFAULT_REGION | default(omit, true) }}"
+    access_key: "{{ AWS_ACCESS_KEY_ID | default(omit, true) }}"
+    secret_key: "{{ AWS_SECRET_ACCESS_KEY | default(omit, true) }}"
+    session_token: "{{ AWS_SESSION_TOKEN | default(omit, true) }}"
+    filters:
+      attachment.instance-id: "{{ __instance_id__ }}"
+      attachment.status: 'attached'
+
+# NEGATIVE PROOF, per declared-function entry: exactly one ATTACHED volume may carry this
+# Function tag. The zero-match case normally terminates at the describe task's retry gate; this
+# assert prevents a multiple match from silently resolving results[0] to the WRONG disk and
+# remains defense in depth for zero matches. A volume-id/Function-tag pairing is ordinary
+# infrastructure metadata, so this assert can enumerate it outside the no_log describe task.
+- name: 'BEGIN (aws) | Assert Exactly One Attached Volume Per Declared Function'
+  loop: "{{ config.disks | selectattr('unique_id', 'undefined') | list }}"
+  loop_control:
+    loop_var: 'disk'
+    label: "{{ disk.function }}"
+  vars:
+    __matches__: >-
+      {{ __aws_vol_info__.volumes | selectattr('tags')
+      | selectattr('tags.Function', 'defined')
+      | selectattr('tags.Function', 'equalto', disk.function) | list }}
+  ansible.builtin.assert:
+    that:
+      - __matches__ | length == 1
+    fail_msg: >-
+      Expected exactly one ATTACHED EBS volume tagged Function={{ disk.function }} on instance
+      {{ __instance_id__ }}; found {{ __matches__ | length }}. Attached volumes on this
+      instance: {% for v in __aws_vol_info__.volumes %}{{ v.id }} (Function={{
+      v.tags.Function | default('<untagged>', true) }}){% if not loop.last %}, {% endif %}{% endfor
+      %}. Fix the intended volume's `tags.Function` value so exactly one attached
+      volume carries `Function={{ disk.function }}`.
+    quiet: true
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

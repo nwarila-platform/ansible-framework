@@ -22,7 +22,9 @@ Roles are referenced directly by name — no path prefix required. Ansible resol
 
 ## Role Loader Pattern
 
-Every role ships a shared `tasks/main.yml` loader that provides a consistent execution contract:
+Reusable application roles ship a shared `tasks/main.yml` loader that provides a consistent
+execution contract. Bootstrap roles may instead guard the generic entry point and require callers
+to select a named task file explicitly with `tasks_from`.
 
 ### 1. Validation
 - Requires a mandatory `ENV` variable (e.g., `dev`, `staging`, `prod`)
@@ -70,7 +72,8 @@ A `0700 root:root` temp directory is created before task execution and always cl
 |-------------------|------------------------------------------------------|-------------|
 | `RedHat_Rocky_10` | Full OS bootstrap: Ansible venv, packages, hostname  | In Progress |
 | `RedHat_Rocky_9`  | Rocky Linux 9 bootstrap                              | Planned     |
-| `RedHat_Rocky_8`  | Rocky Linux 8 bootstrap                              | Planned     |
+| `RedHat_Rocky_8`  | RHEL / Rocky Linux 8 bootstrap                       | In Progress |
+| `Windows_Server_2025` | Windows Server 2025 bootstrap                  | In Progress |
 
 ---
 
@@ -78,7 +81,7 @@ A `0700 root:root` temp directory is created before task execution and always cl
 
 ### Prerequisites
 
-- Ansible >= 2.17
+- Ansible >= 2.17, < 2.19
 - Python >= 3.12
 - `pre-commit` (for local hook enforcement)
 

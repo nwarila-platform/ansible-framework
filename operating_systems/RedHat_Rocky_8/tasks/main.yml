@@ -1,0 +1,29 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/main.yml'                                       | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+#                                                                                             #
+#                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                     #
+#                                                                                             #
+# The v2.2.0 loader retained only in RedHat_Rocky_10 is not valid here: its ENV contract is    #
+# unrelated to bootstrap, and it can execute a remote module before tasks/bootstrap.yml       #
+# establishes the caller-configured remote-tmp base.                                          #
+#                                                                                             #
+# WHY THIS FILE EXISTS: with no tasks/main.yml, ansible-core treats the missing role entry as  #
+# an empty task list and reports success. This stub makes an accidental generic call fail      #
+# immediately on every distribution while preserving tasks/bootstrap.yml as the supported     #
+# named entry point.                                                                          #
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Unsupported Entry Point'
+  ansible.builtin.fail:
+    msg: >-
+      The role 'RedHat_Rocky_8' has no generic entry point. Call its named bootstrap task file
+      explicitly, e.g.
+      "ansible.builtin.include_role: { name: 'RedHat_Rocky_8', tasks_from: 'bootstrap' }".
+      tasks/bootstrap.yml establishes the minimum requirements for the ansible-framework suite
+      to run on a new RHEL or Rocky Linux 8 host; see that file's header for the full call
+      contract.
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

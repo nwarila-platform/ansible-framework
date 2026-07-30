@@ -1,0 +1,43 @@
+---
+- name: 'Verify Transport-Loss Cleanup Across Hosts'
+  hosts: 'artifact_delivery_cleanup'
+  gather_facts: false
+  vars:
+    s3_artifact_delivery_reader_role_arn: 'arn:aws:iam::marker:role/artifact-reader'
+    s3_artifact_delivery_session_name: 'artifact-delivery-test'
+    s3_artifact_delivery_bucket: 'artifact-delivery-fixture'
+    s3_artifact_delivery_object_key: 'fixtures/artifact.bin'
+    s3_artifact_delivery_region: 'us-east-1'
+    s3_artifact_delivery_checksum: >-
+      0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    s3_artifact_delivery_destination: '/tmp/artifact-delivery-fixture.bin'
+    s3_artifact_delivery_retry_delay_seconds: 0
+    s3_artifact_delivery_transfer_timeout_seconds: 1
+
+  tasks:
+    - name: 'Exercise One Fresh-Signature Attempt'
+      vars:
+        __s3_artifact_delivery_attempt__: 1
+      ansible.builtin.include_role:
+        name: 's3_artifact_delivery'
+        tasks_from: 'fetch_attempt'
+
+    - name: 'Require Sensitive Attempt State To Be Overwritten'
+      no_log: true
+      ansible.builtin.assert:
+        that:
+          - __s3_artifact_delivery_url__ == ''
+          - __s3_artifact_delivery_access_key__ == ''
+          - __s3_artifact_delivery_secret_key__ == ''
+          - __s3_artifact_delivery_session_token__ == ''
+          - __s3_artifact_delivery_presign_result__ == ''
+          - __s3_artifact_delivery_fetch_result__ == ''
+          - __s3_artifact_delivery_session_result__ == ''
+          - __s3_artifact_delivery_error_code__ | default('') == ''
+          - ansible_failed_result == ''
+          - __s3_artifact_delivery_succeeded__ | bool == (inventory_hostname == 'control')
+        quiet: true
+
+    - name: 'Report Transport-Loss Cleanup Success'
+      ansible.builtin.debug:
+        msg: 'transport-loss cleanup assertions passed'

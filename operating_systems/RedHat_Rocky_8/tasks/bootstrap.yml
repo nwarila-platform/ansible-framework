@@ -1,0 +1,541 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/bootstrap.yml'                                  | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# MINIMUM requirements for the ansible-framework suite to run on a NEW RHEL / Rocky 8 host.    #
+#                                                                                             #
+# Called explicitly with include_role/import_role + tasks_from 'bootstrap'. The generic         #
+# tasks/main.yml entry is a loud guard because the v2.2.0 loader retained in RedHat_Rocky_10   #
+# has an unrelated ENV contract and can execute a remote module before this file establishes    #
+# a caller-configured remote-tmp base. This named entry has no loader-created 'config' or        #
+# '<role_name>_running' fact and deliberately needs                                             #
+# neither; inputs come from defaults/main.yml and vars/main.yml, and 'ENV' is not required.     #
+#                                                                                             #
+# --- [ How To Call It ] --------------------------------------------------------------------- #
+#   - name: 'Bootstrap | RHEL/Rocky 8 minimum'
+#     hosts: '<your Linux selection>'
+#     gather_facts: false
+#     tasks:
+#       - name: 'Bootstrap | RHEL/Rocky 8'
+#         ansible.builtin.include_role:
+#           name: 'RedHat_Rocky_8'
+#           tasks_from: 'bootstrap'
+#
+#   * 'operating_systems' must be on roles_path. The framework's own ansible.cfg declares
+#     'roles_path = applications:operating_systems'; a consuming product whose ansible.cfg
+#     overwrites it during composition must re-add the entry, or use the path form
+#     'name: "{{ playbook_dir }}/../operating_systems/RedHat_Rocky_8"'.
+#   * HOST SELECTION IS THE CALLER'S JOB. The product play this was promoted from selected
+#     'all:!wazuh_agents_windows', with this reasoning, preserved verbatim:
+#         "Exclude Windows endpoints: /opt/ansible/venv is a Linux (RHEL) boto3-on-target
+#          concern, and the Windows agent path pulls the MSI via the controller's venv, not the
+#          target's. Without this exclusion the RHEL-8 assert below fails on any
+#          wazuh_agents_windows host in a combined run."
+#     That exclusion is now enforced two ways instead of one: the OS assert below fails LOUDLY
+#     on a host other than RHEL/Rocky 8 (strictly better than a play silently skipping it), and
+#     hosts call 'Windows_Server_2025/tasks/bootstrap.yml' instead.
+#   * 'gather_facts' may be true or false — the INIT stage loads, conditionally and narrowly,
+#     exactly the three fact subsets this file reads. That is the whole reason it is safe to
+#     call on a host nobody has touched yet.
+#
+# --- [ Privilege Model ] --------------------------------------------------------------------- #
+# INIT overrides config, play, and inventory escalation with both the keyword and connection
+# variable; MAIN runs under 'become: true' (on the block, once). This is not cosmetic: the
+# unprivileged INIT is what makes the 'user' fact subset report the LOGIN user rather than root,
+# which is what the remote-tmp base must be owned by. As elsewhere in Ansible, include-role
+# parameters and extra vars outrank block vars; callers must not force ansible_become there.
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+# NOTE the wrapper is named 'Entering Bootstrap', not the reference's 'Entering Role', so logs
+# identify the explicitly selected entry point unambiguously.
+- name: 'INFO | Entering Bootstrap'
+  block:
+
+  #region ------ [ Initialization ] ---------------------------------------------------------- #
+  #   DELIBERATELY UNPRIVILEGED — see the Privilege Model note in the header.
+
+    # BOTH forms are deliberate. A caller's ansible_become connection variable outranks the
+    # become keyword, so become:false alone does not reliably override global config, play, or
+    # inventory escalation. The block variable supplies the higher-precedence false value within
+    # this role-controlled scope, matching the Windows bootstrap's privilege guard.
+    - name: 'INFO | Entering Initialization Stage'
+      become: false
+      vars:
+        ansible_become: false
+      block:
+
+      #region ------ [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+
+        # THE HEADLINE PATTERN: facts are loaded CONDITIONALLY and NARROWLY, so this file is
+        # safe to call on any new system whether or not the caller gathered facts. An
+        # unconditional 'setup' would defeat the entire point.
+        #
+        # The guards test 'ansible_facts.*' rather than the bare injected names. Neither
+        # ansible.cfg sets 'inject_facts_as_vars', so it defaults to true and the bare form
+        # works TODAY — but if anyone ever sets it false, a bare guard like
+        # 'ansible_distribution is undefined' becomes permanently true and 'setup' re-runs on
+        # every single call: a silent performance regression with no failure to catch it. The
+        # 'ansible_facts.*' form is correct under BOTH settings.
+        - name: 'INIT | Loading Required Operating System (OS) Facts'
+          when: >-
+            ansible_facts.os_family is undefined
+            or ansible_facts.distribution is undefined
+            or ansible_facts.distribution_major_version is undefined
+          ansible.builtin.setup: { gather_subset: [ '!all', '!min', 'distribution' ] }
+
+        # Narrowed from the reference's bare [ 'network' ], which silently pulls 'min' as well.
+        # The '!all','!min',<subset> triple matches the task above and still yields
+        # ansible_default_ipv4, which is all the /etc/hosts task reads.
+        - name: 'INIT | Loading Networking Facts'
+          when: ansible_facts.default_ipv4 is undefined
+          ansible.builtin.setup: { gather_subset: [ '!all', '!min', 'network' ] }
+
+        # Supplies 'ansible_facts.user_id' as the fallback owner for the remote-tmp base.
+        # MUST be gathered here, in the unprivileged INIT stage: gathered under become it would
+        # report 'root', and a root-owned tmp base is precisely the failure the remote-tmp task
+        # exists to prevent (see its comment). Re-gather whenever ansible_user is absent even if
+        # an earlier, possibly privileged gather already populated user_id. 'user' is a valid
+        # collector audited in ansible-core 2.16.19.
+        - name: 'INIT | Loading User Facts'
+          when: ansible_user is undefined
+          ansible.builtin.setup: { gather_subset: [ '!all', '!min', 'user' ] }
+
+      #endregion --- [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+
+      #region ------ [ Initialization: Perform OS Validation ] ------------------------------- #
+
+        # Restrict distribution as well as family and major version. AlmaLinux, CentOS Stream,
+        # and Oracle Linux share the RedHat family but are not validated by this role's package
+        # and bootstrap contract. The identity operands come from vars/main.yml, NOT defaults/,
+        # so a caller cannot override the OS check into uselessness.
+        - name: 'INIT | Perform OS Check'
+          ansible.builtin.assert:
+            that:
+              - (ansible_facts.os_family | string) == rhel8_bootstrap_os_family
+              - (ansible_facts.distribution | string) in rhel8_bootstrap_distributions
+              - (ansible_facts.distribution_major_version | int) == (rhel8_bootstrap_os_major | int)
+            fail_msg: >-
+              The role 'RedHat_Rocky_8' is intended for RHEL 8 and Rocky Linux 8 hosts only.
+              Detected: {{ ansible_facts.distribution | default('?') }}
+              {{ ansible_facts.distribution_version | default('?') }}
+              (family {{ ansible_facts.os_family | default('?') }},
+              major {{ ansible_facts.distribution_major_version | default('?') }}).
+            quiet: true
+
+      #endregion --- [ Initialization: Perform OS Validation ] ------------------------------- #
+
+  #endregion --- [ Initialization ] ---------------------------------------------------------- #
+
+  #region ------ [ Main ] -------------------------------------------------------------------- #
+
+    # ONE 'become' for the whole stage, on the block. The reference repeats 'become: true' on
+    # four individual tasks that already sit inside its become block; those copies are dropped
+    # as redundant.
+    - name: 'INFO | Entering Main Stage'
+      become: true
+      block:
+
+      #region ------ [ MAIN: Ansible Remote-Tmp Base ] --------------------------------------- #
+
+        # FIRST in Main because later non-pipelined modules need this base before ansible-core can
+        # stage their payload. If remote_tmp is relocated under a root-owned path such as /opt,
+        # ansible-core otherwise attempts its pre-module mkdir as the login user and reports the
+        # host UNREACHABLE. This initial file module must therefore be reachable through the
+        # bootstrap transport (normally pipelining); once it creates the base under become and
+        # gives it to the login user, later non-pipelined modules can create per-task directories.
+        # AnsiballZ is interpreter-invoked, so a filesystem noexec flag is not the reason for this
+        # relocation.
+        #
+        # OWNER RESOLUTION: 'ansible_user' is a CONNECTION variable, not a fact — it has no
+        # 'ansible_facts' form, so it is referenced bare here (the one principled exception to
+        # this file's ansible_facts.* rule). A dynamic inventory usually composes it; a static
+        # inventory inherits none of that, hence the fallback to the login user gathered in
+        # INIT. If this ever resolved to root the tmp base would be root-owned and every later
+        # non-pipelined task would fail creating its per-task dir — the exact failure above.
+        #
+        # SKIP GUARD: a remote_tmp beginning with '~' is the stock home-relative default. It
+        # already exists, it is already writable, and ansible.builtin.file would not expand the
+        # tilde correctly under become anyway.
+        #
+        # PASS ONE intentionally omits selevel/serole/setype/seuser. A bare Rocky 8 image may not
+        # have the python3-libselinux binding yet, so requesting a context here would fail before
+        # the package task below could install that declared dependency. Ownership and mode do not
+        # require the binding. PASS TWO applies the context immediately after dnf installs it.
+        - name: 'MAIN | Ensure Ansible Remote-Tmp Base Exists (automation-user owned)'
+          when: not (rhel8_bootstrap_remote_tmp_base | trim is match('~'))
+          ansible.builtin.file:
+            path: "{{ rhel8_bootstrap_remote_tmp_base | trim }}"
+            state: 'directory'
+            owner: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
+            group: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
+            mode: '0700'
+
+      #endregion --- [ MAIN: Ansible Remote-Tmp Base ] --------------------------------------- #
+
+      #region ------ [ MAIN: Loading Prerequisite Role(s) ] ---------------------------------- #
+
+        # The reference loops [ 'ca_certificates', 'python3_pip' ]. BOTH are wrong for this
+        # framework — see defaults/main.yml for the full reasoning — so the wiring is kept as
+        # an extension point but the list defaults to EMPTY and this task no-ops.
+        # The reference's 'vars: { python3_pip: { ignore_errors: true } }' is also dropped:
+        # python3_pip consumes 'ignore_errors' nowhere in its tasks/, defaults/ or meta/, so it
+        # was an INERT key merged into that role's running config, not the Ansible keyword.
+        # loop_var uses the __dunder__ form the framework's .ansible-lint mandates
+        # (loop_var_prefix: ^__.*__$); the reference's bare 'role' would fail that gate.
+        - name: 'MAIN | Loading Prerequisite Role(s)'
+          loop: "{{ rhel8_bootstrap_prerequisite_roles }}"
+          loop_control: { loop_var: '__prerequisite_role__' }
+
+          ansible.builtin.include_role:
+            name: "{{ __prerequisite_role__ }}"
+
+      #endregion --- [ MAIN: Loading Prerequisite Role(s) ] ---------------------------------- #
+
+      #region ------ [ MAIN: Installing Prerequisite Package(s) ] ---------------------------- #
+
+        # NO 'ignore_errors' — a deliberate departure from the reference, which carries
+        # 'ignore_errors: yes' here. Nothing about this step is optional: everything below
+        # depends on python3.12 existing. Masking a dnf failure walks straight into a broken
+        # venv and re-reports the problem three tasks later in the wrong place — the version
+        # read below would die with a confusing 'No such file or directory', and if that too
+        # were tolerated the venv would be built from platform-python and fail at boto3 pin
+        # resolution, nowhere near the real cause.
+        - name: 'MAIN | Installing Prerequisite Package(s)'
+          ansible.builtin.dnf:
+            name: "{{ rhel8_bootstrap_packages }}"
+            state: 'present'
+            disable_gpg_check: false
+            sslverify: true
+            validate_certs: true
+
+        # PASS TWO for the deliberately split remote-tmp task. dnf cannot move before PASS ONE:
+        # dnf is itself a remote module, so any non-pipelined execution of it needs the writable
+        # base that PASS ONE creates first. Each module invocation is a new process, so this task
+        # can use the platform-python SELinux binding installed by the immediately preceding dnf.
+        - name: 'MAIN | Apply Ansible Remote-Tmp SELinux Context'
+          when: not (rhel8_bootstrap_remote_tmp_base | trim is match('~'))
+          ansible.builtin.file:
+            path: "{{ rhel8_bootstrap_remote_tmp_base | trim }}"
+            state: 'directory'
+            owner: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
+            group: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
+            mode: '0700'
+            selevel: 's0'
+            serole: 'object_r'
+            setype: 'usr_t'
+            seuser: 'system_u'
+
+        # Registered for drift detection below, not for display. The reference reaches the same
+        # place with two tasks and a 'which' package; the interpreter path is RPM-owned and
+        # deterministic on RHEL/Rocky 8, so it is a default instead.
+        - name: 'MAIN | Read python3.12 Full Version (For Drift Detection)'
+          changed_when: false
+          register: '__python312_version__'
+
+          ansible.builtin.command:
+            cmd: '{{ rhel8_bootstrap_python_bin }} --version'
+
+      #endregion --- [ MAIN: Installing Prerequisite Package(s) ] ---------------------------- #
+
+      #region ------ [ MAIN: Configure A Python Venv Dir For Ansible ] ----------------------- #
+
+        - name: 'MAIN | Ensure /opt/ansible Exists With SELinux Contexts'
+          ansible.builtin.file:
+            follow: false
+            force: false
+            path: "{{ rhel8_bootstrap_venv_root }}"
+            state: 'directory'
+            owner: 'root'
+            group: 'root'
+            mode: '0755'
+            selevel: 's0'
+            serole: 'object_r'
+            setype: 'usr_t'
+            seuser: 'system_u'
+
+      #endregion --- [ MAIN: Configure A Python Venv Dir For Ansible ] ----------------------- #
+
+      #region ------ [ MAIN: Venv Drift Detection ] ------------------------------------------ #
+
+        # THE DRIFT-PROBE IDIOM, reference SHAPE + product SIGNAL. The shape is the reference's:
+        # a no-op lineinfile in check_mode with changed_when/failed_when false, registered, whose
+        # result drives a later removal task. The SIGNAL is deliberately NOT the reference's
+        # "'line added' in .msg".
+        #
+        # WHY NOT '.msg' (this matters — the product retired that variant on purpose):
+        # lineinfile's RETURN block is the empty stub r'''#''', so '.msg' is UNDOCUMENTED free
+        # text assembled ad hoc across eight branches purely for human display (verified against
+        # the installed ansible-core 2.16.19). A future ansible-core reword would silently
+        # disable drift detection with NO failure anywhere — stale venvs kept forever. Landing
+        # that variant in a SHARED framework file would resurrect a retired bug in a file more
+        # code depends on. 'found' is the documented, structural counter.
+        # Two further defects in the reference's version: its first probe carries 'create: false'
+        # and its second omits it, so the two behave differently on a host with no pyvenv.cfg;
+        # and with 'state: present' on a missing file '.msg' is an ERROR string, not
+        # 'line added', so its site-packages probe never triggers removal at all.
+        #
+        # WHY 'search_string' + 'state: absent': found==0 means the exact expected line is not
+        # in the file, whether it is simply MISSING or PRESENT WITH A DRIFTED VALUE (an exact
+        # search_string never matches a differently-valued line, so drift also reads found:0).
+        #
+        # '| default(0)' IS LOAD-BEARING, not defensive padding: with state=absent on a missing
+        # pyvenv.cfg, lineinfile succeeds unchanged but omits 'found' from its result. The default
+        # supplies 0, the removal below fires as a harmless no-op, and creation proceeds. That is
+        # what makes the chain correct on a host that has never been touched.
+        - name: 'MAIN | Probe Existing Venv Python Version Line'
+          changed_when: false
+          check_mode: true
+          failed_when: false
+          register: '__venv_version_probe__'
+
+          ansible.builtin.lineinfile:
+            path: '{{ rhel8_bootstrap_venv_path }}/pyvenv.cfg'
+            search_string: "version = {{ __python312_version__.stdout.split()[1] }}"
+            state: 'absent'
+
+        - name: 'MAIN | Probe Existing Venv --system-site-packages Flag'
+          changed_when: false
+          check_mode: true
+          failed_when: false
+          register: '__venv_site_packages_probe__'
+
+          ansible.builtin.lineinfile:
+            path: '{{ rhel8_bootstrap_venv_path }}/pyvenv.cfg'
+            search_string: 'include-system-site-packages = true'
+            state: 'absent'
+
+        - name: 'MAIN | Remove Drifted Venv (Wrong Python Or Missing system-site-packages)'
+          when: >-
+            (__venv_version_probe__.found | default(0) | int) == 0
+            or (__venv_site_packages_probe__.found | default(0) | int) == 0
+
+          ansible.builtin.file:
+            path: "{{ rhel8_bootstrap_venv_path }}"
+            state: 'absent'
+
+      #endregion --- [ MAIN: Venv Drift Detection ] ------------------------------------------ #
+
+      #region ------ [ MAIN: Create Ansible VENV ] ------------------------------------------- #
+
+        # 'creates:' points at bin/pip, not bin/python: ensurepip runs LAST, so bin/python
+        # exists while the venv is still incomplete. bin/pip is the sentinel that actually
+        # means "finished".
+        - name: 'MAIN | Create Venv (--system-site-packages, owned by root)'
+          ansible.builtin.command:
+            cmd: >-
+              {{ rhel8_bootstrap_python_bin }} -m venv --system-site-packages
+              {{ rhel8_bootstrap_venv_path }}
+            creates: '{{ rhel8_bootstrap_venv_path }}/bin/pip'
+
+      #endregion --- [ MAIN: Create Ansible VENV ] ------------------------------------------- #
+
+      #region ------ [ MAIN: fapolicyd Trust (Pre-Install) ] --------------------------------- #
+
+        # fapolicyd is part of the CIS/DISA STIG baseline these AMIs are built from, but not
+        # every RHEL 8 image ships it. Gate the entire trust block on fapolicyd-cli being
+        # present so an image without it silently SKIPS rather than fails. Detected here rather
+        # than at the end of the file because the pre-install block immediately below needs it.
+        - name: 'MAIN | Detect fapolicyd Presence'
+          register: '__fapolicyd_cli__'
+
+          ansible.builtin.stat:
+            path: '/usr/sbin/fapolicyd-cli'
+
+        # TWO-PHASE, TRUST-BEFORE-USE. Phase 1 trusts the FRESH venv (python3.12 -m venv's own
+        # ensurepip output) BEFORE the pip tasks below invoke the venv's own bin/pip — without
+        # this, that invocation execs a brand-new, not-yet-trusted binary and fapolicyd DENIES
+        # it on a STIG host, breaking the deploy outright. Order is load-bearing; do not move
+        # this after the pip tasks.
+        - name: 'MAIN | Trust Venv In fapolicyd (Pre-Install)'
+          when: __fapolicyd_cli__.stat.exists | default(false)
+          block:
+
+            - name: 'MAIN | Probe Whether Venv Is Already In fapolicyd Trust'
+              check_mode: true
+              changed_when: false
+              failed_when: false
+              register: '__fapd_venv_probe__'
+
+              ansible.builtin.lineinfile:
+                path: '/etc/fapolicyd/fapolicyd.trust'
+                search_string: "{{ rhel8_bootstrap_venv_path }}"
+                state: 'absent'
+
+            - name: 'MAIN | Add Venv To fapolicyd.trust (Pre-Install)'
+              when: (__fapd_venv_probe__.found | default(0) | int) == 0
+              register: '__fapd_add_pre__'
+              changed_when: __fapd_add_pre__.rc == 0
+              failed_when: __fapd_add_pre__.rc not in [0, 1]
+
+              ansible.builtin.command:
+                argv: ['fapolicyd-cli', '--file', 'add', '{{ rhel8_bootstrap_venv_path }}']
+
+            # INLINE, never a handler: the refreshed trust DB must take effect WITHIN this run,
+            # before the very next task execs from the tree. A handler fires at end-of-play —
+            # far too late to be of any use here.
+            - name: 'MAIN | Refresh fapolicyd DB Inline (Pre-Install Trust Must Take Effect Now)'  # noqa: no-handler
+              when: __fapd_add_pre__ is changed
+              changed_when: false
+
+              ansible.builtin.command:
+                argv: ['fapolicyd-cli', '--update']
+
+      #endregion --- [ MAIN: fapolicyd Trust (Pre-Install) ] --------------------------------- #
+
+      #region ------ [ MAIN: Install Python packages in venv ] ------------------------------- #
+
+        # SPLIT INTO TWO TASKS, and the order is load-bearing: pip / setuptools / wheel /
+        # packaging are bumped to latest FIRST so the pinned boto3/botocore install below — a
+        # separate, later pip invocation — runs under a modern resolver. The reference puts all
+        # six names in ONE task at 'state: latest'; that loses both the resolver ordering and
+        # the pins.
+        # BOTH registers are load-bearing: the post-install fapolicyd re-trust gates on them.
+        - name: 'MAIN | Upgrade Pip Tooling In Venv (Modern Resolver)'  # noqa: package-latest
+          register: '__venv_pip_tooling__'
+
+          ansible.builtin.pip:
+            name: "{{ rhel8_bootstrap_pip_tooling }}"
+            virtualenv: "{{ rhel8_bootstrap_venv_path }}"
+            state: 'latest'
+
+        # 'state: present' with a floor/ceiling range, NOT 'state: latest'. This is a
+        # reproducible hardened build; 'latest' would pull an unpinned version from public PyPI
+        # on every redeploy. See defaults/main.yml for the provenance of the pins.
+        - name: 'MAIN | Install boto3/botocore In Venv (Pinned Floor/Ceiling)'
+          register: '__venv_boto3__'
+
+          ansible.builtin.pip:
+            name: "{{ rhel8_bootstrap_boto3_pins }}"
+            virtualenv: "{{ rhel8_bootstrap_venv_path }}"
+            state: 'present'
+
+      #endregion --- [ MAIN: Install Python packages in venv ] ------------------------------- #
+
+      #region ------ [ MAIN: Configuring File Permissions For Venv ] ------------------------- #
+
+        # ONE recursive pass, not the reference's four-entry loop: its first entry (the venv
+        # root, recurse: true) already covers the other three, making them dead weight.
+        #
+        # MODE RECONCILED, deliberately. The reference uses a numeric 0755 recursively, which
+        # marks every .py, .dist-info and metadata file in site-packages world-EXECUTABLE. The
+        # product dropped the directory pass entirely, which is also wrong: 'python3.12 -m venv'
+        # runs under root's umask, and on a hardened image with umask 0077 the tree comes out
+        # 0700 — unreadable and untraversable by the non-root login user that runs the
+        # s3_object tasks through the 'ansible_python_interpreter' override. Symbolic capital-X
+        # sets the execute bit on DIRECTORIES and on files that already have one, buying exactly
+        # the traversability the reference wanted without the blanket +x on library data.
+        - name: 'MAIN | Configuring File Permissions For Venv (Directories)'
+          ansible.builtin.file:
+            path: "{{ rhel8_bootstrap_venv_path }}"
+            state: 'directory'
+            mode: 'u=rwX,go=rX'
+            recurse: true
+
+        # Belt-and-braces on the four interpreters. Renamed from the reference, which gives
+        # BOTH permission loops the identical name 'MAIN | Configuring File Permissions For
+        # Venv (Folders)' — a duplicate that makes '--start-at-task' ambiguous, makes the two
+        # loops indistinguishable in callback/JSON output, and is factually wrong on this one
+        # (it operates on files, not folders).
+        - name: 'MAIN | Configuring File Permissions For Venv (Interpreters)'
+          loop:
+            - '{{ rhel8_bootstrap_venv_path }}/bin/python'
+            - '{{ rhel8_bootstrap_venv_path }}/bin/python3'
+            - '{{ rhel8_bootstrap_venv_path }}/bin/pip'
+            - '{{ rhel8_bootstrap_venv_path }}/bin/pip3'
+          loop_control: { loop_var: '__venv_file__' }
+
+          ansible.builtin.file:
+            path: "{{ __venv_file__ }}"
+            mode: '0755'
+
+      #endregion --- [ MAIN: Configuring File Permissions For Venv ] ------------------------- #
+
+      #region ------ [ MAIN: fapolicyd Trust (Post-Install) ] -------------------------------- #
+
+        # Phase 2. pip self-upgrading (state: latest above), or boto3/botocore being installed
+        # for the first time or upgraded after a deliberate pin-range bump, REWRITES files the
+        # pre-install trust already covered — the venv's own bin/pip launcher is the common
+        # case. fapolicyd's trust DB is HASH-BASED, so a rewritten file's old entry no longer
+        # matches its new bytes.
+        #
+        # GATE ON THE PIP REGISTERS, NEVER ON THE PATH-PREFIX PROBE. The broad probe used
+        # pre-install would still report found>0 here (SOME line for this path exists) even
+        # though the CURRENT bytes are untrusted, so re-running it would wrongly skip re-adding
+        # the changed files forever after the first add. pip's own 'changed' result is the
+        # reliable signal that the tree's content just changed. 'fapolicyd-cli --file add'
+        # safely no-ops (rc 0/1) on a file whose hash is already current.
+        - name: 'MAIN | Re-Trust Venv In fapolicyd (Post-Install)'
+          when: >-
+            (__fapolicyd_cli__.stat.exists | default(false))
+            and (__venv_pip_tooling__ is changed or __venv_boto3__ is changed)
+          block:
+
+            - name: 'MAIN | Re-Add Venv To fapolicyd.trust (Post-Install)'
+              register: '__fapd_add_post__'
+              changed_when: __fapd_add_post__.rc == 0
+              failed_when: __fapd_add_post__.rc not in [0, 1]
+
+              ansible.builtin.command:
+                argv: ['fapolicyd-cli', '--file', 'add', '{{ rhel8_bootstrap_venv_path }}']
+
+            - name: 'MAIN | Refresh fapolicyd DB Inline (Post-Install Trust Must Take Effect Now)'  # noqa: no-handler
+              when: __fapd_add_post__ is changed
+              changed_when: false
+
+              ansible.builtin.command:
+                argv: ['fapolicyd-cli', '--update']
+
+      #endregion --- [ MAIN: fapolicyd Trust (Post-Install) ] -------------------------------- #
+
+      #region ------ [ MAIN: Update System Hostname ] ---------------------------------------- #
+
+        # Gated, unlike the reference, which does this unconditionally: a shared framework role
+        # cannot assume every caller wants its inventory naming pushed onto the host.
+        # Callers using a dynamic inventory should confirm 'inventory_hostname' is a legitimate
+        # hostname before enabling this — e.g. the AWS inventory this was promoted alongside
+        # sets 'hostnames: [tag:Name]', so it is the EC2 Name tag, not an IP or an instance-id.
+        - name: 'MAIN | Update System Hostname'
+          when: rhel8_bootstrap_manage_hostname | bool
+
+          ansible.builtin.hostname:
+            name: "{{ inventory_hostname | mandatory | lower | trim }}"
+            use: 'systemd'
+
+      #endregion --- [ MAIN: Update System Hostname ] ---------------------------------------- #
+
+      #region ------ [ MAIN: Update '/etc/hosts' To Reflect New Hostname ] ------------------- #
+      #   At some point this should move to a role that configures the 'setup' package, so the
+      #   handling can be more explicit.
+
+        # THREE FIXES over the reference version:
+        #   1. Additionally gated on ansible_default_ipv4.address being defined. The reference
+        #      dereferences it unguarded, so a host with no default route makes BOTH the regexp
+        #      and the line template raise Undefined.
+        #   2. The IP is regex_escape'd in 'regexp:'. The reference interpolates it raw, and the
+        #      dots are regex wildcards — '10.1.1.1' would also match '10x1y1z1'.
+        #   3. The trailing short name is omitted when it equals the full name. The reference
+        #      writes the same token twice for any non-dotted inventory_hostname.
+        - name: "MAIN | Update '/etc/hosts' To Reflect New Hostname"
+          when:
+            - rhel8_bootstrap_manage_hostname | bool
+            - ansible_facts.default_ipv4.address is defined
+          vars:
+            # 'unique' preserves order, so a dotted name yields "fqdn short" while a non-dotted
+            # one collapses to a single token instead of being written twice.
+            __hosts_names__: "{{ [inventory_hostname, inventory_hostname_short] | unique | join(' ') }}"
+
+          ansible.builtin.lineinfile:
+            path: '/etc/hosts'
+            create: true
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+            regexp: '^\s*{{ ansible_facts.default_ipv4.address | regex_escape }}\s+'
+            line: '{{ ansible_facts.default_ipv4.address }} {{ __hosts_names__ }}'
+
+      #endregion --- [ MAIN: Update '/etc/hosts' To Reflect New Hostname ] ------------------- #
+
+  #endregion --- [ Main ] -------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

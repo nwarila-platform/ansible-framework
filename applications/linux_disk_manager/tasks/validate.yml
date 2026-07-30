@@ -1,0 +1,95 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the v3.2.0 loader's
+# 'INIT | Validating Merged Configuration' hook — immediately after defaults -> overlays ->
+# overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
+# config as 'config' (see tasks/main.yml INIT stage).
+#
+# WHY THIS EXISTS: present_redhat.yml's provider dispatch is gated by
+# `when: config.platform in ['vmware', 'proxmox', 'aws']`, with NO fail branch. An unset,
+# misspelled, or group_vars-clobbered `platform` (including the documented-unsafe '' default
+# in defaults/main.yml) makes that `when:` false, so the role's ENTIRE disk pipeline silently
+# no-ops — zero tasks run, the role exits GREEN — and the caller (e.g. site.yml's PREP stage)
+# then creates the data mount point as a plain directory on the ROOT filesystem instead of the
+# intended dedicated disk. Asserting here, at loader INIT, fails the whole role loudly before
+# any of that can happen.
+#
+# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but only
+# present_redhat.yml's dispatch depends on `platform` — clean_redhat.yml is a declared no-op
+# and there is no absent_redhat.yml — so the assert below is scoped to state=present and is a
+# deliberate no-op otherwise (a bare `-e state=clean` run must not be blocked on an unrelated
+# input it never reads).
+# =========================================================================================== #
+
+#region ------ [ Platform guard ] ------------------------------------------------------------- #
+
+- name: 'BEGIN | Assert Platform Is Declared And Supported'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __platform__: "{{ config.platform | default('') | string | trim }}"
+  ansible.builtin.assert:
+    that:
+      - (__platform__ | length) > 0
+      - (__platform__ | lower) in ['vmware', 'proxmox', 'aws']
+    fail_msg: >-
+      linux_disk_manager.platform is
+      {{ 'unset/empty' if (__platform__ | length) == 0 else ("'" ~ __platform__ ~ "'") }}.
+      present_redhat.yml's disk provider only runs when platform is one of: vmware, proxmox,
+      aws — any other value silently skips disk provisioning entirely (zero disks processed,
+      the role exits green), and the caller then creates the data mount point on the root
+      filesystem instead of mounting the intended disk. Set 'platform' in the
+      linux_disk_manager: override dict to one of the supported values.
+    quiet: true
+
+#endregion --- [ Platform guard ] ------------------------------------------------------------- #
+
+#region ------ [ Disk identity guards ] ------------------------------------------------------- #
+
+# Declaring both identities is SILENT-WRONG: the provider treats `unique_id` as authoritative and
+# silently ignores `function`, so a stale literal can target a different disk than the tag names.
+# Missing identities and AWS-only misuse already fail loudly in the resolver/device tasks and are
+# intentionally not pre-asserted (§4b(a)).
+- name: 'BEGIN | Reject Ambiguous Disk Identity Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __disks__: "{{ config.disks | default([], true) }}"
+    __ambiguous_identity__: >-
+      {{ __disks__ | selectattr('unique_id', 'defined') | selectattr('function', 'defined')
+      | map(attribute='mount_point', default='<no mount_point>') | list }}
+  ansible.builtin.assert:
+    that:
+      - __ambiguous_identity__ | length == 0
+    fail_msg: >-
+      {{ __ambiguous_identity__ | length }} entry(ies) in linux_disk_manager.disks declare BOTH
+      `unique_id` and `function` (mount_point(s): {{ __ambiguous_identity__ | join(', ') }}).
+      Declare exactly one identity per disk. On AWS, use `function` for an EBS Function-tag
+      lookup or `unique_id` for a literal NVMe/EBS by-id name; do not supply both because the
+      literal would silently win.
+    quiet: true
+
+# Duplicate declared identities/mount_points are SILENT-WRONG: both entries' preflight probes see
+# the same blank disk, parted/mkfs run twice idempotently (mkfs #2 no-ops onto mkfs #1's already-
+# matching filesystem), and fstab gains two mount_point rows for ONE physical volume — the role
+# exits green while data silently intermingles (§4b canonical retained-assert example; the Windows
+# sibling role's C01/C01r guard is the same class).
+- name: 'BEGIN | Reject Duplicate Disk Identities And Mount Points'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __disks__: "{{ config.disks | default([], true) }}"
+    __unique_ids__: "{{ __disks__ | selectattr('unique_id', 'defined') | map(attribute='unique_id') | list }}"
+    __functions__: "{{ __disks__ | selectattr('function', 'defined') | map(attribute='function') | list }}"
+    __mount_points__: "{{ __disks__ | map(attribute='mount_point', default='<no mount_point>') | list }}"
+  ansible.builtin.assert:
+    that:
+      - (__unique_ids__ | unique | length) == (__unique_ids__ | length)
+      - (__functions__ | unique | length) == (__functions__ | length)
+      - (__mount_points__ | unique | length) == (__mount_points__ | length)
+    fail_msg: >-
+      linux_disk_manager.disks declares a duplicate unique_id, function, or mount_point — every
+      entry must target a distinct disk and a distinct mount_point, or two entries silently
+      intermingle data on one volume. unique_id values: {{ __unique_ids__ }}; function values:
+      {{ __functions__ }}; mount_point values: {{ __mount_points__ }}.
+    quiet: true
+
+#endregion --- [ Disk identity guards ] ------------------------------------------------------- #

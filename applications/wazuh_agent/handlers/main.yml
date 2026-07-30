@@ -1,0 +1,19 @@
+---
+# Handlers for wazuh_agent.
+
+- name: 'Wazuh agent config changed'
+  listen: 'wazuh-agent-config-changed'
+  become: true
+  when: wazuh_agent_svc_was_running | default(false)
+  ansible.builtin.systemd:
+    name: 'wazuh-agent'
+    state: 'restarted'
+
+# Windows counterpart (native win_* path — tasks/present_windows.yml). The shared loader
+# persists the merged config as the host-scoped `wazuh_agent_running` contract before dispatch.
+- name: 'Wazuh agent config changed (Windows)'
+  listen: 'wazuh-agent-windows-config-changed'
+  when: wazuh_agent_win_svc_was_running | default(false)
+  ansible.windows.win_service:
+    name: "{{ wazuh_agent_running.windows.service_name | default('WazuhSvc') }}"
+    state: 'restarted'

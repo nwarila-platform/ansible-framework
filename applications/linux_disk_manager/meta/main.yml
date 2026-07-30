@@ -1,0 +1,39 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for linux_disk_manager. Description-only (style guide 8): NOT an enforcing
+# argument spec. The role's tasks/validate.yml hook enforces its merged-config guards.
+# =========================================================================================== #
+
+galaxy_info:
+
+  role_name: 'linux_disk_manager'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: >-
+    Step-0 storage initializer: selects disks by stable by-id identity, then partitions,
+    formats, and mounts by UUID. VMware, Proxmox, and AWS.
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+        - '10'
+
+  galaxy_tags:
+    - 'storage'
+    - 'disk'
+    - 'partition'
+    - 'mount'
+    - 'vmware'
+    - 'proxmox'
+    - 'aws'
+    - 'redhat'
+
+allow_duplicates: false
+
+dependencies: []

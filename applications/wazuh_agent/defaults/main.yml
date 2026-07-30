@@ -1,0 +1,95 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Defaults for wazuh_agent. Lowest-precedence layer; the loader merges env overlays and user
+# overrides on top of this dict.
+#
+# Operator prereqs:
+#   - Target host is an endpoint, not a Wazuh manager. Do not install wazuh-agent on a host
+#     whose private_ip_address, ansible_host, or inventory_hostname matches manager.host.
+#   - `manager.host` is required for state=present and must be the manager's routable IP address
+#     or DNS name. The role does not infer manager identity from consumer inventory topology.
+#   - The Wazuh agent RPM is uploaded to S3 at `s3://<bucket>/applications/wazuh-agent/`
+#     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
+#     consume the central wazuh-offline.tar.gz bundle.
+#   - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session through
+#     the generic AWS module-option variables before invoking this role; see tasks/main.yml's ENV
+#     assertion. No standing instance access or deploy credential is required on a target.
+# =========================================================================================== #
+
+wazuh_agent_defaults:
+
+  # S3 source for the agent RPM lives in the per-env overlay at `vars/redhat_<env>.yml`.
+  # Per-env overlays must supply: s3.bucket, s3.agent_rpm_key, s3.agent_rpm_sha256.
+
+  #region ------ [ Manager / enrollment ] ------------------------------------------------------- #
+  manager:
+    # Required for state=present; intentionally empty so validation rejects an omitted endpoint.
+    host: ''
+    port: 1514
+    # The Wazuh agent-manager link wraps every message in a per-agent AES-256 session keyed
+    # off client.keys, so `protocol: tcp` is encrypted end-to-end. UDP is the legacy 3.x
+    # transport and offers the same crypto envelope but no delivery guarantees.
+    protocol: 'tcp'
+    enrollment_port: 1515
+    # Optional shared secret for the manager's authd. When unset, the manager must be running
+    # authd in passwordless mode (network reachability is the only enrollment gate). When set,
+    # the role stages it into an authd.pass file (read there by Linux's agent-auth and, on
+    # Windows, by the agent service at service start) — never on the argv or an MSI property,
+    # either of which Wazuh would log — so only clients holding the secret can register.
+    enrollment_password: ''
+
+  # Defaults to inventory_hostname at play time when empty.
+  agent_name: ''
+  # Explicit endpoint IPv4 address for `agent-auth -I`. Empty means "use ansible_host
+  # if ansible_host is already an IPv4 address"; DNS names are rejected before enrollment.
+  agent_ip: ''
+  #endregion --- [ Manager / enrollment ] ------------------------------------------------------- #
+
+  #region ------ [ Services ] ------------------------------------------------------------------- #
+  services:
+    - { name: 'wazuh-agent', enabled: true, state: 'started' }
+  #endregion --- [ Services ] ------------------------------------------------------------------- #
+
+  #region ------ [ File Integrity Monitoring ] -------------------------------------------------- #
+  # Real-time paths managed by this role in the agent's ossec.conf. The vendor default monitors
+  # /etc on a 12-hour schedule; declaring it here also enables immediate change events.
+  fim:
+    realtime_paths:
+      - '/etc'
+  #endregion --- [ File Integrity Monitoring ] -------------------------------------------------- #
+
+  #region ------ [ Windows agent (native win_* path) ] ----------------------------------------- #
+  # Consumed only when the shared loader dispatches to tasks/present_windows.yml. The agent MSI
+  # comes from S3 exactly like the Linux RPM — the pinned key + sha256 live in
+  # vars/windows_<env>.yml. Because a Windows target can't run boto3, present_windows.yml
+  # downloads the MSI with amazon.aws.s3_object delegated to the controller (which has the venv
+  # boto3 and the supplied scoped session), verifies the sha256, then win_copy pushes it.
+  windows:
+    msi_dest: 'C:\Windows\Temp\wazuh-agent.msi'
+    ossec_conf: 'C:\Program Files (x86)\ossec-agent\ossec.conf'
+    service_name: 'WazuhSvc'
+    # Written by the agent's own state thread (src/client-agent/state.c write_state(), Windows
+    # branch: "%s.state" with __local_name -- ARGV0="wazuh-agent" in src/win32/win_agent.c --
+    # relative to the service's working directory, which is this install directory). The
+    # END (win) connection-verify gate in tasks/present_windows.yml polls this for status='connected'.
+    state_file: 'C:\Program Files (x86)\ossec-agent\wazuh-agent.state'
+    # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.
+    fim_realtime_paths:
+      - 'C:\Windows\System32\drivers\etc'
+  #endregion --- [ Windows agent ] -------------------------------------------------------------- #
+
+  #region ------ [ Side-deps ] ------------------------------------------------------------------ #
+  # boto3/botocore are provided by the bootstrap venv (/opt/ansible/venv); no longer pulled
+  # via pip on the agent host. gzip/tar are not needed because the agent role downloads a
+  # single RPM, not a tarball. Per-env additions may be supplied via vars/redhat_<env>.yml;
+  # the list is replaced wholesale (`list_merge='replace'`), not merged.
+  side_deps: []
+  #endregion --- [ Side-deps ] ------------------------------------------------------------------ #
+
+  #region ------ [ STIG ] ----------------------------------------------------------------------- #
+  stig:
+    local_users:
+      - 'wazuh'
+  #endregion --- [ STIG ] ----------------------------------------------------------------------- #
