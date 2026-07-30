@@ -1,0 +1,233 @@
+---
+# Download a group of controller-local artifacts under one scoped session. The module writes each
+# destination through a mode-0600 temporary file and never returns object contents.
+
+- name: 'S3 GET | Require A Reader Role ARN'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_reader_role_arn | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_reader_role_arn must be a non-empty string.
+
+- name: 'S3 GET | Require A Session Name'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_session_name | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_session_name must be a non-empty string.
+
+- name: 'S3 GET | Validate The Session Name Format'
+  ansible.builtin.assert:
+    that:
+      - (s3_artifact_delivery_session_name | default('') | string)
+        is match('^[A-Za-z0-9_+=,.@-]{2,64}$')
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_session_name must be 2 to 64 characters and contain only letters,
+      digits, underscores, or the characters +=,.@-.
+
+- name: 'S3 GET | Require A Bucket'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_bucket | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_bucket must be a non-empty string.
+
+- name: 'S3 GET | Require A Region'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_region | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_region must be a non-empty string.
+
+- name: 'S3 GET | Require A Controller Object List'
+  ansible.builtin.assert:
+    that:
+      - (s3_artifact_delivery_controller_objects | default('')) is sequence
+      - (s3_artifact_delivery_controller_objects | default('')) is not string
+      - (s3_artifact_delivery_controller_objects | default('')) is not mapping
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_controller_objects must be a list.
+
+- name: 'S3 GET | Require At Least One Controller Object'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_controller_objects | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_controller_objects must contain at least one object.
+
+- name: 'S3 GET | Require Controller Object Mappings'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects | select('mapping') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects item must be a mapping.
+
+- name: 'S3 GET | Require Every Controller Object Key'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | selectattr('object_key', 'defined') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects item must define object_key.
+
+- name: 'S3 GET | Require String Controller Object Keys'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | selectattr('object_key', 'string') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects object_key must be a string.
+
+- name: 'S3 GET | Require Non-Empty Controller Object Keys'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | map(attribute='object_key') | map('trim') | reject('equalto', '') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects object_key must be non-empty.
+
+- name: 'S3 GET | Require Every Controller Destination'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | selectattr('destination', 'defined') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects item must define destination.
+
+- name: 'S3 GET | Require String Controller Destinations'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | selectattr('destination', 'string') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects destination must be a string.
+
+- name: 'S3 GET | Require Non-Empty Controller Destinations'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | map(attribute='destination') | map('trim') | reject('equalto', '') | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects destination must be non-empty.
+
+- name: 'S3 GET | Require Unique Controller Destinations'
+  ansible.builtin.assert:
+    that:
+      - >-
+        s3_artifact_delivery_controller_objects
+        | map(attribute='destination') | unique | list | length
+        == s3_artifact_delivery_controller_objects | length
+    quiet: true
+    fail_msg: >-
+      Every s3_artifact_delivery_controller_objects destination must be unique.
+
+- name: 'S3 GET | Initialize The Controller Download State'
+  no_log: true
+  ansible.builtin.set_fact:
+    __s3_artifact_delivery_get_succeeded__: false
+    __s3_artifact_delivery_error_code__: ''
+
+- name: 'S3 GET | Run The Scoped Controller Download'
+  no_log: true
+  block:
+    - name: 'S3 GET | Mint The Controller Download Credential'
+      ansible.builtin.include_tasks: 'mint_session.yml'
+
+    - name: 'S3 GET | Download The Controller Artifacts'
+      delegate_to: 'localhost'
+      become: false
+      environment:
+        TMPDIR: "{{ lookup('ansible.builtin.env', 'ANSIBLE_LOCAL_TEMP') }}"
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      loop: "{{ s3_artifact_delivery_controller_objects }}"
+      loop_control:
+        label: 'controller artifact'
+      s3_artifact:
+        mode: 'get'
+        bucket: "{{ s3_artifact_delivery_bucket }}"
+        object_key: "{{ item.object_key }}"
+        region: "{{ s3_artifact_delivery_region }}"
+        access_key: "{{ __s3_artifact_delivery_access_key__ }}"
+        secret_key: "{{ __s3_artifact_delivery_secret_key__ }}"
+        session_token: "{{ __s3_artifact_delivery_session_token__ }}"
+        dest: "{{ item.destination }}"
+
+    - name: 'S3 GET | Record The Successful Controller Download'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_get_succeeded__: true
+
+  rescue:
+    - name: 'S3 GET | Record The Failed Controller Download'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_get_succeeded__: false
+        __s3_artifact_delivery_error_code__: >-
+          {{
+            (ansible_failed_result.error_code | default('') | string)
+            if (
+              ansible_failed_result.error_code | default('') | string
+            ) is match('^[A-Za-z0-9._-]+$')
+            else ''
+          }}
+
+  always:
+    - name: 'S3 GET | Scrub The Automatic Failure Result'
+      ansible.builtin.set_fact:
+        ansible_failed_result: ''
+
+    - name: 'S3 GET | Scrub The Controller Download Credential'
+      ansible.builtin.include_tasks: 'scrub_session.yml'
+
+- name: 'S3 GET | Require A Successful Controller Download'
+  no_log: true
+  block:
+    - name: 'S3 GET | Assert The Controller Download Succeeded'
+      no_log: false
+      ansible.builtin.assert:
+        that:
+          - __s3_artifact_delivery_get_succeeded__ | bool
+        quiet: true
+        fail_msg: >-
+          {{
+            'One or more controller artifacts could not be downloaded.'
+            ~ (
+              ' AWS error code: '
+              ~ (__s3_artifact_delivery_error_code__ | string)
+              ~ '.'
+              if (__s3_artifact_delivery_error_code__ | string | length > 0)
+              else ''
+            )
+          }}
+  always:
+    - name: 'S3 GET | Scrub The Controller Download State'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_get_succeeded__: ''
+        __s3_artifact_delivery_error_code__: ''
