@@ -11,7 +11,8 @@
 #   The Windows sibling of linux_disk_manager. It trusts each declared literal disk identity,
 #   resolves the attached disk, applies an idempotent online/writable fixup, classifies its
 #   observed contents, and provisions an NTFS volume only from a recognized blank or unformatted
-#   state. A matching NTFS label is skipped for idempotency; foreign contents are refused.
+#   state. A matching NTFS label is skipped for idempotency; a foreign classification refuses
+#   provisioning for the entire declaration set.
 #
 # =========================================================================================== #
 windows_disk_manager_defaults:
