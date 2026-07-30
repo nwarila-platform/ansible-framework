@@ -30,6 +30,7 @@
 # Role directories
 !/applications/
 !/applications/linux_disk_manager/
+!/applications/windows_disk_manager/
 !/applications/python3_pip/
 !/applications/s3_artifact_delivery/
 !/applications/wazuh_agent/
@@ -47,6 +48,18 @@
 !/applications/linux_disk_manager/templates/
 !/applications/linux_disk_manager/tests/
 !/applications/linux_disk_manager/vars/
+!/applications/windows_disk_manager/defaults/
+!/applications/windows_disk_manager/files/
+!/applications/windows_disk_manager/handlers/
+!/applications/windows_disk_manager/library/
+!/applications/windows_disk_manager/lookup_plugins/
+!/applications/windows_disk_manager/meta/
+!/applications/windows_disk_manager/module_utils/
+!/applications/windows_disk_manager/molecule/
+!/applications/windows_disk_manager/tasks/
+!/applications/windows_disk_manager/templates/
+!/applications/windows_disk_manager/tests/
+!/applications/windows_disk_manager/vars/
 !/applications/python3_pip/defaults/
 !/applications/python3_pip/files/
 !/applications/python3_pip/handlers/
