@@ -26,50 +26,50 @@
       become: true
       block:
 
-      #region ------ [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
+        #region ------ [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
 
-      # Remove the pip HTTP cache directory directly. The role runs as root (become: true),
-      # so the cache resides at /root/.cache/pip. Using file: state: absent is idempotent —
-      # no error if the directory does not exist — and requires no pip3 executable.
-      # Safe to run after state: absent.
-      - name: 'MAIN | Remove pip Cache Directories'
-        loop:
-          - '/root/.cache/pip'
-        loop_control: { loop_var: '__cache_path__' }
+        # Remove the pip HTTP cache directory directly. The role runs as root (become: true),
+        # so the cache resides at /root/.cache/pip. Using file: state: absent is idempotent —
+        # no error if the directory does not exist — and requires no pip3 executable.
+        # Safe to run after state: absent.
+        - name: 'MAIN | Remove pip Cache Directories'
+          loop:
+            - '/root/.cache/pip'
+          loop_control: { loop_var: '__cache_path__' }
 
-        ansible.builtin.file:
-          path: "{{ __cache_path__ }}"
-          state: 'absent'
+          ansible.builtin.file:
+            path: "{{ __cache_path__ }}"
+            state: 'absent'
 
-      #endregion --- [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
+        #endregion --- [ MAIN: Removing pip Cache Directories ] ----------------------------------- #
 
-      #region ------ [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
+        #region ------ [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
 
-      # Find pip build and requirement artefact directories left in /tmp.
-      # These are created during pip install operations and are normally cleaned up on
-      # completion, but persist on interrupted installs or in long-lived environments.
-      - name: 'MAIN | Find pip Build Artefacts in /tmp'
-        changed_when: false
+        # Find pip build and requirement artefact directories left in /tmp.
+        # These are created during pip install operations and are normally cleaned up on
+        # completion, but persist on interrupted installs or in long-lived environments.
+        - name: 'MAIN | Find pip Build Artefacts in /tmp'
+          changed_when: false
 
-        ansible.builtin.find:
-          paths: '/tmp'
-          patterns:
-            - 'pip-build-*'
-            - 'pip-req-*'
-            - 'pip-tmp-*'
-            - 'pip-unpack-*'
-          file_type: 'directory'
-        register: __pip_tmp_dirs__
+          ansible.builtin.find:
+            paths: '/tmp'
+            patterns:
+              - 'pip-build-*'
+              - 'pip-req-*'
+              - 'pip-tmp-*'
+              - 'pip-unpack-*'
+            file_type: 'directory'
+          register: __pip_tmp_dirs__
 
-      - name: 'MAIN | Remove pip Build Artefacts in /tmp'
-        loop: "{{ __pip_tmp_dirs__.files | map(attribute='path') | list }}"
-        loop_control: { loop_var: '__artefact_path__' }
+        - name: 'MAIN | Remove pip Build Artefacts in /tmp'
+          loop: "{{ __pip_tmp_dirs__.files | map(attribute='path') | list }}"
+          loop_control: { loop_var: '__artefact_path__' }
 
-        ansible.builtin.file:
-          path: "{{ __artefact_path__ }}"
-          state: 'absent'
+          ansible.builtin.file:
+            path: "{{ __artefact_path__ }}"
+            state: 'absent'
 
-      #endregion --- [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
+        #endregion --- [ MAIN: Removing pip Build Artefacts ] -------------------------------------- #
 
     #endregion --- [ Main ] -------------------------------------------------------------------- #
 

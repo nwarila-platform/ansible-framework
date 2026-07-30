@@ -55,128 +55,128 @@
       become: true
       block:
 
-      #region ------ [ MAIN: Installing the 'Python3-pip' Package ] ------------------------------------ #
+        #region ------ [ MAIN: Installing the 'Python3-pip' Package ] ------------------------------------ #
 
-      # Install python3-pip via dnf. package_manager is a dict keyed by os_family so we access
-      # the correct platform entry directly — no loop or filter needed. All parameters fall back
-      # to secure defaults via | default() so the task is safe even if an overlay only partially
-      # overrides the platform block.
-      - name: "MAIN | Installing the 'Python3-pip' Package"
-        when: ansible_facts.os_family in config.package_manager
-        vars:
-          __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
+        # Install python3-pip via dnf. package_manager is a dict keyed by os_family so we access
+        # the correct platform entry directly — no loop or filter needed. All parameters fall back
+        # to secure defaults via | default() so the task is safe even if an overlay only partially
+        # overrides the platform block.
+        - name: "MAIN | Installing the 'Python3-pip' Package"
+          when: ansible_facts.os_family in config.package_manager
+          vars:
+            __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
 
-        ansible.builtin.dnf:
-          allow_downgrade: "{{ __package__.allow_downgrade | default(false) }}"
-          allowerases: "{{ __package__.allowerases | default(false) }}"
-          autoremove: "{{ __package__.autoremove | default(false) }}"
-          best: "{{ __package__.best | default(true) }}"
-          bugfix: "{{ __package__.bugfix | default(false) }}"
-          cacheonly: "{{ __package__.cacheonly | default(false) }}"
-          conf_file: "{{ __package__.conf_file | default(omit) }}"
-          disable_excludes: "{{ __package__.disable_excludes | default(omit) }}"
-          disable_gpg_check: "{{ __package__.disable_gpg_check | default(false) }}"
-          disable_plugin: "{{ __package__.disable_plugin | default([]) }}"
-          disablerepo: "{{ __package__.disablerepo | default([]) }}"
-          download_dir: "{{ __package__.download_dir | default(omit) }}"
-          download_only: "{{ __package__.download_only | default(false) }}"
-          enable_plugin: "{{ __package__.enable_plugin | default([]) }}"
-          enablerepo: "{{ __package__.enablerepo | default([]) }}"
-          exclude: "{{ __package__.exclude | default([]) }}"
-          install_weak_deps: "{{ __package__.install_weak_deps | default(true) }}"
-          installroot: "{{ __package__.installroot | default('/') }}"
-          lock_timeout: "{{ __package__.lock_timeout | default(30) }}"
-          name: "{{ __package__.name }}"
-          releasever: "{{ __package__.releasever | default(omit) }}"
-          security: "{{ __package__.security | default(false) }}"
-          skip_broken: "{{ __package__.skip_broken | default(false) }}"
-          sslverify: "{{ __package__.sslverify | default(true) }}"
-          state: "{{ __package__.state | default('present') }}"
-          update_cache: "{{ __package__.update_cache | default(false) }}"
-          update_only: "{{ __package__.update_only | default(false) }}"
-          validate_certs: "{{ __package__.validate_certs | default(true) }}"
+          ansible.builtin.dnf:
+            allow_downgrade: "{{ __package__.allow_downgrade | default(false) }}"
+            allowerases: "{{ __package__.allowerases | default(false) }}"
+            autoremove: "{{ __package__.autoremove | default(false) }}"
+            best: "{{ __package__.best | default(true) }}"
+            bugfix: "{{ __package__.bugfix | default(false) }}"
+            cacheonly: "{{ __package__.cacheonly | default(false) }}"
+            conf_file: "{{ __package__.conf_file | default(omit) }}"
+            disable_excludes: "{{ __package__.disable_excludes | default(omit) }}"
+            disable_gpg_check: "{{ __package__.disable_gpg_check | default(false) }}"
+            disable_plugin: "{{ __package__.disable_plugin | default([]) }}"
+            disablerepo: "{{ __package__.disablerepo | default([]) }}"
+            download_dir: "{{ __package__.download_dir | default(omit) }}"
+            download_only: "{{ __package__.download_only | default(false) }}"
+            enable_plugin: "{{ __package__.enable_plugin | default([]) }}"
+            enablerepo: "{{ __package__.enablerepo | default([]) }}"
+            exclude: "{{ __package__.exclude | default([]) }}"
+            install_weak_deps: "{{ __package__.install_weak_deps | default(true) }}"
+            installroot: "{{ __package__.installroot | default('/') }}"
+            lock_timeout: "{{ __package__.lock_timeout | default(30) }}"
+            name: "{{ __package__.name }}"
+            releasever: "{{ __package__.releasever | default(omit) }}"
+            security: "{{ __package__.security | default(false) }}"
+            skip_broken: "{{ __package__.skip_broken | default(false) }}"
+            sslverify: "{{ __package__.sslverify | default(true) }}"
+            state: "{{ __package__.state | default('present') }}"
+            update_cache: "{{ __package__.update_cache | default(false) }}"
+            update_only: "{{ __package__.update_only | default(false) }}"
+            validate_certs: "{{ __package__.validate_certs | default(true) }}"
 
-      #endregion --- [ MAIN: Installing the 'Python3-pip' Package ] --- #
+        #endregion --- [ MAIN: Installing the 'Python3-pip' Package ] --- #
 
-      #region ------ [ MAIN: Self Upgrade ] -------------------------------- #
+        #region ------ [ MAIN: Self Upgrade ] -------------------------------- #
 
-      # The dnf-packaged pip is typically outdated. This task upgrades pip to the version
-      # specified in config.self_upgrade.version. Set to 'latest' for the newest release,
-      # or pin to a specific version (e.g., '24.3.1') for reproducibility.
-      #
-      # Runs before template deployment so pip.conf is applied to the final pip version.
-      # Guarded by config.self_upgrade.enabled — disable per-environment via overlay vars.
-      # umask '0022' ensures installed files are world-readable regardless of system defaults.
-      - name: 'MAIN | Upgrading PIP To {{ __pip_version__ }}'
-        become: true
-        when: config.self_upgrade.enabled | default(true) | bool
-        vars:
-          __pip_version__: "{{ config.self_upgrade.version | default('latest') }}"
-          __is_latest__: "{{ (__pip_version__ == 'latest') | bool }}"
+        # The dnf-packaged pip is typically outdated. This task upgrades pip to the version
+        # specified in config.self_upgrade.version. Set to 'latest' for the newest release,
+        # or pin to a specific version (e.g., '24.3.1') for reproducibility.
+        #
+        # Runs before template deployment so pip.conf is applied to the final pip version.
+        # Guarded by config.self_upgrade.enabled — disable per-environment via overlay vars.
+        # umask '0022' ensures installed files are world-readable regardless of system defaults.
+        - name: 'MAIN | Upgrading PIP To {{ __pip_version__ }}'
+          become: true
+          when: config.self_upgrade.enabled | default(true) | bool
+          vars:
+            __pip_version__: "{{ config.self_upgrade.version | default('latest') }}"
+            __is_latest__: "{{ (__pip_version__ == 'latest') | bool }}"
 
-        ansible.builtin.pip:
-          executable: 'pip3'
-          name: 'pip'
-          state: "{{ 'latest' if __is_latest__ else 'present' }}"
-          umask: '0022'
-          version: "{{ omit if __is_latest__ else __pip_version__ }}"
+          ansible.builtin.pip:
+            executable: 'pip3'
+            name: 'pip'
+            state: "{{ 'latest' if __is_latest__ else 'present' }}"
+            umask: '0022'
+            version: "{{ omit if __is_latest__ else __pip_version__ }}"
 
-      #endregion --- [ MAIN: Self Upgrade ] -------------------------------- #
+        #endregion --- [ MAIN: Self Upgrade ] -------------------------------- #
 
-      #region ------ [ MAIN: Templates ] ------------------------------ #
+        #region ------ [ MAIN: Templates ] ------------------------------ #
 
-      # Deploy configuration file templates defined in config.templates. Each entry specifies
-      # the Jinja2 source template, destination path, file ownership, permissions, SELinux
-      # context, and the settings dict that populates the template content.
-      #
-      # The pip.conf.j2 template dynamically iterates settings sections (global, install, etc.)
-      # and renders only keys present in the python3_pip_allowed_keys whitelist (vars/main.yml).
-      - name: 'MAIN | Deploy Configuration Templates'
-        loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
-        loop_control: { loop_var: '__template__' }
+        # Deploy configuration file templates defined in config.templates. Each entry specifies
+        # the Jinja2 source template, destination path, file ownership, permissions, SELinux
+        # context, and the settings dict that populates the template content.
+        #
+        # The pip.conf.j2 template dynamically iterates settings sections (global, install, etc.)
+        # and renders only keys present in the python3_pip_allowed_keys whitelist (vars/main.yml).
+        - name: 'MAIN | Deploy Configuration Templates'
+          loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
+          loop_control: { loop_var: '__template__' }
 
-        ansible.builtin.template:
-          src: "{{ __template__.template }}"
-          dest: "{{ __template__.file.path }}"
-          owner: "{{ __template__.file.owner | default('root') }}"
-          group: "{{ __template__.file.group | default('root') }}"
-          mode: "{{ __template__.file.mode | default('0644') }}"
-          selevel: "{{ __template__.file.selinux.level | default(omit) }}"
-          serole: "{{ __template__.file.selinux.role | default(omit) }}"
-          setype: "{{ __template__.file.selinux.type | default(omit) }}"
-          seuser: "{{ __template__.file.selinux.user | default(omit) }}"
+          ansible.builtin.template:
+            src: "{{ __template__.template }}"
+            dest: "{{ __template__.file.path }}"
+            owner: "{{ __template__.file.owner | default('root') }}"
+            group: "{{ __template__.file.group | default('root') }}"
+            mode: "{{ __template__.file.mode | default('0644') }}"
+            selevel: "{{ __template__.file.selinux.level | default(omit) }}"
+            serole: "{{ __template__.file.selinux.role | default(omit) }}"
+            setype: "{{ __template__.file.selinux.type | default(omit) }}"
+            seuser: "{{ __template__.file.selinux.user | default(omit) }}"
 
-      #endregion --- [ MAIN: Templates ] ------------------------------ #
+        #endregion --- [ MAIN: Templates ] ------------------------------ #
 
-      #region ------ [ MAIN: Validation ] ---------------------------------- #
+        #region ------ [ MAIN: Validation ] ---------------------------------- #
 
-      # Smoke test: run 'pip3 --version' to verify the installation is functional.
-      # failed_when: false prevents Ansible from halting on a non-zero exit code,
-      # allowing the assert task below to provide a meaningful error message instead.
-      - name: 'MAIN | Verifying PIP Installation'
-        changed_when: false
-        failed_when: false
-        register: __pip_check__
+        # Smoke test: run 'pip3 --version' to verify the installation is functional.
+        # failed_when: false prevents Ansible from halting on a non-zero exit code,
+        # allowing the assert task below to provide a meaningful error message instead.
+        - name: 'MAIN | Verifying PIP Installation'
+          changed_when: false
+          failed_when: false
+          register: __pip_check__
 
-        ansible.builtin.command:
-          argv:
-            - 'pip3'
-            - '--version'
+          ansible.builtin.command:
+            argv:
+              - 'pip3'
+              - '--version'
 
-      # Assert that pip returned successfully and the output contains 'pip' to guard
-      # against edge cases like a broken symlink or wrapper script masking a real failure.
-      - name: 'MAIN | Validate PIP Is Functional'
-        ansible.builtin.assert:
-          that:
-            - __pip_check__.rc == 0
-            - "'pip' in __pip_check__.stdout"
-          fail_msg: >-
-            PIP validation failed. Expected 'pip3 --version' to return successfully.
-            stdout: {{ __pip_check__.stdout | default('') }}
-            stderr: {{ __pip_check__.stderr | default('') }}
-          success_msg: "{{ __pip_check__.stdout }}"
+        # Assert that pip returned successfully and the output contains 'pip' to guard
+        # against edge cases like a broken symlink or wrapper script masking a real failure.
+        - name: 'MAIN | Validate PIP Is Functional'
+          ansible.builtin.assert:
+            that:
+              - __pip_check__.rc == 0
+              - "'pip' in __pip_check__.stdout"
+            fail_msg: >-
+              PIP validation failed. Expected 'pip3 --version' to return successfully.
+              stdout: {{ __pip_check__.stdout | default('') }}
+              stderr: {{ __pip_check__.stderr | default('') }}
+            success_msg: "{{ __pip_check__.stdout }}"
 
-      #endregion --- [ MAIN: Validation ] ---------------------------------- #
+        #endregion --- [ MAIN: Validation ] ---------------------------------- #
 
     #endregion --- [ Main ] -------------------------------------------------------------------- #
 
