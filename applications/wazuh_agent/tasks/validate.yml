@@ -1,0 +1,105 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the v3.2.0 loader's
+# 'INIT | Validating Merged Configuration' hook -- immediately after defaults -> overlays ->
+# overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
+# config as 'config' (see tasks/main.yml INIT stage).
+#
+# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but the manager
+# endpoint and S3 coordinates below are only needed to install an agent for state=present. Every
+# assert is therefore scoped to state=present and is a deliberate no-op otherwise (a bare
+# `-e state=clean` run must not be blocked on an input it never reads).
+#
+# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but validation
+# belongs in one hook. A malformed merged input now fails at loader INIT before staging or installer
+# work begins.
+# =========================================================================================== #
+
+- name: 'BEGIN | Assert Manager Endpoint Is Explicit'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - config.manager.host | default('') | string | trim | length > 0
+    fail_msg: >-
+      wazuh_agent.manager.host must be a non-empty manager IP address or DNS name when
+      state=present. This shared role cannot infer a consumer-specific manager from inventory
+      topology. Set wazuh_agent.manager.host explicitly to the routable Wazuh manager endpoint.
+    quiet: true
+
+# Cross-host collision check: if two endpoints targeted by this play resolve to the same
+# effective agent_name, the second enrollment overwrites the first in the manager's shared
+# client.keys -- Wazuh keys it by name only, not by OS. The host set comes from the play, not
+# consumer-specific inventory groups, so this one validation covers Linux and Windows endpoints
+# before platform dispatch.
+#
+# Reads the LOADER-MERGED config (wazuh_agent_running), not the raw wazuh_agent override dict: an
+# agent_name set at an OS overlay layer is invisible to a raw-dict read but fully present in the
+# merged config, and enrollment resolves from that merged config too. The `config` fallback is
+# retained only as a defensive read for a direct legacy invocation of this task file.
+#
+# This is intentionally play-scoped. A host deployed by a separate play is outside this check;
+# consumers that split deployment across plays must enforce uniqueness across those plays.
+- name: 'BEGIN | Assert Agent Name Is Unique Across This Play'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  run_once: true
+  vars:
+    __effective_names__: >-
+      {%- set out = [] -%}
+      {%- for h in ansible_play_hosts_all -%}
+        {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
+        {%- set explicit = merged.agent_name | default('') | string | trim -%}
+        {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
+      {%- endfor -%}
+      {{ out }}
+  ansible.builtin.assert:
+    that:
+      - (__effective_names__ | length) == (__effective_names__ | unique | length)
+    fail_msg: >-
+      Two or more hosts in this play resolve to the same wazuh_agent.agent_name. Each endpoint
+      must produce a unique agent name because the manager keys client.keys by name. Effective
+      names: {{ __effective_names__ }}.
+    quiet: true
+
+- name: 'BEGIN | Assert Shared Agent S3 Inputs Are Complete'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __agent_s3__: "{{ config.s3 | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - __agent_s3__.bucket | default('') | string | trim | length > 0
+      - "'<account-id>' not in (__agent_s3__.bucket | default('') | string | trim)"
+    fail_msg: >-
+      wazuh_agent.s3.bucket must be non-empty and must not contain the committed
+      '<account-id>' tripwire before an agent package can be downloaded.
+    quiet: true
+
+- name: 'BEGIN | Assert Windows Agent MSI Inputs Are Complete'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | default('') | lower) == 'windows'
+  vars:
+    __agent_s3__: "{{ config.s3 | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - __agent_s3__.agent_msi_key | default('') | string | trim | length > 0
+      - __agent_s3__.agent_msi_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
+    fail_msg: >-
+      Windows deployments require wazuh_agent.s3.agent_msi_key and a real
+      64-character hexadecimal wazuh_agent.s3.agent_msi_sha256.
+    quiet: true
+
+- name: 'BEGIN | Assert POSIX Agent RPM Inputs Are Complete'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | default('') | lower) != 'windows'
+  vars:
+    __agent_s3__: "{{ config.s3 | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - __agent_s3__.agent_rpm_key | default('') | string | trim | length > 0
+      - __agent_s3__.agent_rpm_sha256 | default('') is match('^[A-Fa-f0-9]{64}$')
+    fail_msg: >-
+      Non-Windows deployments require wazuh_agent.s3.agent_rpm_key and a real
+      64-character hexadecimal wazuh_agent.s3.agent_rpm_sha256.
+    quiet: true

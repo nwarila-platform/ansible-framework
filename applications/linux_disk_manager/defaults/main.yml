@@ -1,0 +1,99 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Lowest-precedence configuration for the linux_disk_manager role, merged by the v3.2.0 loader
+# into 'linux_disk_manager_running' (defaults -> vars/<family>[_<dist>[_<ver>]][_<env>].yml
+# overlays -> playbook 'linux_disk_manager:' override dict). Task files receive the merged
+# result as 'config'.
+#
+# WHAT THIS ROLE IS
+#   The "step-0" storage initializer. Given a machine handed to it with attached-but-blank data
+#   disks, it partitions -> formats -> labels -> mounts each one, then the application role
+#   (e.g. wazuh_server) consumes the mounted volume (/mnt/data).
+#
+# THE NITRO FIX (why this role exists)
+#   Block-device names (/dev/sda, /dev/nvme0n1) are NOT stable. On AWS Nitro the NVMe
+#   enumeration order can differ across reboots, so a role that partitions/mounts by device
+#   name can target the WRONG disk or leave an fstab entry that fails to mount on reboot. This
+#   role selects each disk by a declared, stable `unique_id` (its /dev/disk/by-id/ name) and
+#   writes fstab by filesystem UUID. Both are platform-agnostic — the by-id name is the disk
+#   WWN on VMware (needs disk.EnableUUID=TRUE), the QEMU serial on Proxmox, and the NVMe/EBS
+#   serial on AWS; CI/CD supplies or enables resolution of the right value.
+#
+#   Input correctness is primarily CI/CD's responsibility. The role retains only load-bearing
+#   guards for silent provider skips, ambiguous identity, and destructive foreign disk layouts.
+#
+# =========================================================================================== #
+linux_disk_manager_defaults:
+
+  #region ------ [ Lifecycle ] ------------------------------------------------------------------ #
+  state: 'present'
+  #endregion --- [ Lifecycle ] ------------------------------------------------------------------ #
+
+  #region ------ [ Platform targeting ] --------------------------------------------------------- #
+  # Declared infrastructure platform (vmware | proxmox | aws). REQUIRED in the
+  # linux_disk_manager: override dict; no default is safe. present_redhat.yml dispatches all
+  # three to the SAME shared by-id provider block because every identity is a
+  # /dev/disk/by-id/ NAME. There is deliberately NO detected-vendor match.
+  platform: ''
+  #endregion --- [ Platform targeting ] --------------------------------------------------------- #
+
+  #region ------ [ Managed disks ] -------------------------------------------------------------- #
+  # Declared disks to manage. Empty by default, but `platform` is still required whenever this
+  # role is invoked. Each entry declares EXACTLY ONE of unique_id / function. tasks/validate.yml
+  # rejects the silent-wrong BOTH case at loader INIT; missing/unusable identities fail loudly
+  # in the resolver/device tasks:
+  #
+  #   - unique_id:   Stable /dev/disk/by-id/ NAME of the WHOLE disk (VMware WWN 'wwn-0x...',
+  #                  Proxmox QEMU by-id serial, or AWS NVMe serial by-id name). Never a /dev/sdX
+  #                  path. Always required on vmware/proxmox; optional on aws if `function` is
+  #                  declared instead.
+  #     function:    AWS ONLY (the non-AWS device path fails loudly without `unique_id`).
+  #                  The EBS volume's `Function` tag value (e.g. 'wazuh-data') — an alternative
+  #                  to a literal `unique_id` for a target whose EBS volume-id is only known at
+  #                  apply time (Terraform assigns it, not CI/CD). See "THE `function`
+  #                  RESOLUTION CONTRACT" below.
+  #     mount_point: Absolute path to mount the disk's single partition at.
+  #     label:       Filesystem label.
+  #     fstype:      Filesystem type (default 'xfs').
+  #     opts:        Mount options (default 'defaults,nodev,nosuid' — STIG-friendly, NOT noexec).
+  #     mode:        Mount-point directory mode (default '0755').
+  #     passno:      fstab fsck order (default 2 for a data mount).
+  #
+  # THE `function` RESOLUTION CONTRACT:
+  #   - Resolution uses ONE controller-side amazon.aws.ec2_vol_info call per HOST, never per disk.
+  #   - Every declared `function` must match EXACTLY ONE attached volume's Function tag; zero or
+  #     multiple matches fails loudly (never silently resolves to the first match).
+  #   - A match resolves to `unique_id: 'nvme-Amazon_Elastic_Block_Store_' ~
+  #     (volume_id | replace('-', ''))` — the SAME NVMe/EBS by-id name format a literal AWS
+  #     unique_id already uses; the existing by-id pipeline then runs unchanged.
+  #   - The target instance needs NO EBS/IAM permissions; resolution uses the deploy identity.
+  #   See tasks/resolve_aws.yml for mechanics.
+  #
+  # RESOLVING THE TARGET'S OWN INSTANCE-ID (tasks/present_redhat.yml): three ways, in order —
+  #   (a) the aws_ec2 dynamic inventory plugin populates the `instance_id` hostvar automatically
+  #       for every host it discovers;
+  #   (b) a static inventory sets `ansible_host` to the instance-id, per this codebase's
+  #       SSM-over-SSH contract (aws_ec2.yml relies on the same fact for the identical reason);
+  #   (c) declare a literal `unique_id` on that disk entry instead of `function` — bypasses
+  #       resolution (and the instance-id requirement) entirely.
+  #
+  # Example (declared in the linux_disk_manager: override dict, not here):
+  #   disks:
+  #     - unique_id:   'wwn-0x6000c29f1b525ff8397ccfbf8cdaa7d4'
+  #       mount_point: '/mnt/data'
+  #       fstype:      'xfs'
+  #       label:       'wazuh-data'
+  #       opts:        'defaults,nodev,nosuid'
+  #   (AWS equivalent unique_id: 'nvme-Amazon_Elastic_Block_Store_vol0c4b9c6a3429a62a7')
+  #   (AWS function-tag equivalent — same result, resolved at run time instead of declared:
+  #     disks:
+  #       - function:    'wazuh-data'
+  #         mount_point: '/mnt/data'
+  #         fstype:      'xfs'
+  #         label:       'wazuh-data'
+  #         opts:        'defaults,nodev,nosuid')
+  disks: []
+  #endregion --- [ Managed disks ] -------------------------------------------------------------- #

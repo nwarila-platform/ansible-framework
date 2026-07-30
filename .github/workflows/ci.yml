@@ -8,12 +8,14 @@
 #
 # Required status checks (configure in branch protection):
 #   - yamllint
+#   - allowlist-check
 #   - ansible-lint
+#   - loader-identity-check
 # =============================================================================
 
 name: CI
 
-on:
+'on':
   push:
     branches:
       - main
@@ -58,6 +60,40 @@ jobs:
         run: yamllint --config-file .yamllint.yml .
 
   # ---------------------------------------------------------------------------
+  # Deny-All Allowlist
+  # ---------------------------------------------------------------------------
+  allowlist-check:
+    name: Deny-All Allowlist
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check deny-all allowlist
+        run: make allowlist-check
+
+  # ---------------------------------------------------------------------------
+  # Shared Loader Byte Identity
+  # ---------------------------------------------------------------------------
+  loader-identity-check:
+    name: Shared Loader Byte Identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check application loader byte identity
+        run: make loader-identity-check
+
+  # ---------------------------------------------------------------------------
   # Ansible Lint
   # ---------------------------------------------------------------------------
   ansible-lint:
@@ -80,7 +116,7 @@ jobs:
         run: pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Run ansible-lint
-        run: ansible-lint
+        run: make ansible-lint
 
   # ---------------------------------------------------------------------------
   # Pre-Commit (full suite, non-blocking — informational only)
