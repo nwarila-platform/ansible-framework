@@ -9,8 +9,10 @@
 #
 # WHAT THIS ROLE IS
 #   The Windows sibling of linux_disk_manager. It trusts each declared literal disk identity,
-#   resolves the attached disk, applies an idempotent online/writable fixup, and provisions an
-#   NTFS volume. A matching NTFS label is skipped for idempotency.
+#   resolves the attached disk, applies an idempotent online/writable fixup, classifies its
+#   observed contents, and provisions an NTFS volume only from a recognized blank or unformatted
+#   state. A matching NTFS label is skipped for idempotency; a foreign classification refuses
+#   provisioning for the entire declaration set.
 #
 # =========================================================================================== #
 windows_disk_manager_defaults:
@@ -39,7 +41,8 @@ windows_disk_manager_defaults:
   #     fstype:          Reserved/ignored; this role currently provisions NTFS only.
   #
   # Literal unique_id values are trusted configuration. AWS Function-tag resolution remains
-  # deferred; entries resolved by unique_id are initialized, partitioned, and formatted unless
-  # an NTFS volume with the declared label already exists on that disk.
+  # deferred. A resolved disk is provisioned only when positively classified as RAW/blank or
+  # GPT/unformatted, skipped when an NTFS volume has the declared label case-insensitively, and
+  # refused when its observed contents do not match one of those recognized states.
   disks: []
   #endregion --- [ Managed disks ] -------------------------------------------------------------- #
