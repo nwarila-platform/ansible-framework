@@ -165,10 +165,3 @@
 *.pyc
 __pycache__/
 .cache/
-
-# strict-cycle audit trail (plan packets, exec reports, ledger)
-!/_handoff/
-!/_handoff/steps/
-!/_handoff/steps/*.json
-!/_handoff/steps/*.md
-!/_handoff/*.md
