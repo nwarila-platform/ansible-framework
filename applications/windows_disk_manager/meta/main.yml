@@ -1,0 +1,33 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for windows_disk_manager. Description-only (style guide 8): NOT an enforcing
+# argument spec. The role's tasks/validate.yml hook enforces its merged-config guards.
+# =========================================================================================== #
+
+galaxy_info:
+
+  role_name: 'windows_disk_manager'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: >-
+    Windows NTFS disk provisioning (initialize, partition, format) with stable disk identity
+    and drive-letter contract for VMware and AWS; idempotent skip of already-provisioned
+    volumes, fail-closed validation, Windows sibling of linux_disk_manager.
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'Windows'
+
+  galaxy_tags:
+    - 'storage'
+    - 'disk'
+    - 'windows'
+    - 'vmware'
+    - 'aws'
+
+allow_duplicates: false
+
+dependencies: []

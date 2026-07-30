@@ -1,0 +1,177 @@
+---
+# Retry the complete mint-sign-fetch unit. A socket inactivity timeout is not a wall-clock
+# transfer bound, so no signature is ever reused by a later attempt.
+
+- name: 'S3 FETCH | Require A Reader Role ARN'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_reader_role_arn | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_reader_role_arn must be a non-empty string.
+
+- name: 'S3 FETCH | Require A Session Name'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_session_name | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_session_name must be a non-empty string.
+
+- name: 'S3 FETCH | Validate The Session Name Format'
+  ansible.builtin.assert:
+    that:
+      - (s3_artifact_delivery_session_name | default('') | string)
+        is match('^[A-Za-z0-9_+=,.@-]{2,64}$')
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_session_name must be 2 to 64 characters and contain only letters,
+      digits, underscores, or the characters +=,.@-.
+
+- name: 'S3 FETCH | Require A Bucket'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_bucket | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_bucket must be a non-empty string.
+
+- name: 'S3 FETCH | Require An Object Key'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_object_key | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_object_key must be a non-empty string.
+
+- name: 'S3 FETCH | Require A Region'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_region | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_region must be a non-empty string.
+
+- name: 'S3 FETCH | Validate The Checksum Format'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_checksum | default('') | string
+        is match('^[0-9a-fA-F]{64}$')
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_checksum must be exactly 64 hexadecimal characters.
+
+- name: 'S3 FETCH | Require A Destination'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_destination | default('') | string | trim | length > 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_destination must be a non-empty string.
+
+- name: 'S3 FETCH | Validate The Platform'
+  ansible.builtin.assert:
+    that:
+      - (s3_artifact_delivery_platform | default('') | string | lower)
+        in ['posix', 'windows']
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_platform must be posix or windows.
+
+- name: 'S3 FETCH | Validate The URL Expiry Minimum'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_url_expiry_seconds | int >= 1
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_url_expiry_seconds must be at least 1.
+
+- name: 'S3 FETCH | Validate The URL Expiry Maximum'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_url_expiry_seconds | int <= 3600
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_url_expiry_seconds must not exceed 3600.
+
+- name: 'S3 FETCH | Validate The Retry Delay'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_retry_delay_seconds | int >= 0
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_retry_delay_seconds must be zero or greater.
+
+- name: 'S3 FETCH | Validate The Transfer Timeout'
+  ansible.builtin.assert:
+    that:
+      - s3_artifact_delivery_transfer_timeout_seconds | int >= 1
+    quiet: true
+    fail_msg: >-
+      s3_artifact_delivery_transfer_timeout_seconds must be at least 1.
+
+- name: 'S3 FETCH | Initialize The Per-Host Retry State'
+  no_log: true
+  ansible.builtin.set_fact:
+    __s3_artifact_delivery_succeeded__: false
+    __s3_artifact_delivery_fetch_result__: ''
+    __s3_artifact_delivery_terminal_failure__: false
+    __s3_artifact_delivery_redaction_detected__: false
+    __s3_artifact_delivery_error_code__: ''
+
+- name: 'S3 FETCH | Run Fresh-Signature Attempt 1'
+  vars:
+    __s3_artifact_delivery_attempt__: 1
+  no_log: true
+  ansible.builtin.include_tasks: 'fetch_attempt.yml'
+
+- name: 'S3 FETCH | Run Fresh-Signature Attempt 2 When Needed'
+  when:
+    - not (__s3_artifact_delivery_succeeded__ | bool)
+    - not (__s3_artifact_delivery_terminal_failure__ | bool)
+  vars:
+    __s3_artifact_delivery_attempt__: 2
+  no_log: true
+  ansible.builtin.include_tasks: 'fetch_attempt.yml'
+
+- name: 'S3 FETCH | Run Fresh-Signature Attempt 3 When Needed'
+  when:
+    - not (__s3_artifact_delivery_succeeded__ | bool)
+    - not (__s3_artifact_delivery_terminal_failure__ | bool)
+  vars:
+    __s3_artifact_delivery_attempt__: 3
+  no_log: true
+  ansible.builtin.include_tasks: 'fetch_attempt.yml'
+
+- name: 'S3 FETCH | Require One Successful Fresh-Signature Attempt'
+  no_log: true
+  block:
+    - name: 'S3 FETCH | Assert The Artifact Fetch Succeeded'
+      no_log: false
+      ansible.builtin.assert:
+        that:
+          - __s3_artifact_delivery_succeeded__ | bool
+        quiet: true
+        fail_msg: >-
+          {{
+            'The signer output failed the bearer-URL redaction guard.'
+            if (__s3_artifact_delivery_redaction_detected__ | bool)
+            else (
+              'The artifact could not be fetched after three fresh-signature attempts.'
+              ~ (
+                ' AWS error code: '
+                ~ (__s3_artifact_delivery_error_code__ | string)
+                ~ '.'
+                if (__s3_artifact_delivery_error_code__ | string | length > 0)
+                else ''
+              )
+            )
+          }}
+  always:
+    - name: 'S3 FETCH | Scrub The Retry State'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_succeeded__: ''
+        __s3_artifact_delivery_fetch_result__: ''
+        __s3_artifact_delivery_terminal_failure__: ''
+        __s3_artifact_delivery_redaction_detected__: ''
+        __s3_artifact_delivery_error_code__: ''

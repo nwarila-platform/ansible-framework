@@ -1,0 +1,97 @@
+---
+# One retry attempt owns a fresh role session and signature. All secret-bearing registers and
+# per-host facts are overwritten in the always path before another attempt can begin.
+
+- name: 'S3 FETCH | Run One Fresh-Signature Attempt'
+  no_log: true
+  block:
+    - name: 'S3 FETCH | Delay Before A Later Attempt'
+      when: (__s3_artifact_delivery_attempt__ | int) > 1
+      ansible.builtin.pause:
+        seconds: "{{ s3_artifact_delivery_retry_delay_seconds }}"
+
+    - name: 'S3 FETCH | Mint The Attempt Credential'
+      ansible.builtin.include_tasks: 'mint_session.yml'
+
+    - name: 'S3 FETCH | Sign The Attempt URL'
+      ansible.builtin.include_tasks: 'presign.yml'
+
+    # Keep an unreachable host active only until the registered transport result can be converted
+    # to an ordinary localhost failure. That failure enters rescue and always, which scrub state.
+    - name: 'S3 FETCH | Download The POSIX Artifact'
+      when: (s3_artifact_delivery_platform | lower) == 'posix'
+      changed_when: false
+      ignore_unreachable: true
+      register: '__s3_artifact_delivery_fetch_result__'
+      ansible.builtin.get_url:
+        url: "{{ __s3_artifact_delivery_url__ }}"
+        dest: "{{ s3_artifact_delivery_destination }}"
+        checksum: "sha256:{{ s3_artifact_delivery_checksum }}"
+        force: false
+        mode: "{{ s3_artifact_delivery_posix_mode }}"
+        timeout: "{{ s3_artifact_delivery_transfer_timeout_seconds }}"
+
+    - name: 'S3 FETCH | Convert A POSIX Transport Loss To A Controller Failure'
+      when:
+        - (s3_artifact_delivery_platform | lower) == 'posix'
+        - __s3_artifact_delivery_fetch_result__.unreachable | default(false) | bool
+      delegate_to: 'localhost'
+      become: false
+      ansible.builtin.fail:
+        msg: 'The target became unreachable while fetching the artifact.'
+
+    - name: 'S3 FETCH | Download The Windows Artifact'
+      when: (s3_artifact_delivery_platform | lower) == 'windows'
+      changed_when: false
+      ignore_unreachable: true
+      register: '__s3_artifact_delivery_fetch_result__'
+      ansible.windows.win_get_url:
+        url: "{{ __s3_artifact_delivery_url__ }}"
+        dest: "{{ s3_artifact_delivery_destination }}"
+        checksum: "{{ s3_artifact_delivery_checksum }}"
+        checksum_algorithm: 'sha256'
+        force: false
+        url_timeout: "{{ s3_artifact_delivery_transfer_timeout_seconds }}"
+
+    - name: 'S3 FETCH | Convert A Windows Transport Loss To A Controller Failure'
+      when:
+        - (s3_artifact_delivery_platform | lower) == 'windows'
+        - __s3_artifact_delivery_fetch_result__.unreachable | default(false) | bool
+      delegate_to: 'localhost'
+      become: false
+      ansible.builtin.fail:
+        msg: 'The target became unreachable while fetching the artifact.'
+
+    - name: 'S3 FETCH | Record The Successful Attempt'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_succeeded__: true
+
+  rescue:
+    - name: 'S3 FETCH | Record The Failed Attempt'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_succeeded__: false
+        __s3_artifact_delivery_terminal_failure__: >-
+          {{ __s3_artifact_delivery_redaction_detected__ | default(false) | bool }}
+        __s3_artifact_delivery_error_code__: >-
+          {{
+            (ansible_failed_result.error_code | default('') | string)
+            if (
+              ansible_failed_result.error_code | default('') | string
+            ) is match('^[A-Za-z0-9._-]+$')
+            else ''
+          }}
+
+  always:
+    - name: 'S3 FETCH | Scrub The Bearer URL Fact'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_url__: ''
+        cacheable: false
+
+    - name: 'S3 FETCH | Scrub The Signing, Fetch, And Automatic Failure Results'
+      ansible.builtin.set_fact:
+        __s3_artifact_delivery_presign_result__: ''
+        __s3_artifact_delivery_fetch_result__: ''
+        ansible_failed_result: ''
+
+    - name: 'S3 FETCH | Scrub The Attempt Credential'
+      ansible.builtin.include_tasks: 'scrub_session.yml'
