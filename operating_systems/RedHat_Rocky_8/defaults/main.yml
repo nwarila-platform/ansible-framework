@@ -1,0 +1,108 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Overridable inputs for 'tasks/bootstrap.yml'.                                               #
+#                                                                                             #
+# WHY FLAT, PREFIXED KEYS: the v2.2.0 loader retained in RedHat_Rocky_10 expects a             #
+# '<role_name>_defaults' dict, but bootstrap.yml is called directly with include_role or        #
+# import_role + tasks_from 'bootstrap'. The generic tasks/main.yml entry is a loud guard        #
+# because applying that loader's ENV contract and pre-bootstrap remote work would be wrong      #
+# for first deployment. A named role entry still loads this file and vars/main.yml, so flat     #
+# role-default keys are always in scope and override cleanly from group_vars / host_vars /      #
+# extra-vars at ordinary defaults precedence.                                                   #
+# =========================================================================================== #
+
+#region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
+
+# The python3.12 interpreter installed by 'rhel8_bootstrap_packages' below. RPM-owned at this
+# path on RHEL/Rocky 8 deterministically, so it is a literal rather than a 'which' lookup —
+# discovery would cost two extra tasks plus a 'which' package, and introduces a PATH dependency
+# inside a become context. Exposed as a knob only so a non-standard build can redirect it.
+rhel8_bootstrap_python_bin: '/usr/bin/python3.12'
+
+# Parent directory of the venv. Root-owned, SELinux usr_t (exec-capable).
+rhel8_bootstrap_venv_root: '/opt/ansible'
+
+# CROSS-REPO CONTRACT — DO NOT CHANGE THIS DEFAULT LIGHTLY.
+# '/opt/ansible/venv/bin/python' is already a hardcoded literal in two shipping roles, neither
+# of which reads any variable:
+#   * ansible-framework/applications/wazuh_agent/tasks/present_redhat.yml   (task-level
+#     'ansible_python_interpreter' on the amazon.aws.s3_object download)
+#   * secure-wazuh/ansible/applications/wazuh_server/tasks/present_redhat.yml (same, block-level)
+# Overriding this key builds the venv somewhere else while those two roles keep pointing at the
+# old path — the failure surfaces much later as a boto3 error that names nothing about the venv.
+# Alternate paths are therefore unsupported unless both consumers are parameterized to use the
+# same value; keep this contract fixed at '/opt/ansible/venv'.
+rhel8_bootstrap_venv_path: '/opt/ansible/venv'
+
+#endregion --- [ Interpreter And Venv Layout ] ------------------------------------------------ #
+
+#region ------ [ Package And Python Dependency Sets ] ----------------------------------------- #
+
+# RHEL/Rocky 8 ships the libselinux / dnf / firewalld C bindings ONLY for platform-python (3.6):
+# no python3.12-libselinux exists in AppStream or EPEL. python3-libselinux is therefore the
+# PLATFORM-python binding, and it is required for the 'selevel/serole/setype/seuser' parameters
+# used by this role's directory tasks — a bare Rocky 8 image may not have it.
+rhel8_bootstrap_packages:
+  - 'python3.12'
+  - 'python3-pip'
+  - 'python3-setuptools'
+  - 'python3-libselinux'
+
+# Bumped to latest FIRST, in their own task, so the pinned boto3/botocore install that follows
+# resolves under a modern pip resolver. This ordering is load-bearing — see bootstrap.yml.
+rhel8_bootstrap_pip_tooling:
+  - 'pip'
+  - 'setuptools'
+  - 'wheel'
+  - 'packaging'
+
+# Floor + ceiling, never 'state: latest'. The floor (1.34.0) matches the amazon.aws collection's
+# own documented minimum; the ceiling guards a reproducible hardened build against an unreviewed
+# future major bump pulled from public PyPI on every redeploy. Raise deliberately once vetted.
+rhel8_bootstrap_boto3_pins:
+  - 'boto3>=1.34.0,<2.0.0'
+  - 'botocore>=1.34.0,<2.0.0'
+
+#endregion --- [ Package And Python Dependency Sets ] ----------------------------------------- #
+
+#region ------ [ Prerequisite Role(s) ] ------------------------------------------------------- #
+
+# EMPTY BY DEFAULT — deliberately. The extension point exists (bootstrap.yml keeps the
+# loop + include_role wiring), but nothing is enabled out of the box:
+#   * 'ca_certificates' DOES NOT EXIST in this framework (applications/ holds exactly
+#     linux_disk_manager, python3_pip, wazuh_agent). include_role on it would hard-fail.
+#   * 'python3_pip' exists but FAILS ON RHEL 8, which is the actual target here. Its
+#     first_found ladder searches present_redhat_redhat_8.yml / present_redhat_redhat.yml /
+#     present_redhat.yml; the role ships only present_redhat_rocky.yml and
+#     present_debian_ubuntu.yml, so all three miss and its 'OS-specific task file not found'
+#     fail fires. It works on Rocky 8 only. It also hard-asserts 'ENV' before doing anything,
+#     and bootstrap.yml runs on brand-new systems where ENV may not be in scope.
+# A caller on Rocky 8 with ENV set can opt in by setting this list.
+rhel8_bootstrap_prerequisite_roles: []
+
+#endregion --- [ Prerequisite Role(s) ] ------------------------------------------------------- #
+
+#region ------ [ Host Identity ] -------------------------------------------------------------- #
+
+# Gates hostname and /etc/hosts normalisation. It defaults OFF because host identity belongs to
+# the AMI/Terraform layer in the product this bootstrap was promoted from. Leaving it off also
+# avoids needless /etc changes and the resulting file-integrity-monitoring noise. Callers that
+# deliberately delegate host identity to Ansible can opt in.
+rhel8_bootstrap_manage_hostname: false
+
+#endregion --- [ Host Identity ] -------------------------------------------------------------- #
+
+#region ------ [ Ansible Remote-Tmp Base ] ---------------------------------------------------- #
+
+# DERIVED, not hardcoded: whatever the CALLER configured as the shell's remote_tmp. A shared
+# framework role must not bake a product-specific literal, and this expression auto-tracks the
+# caller's ansible.cfg with zero coupling. The 'ansible_remote_tmp' prefix honours a per-host
+# override that the controller-side config lookup cannot see.
+# Audited against ansible-core 2.16.19: resolves to '~/.ansible/tmp' with no cfg, and to the
+# product's '/opt/wazuh-deploy/.tmp' when run under secure-wazuh's ansible/ansible.cfg.
+rhel8_bootstrap_remote_tmp_base: >-
+  {{ ansible_remote_tmp
+     | default(lookup('ansible.builtin.config', 'remote_tmp', plugin_type='shell', plugin_name='sh')) }}
+
+#endregion --- [ Ansible Remote-Tmp Base ] ---------------------------------------------------- #

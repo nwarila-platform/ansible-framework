@@ -1,0 +1,24 @@
+---
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/redhat_dev.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Per-env overlay loaded by the generic role loader when os_family=redhat AND ENV=dev.
+#
+# Per-env operator action when bumping the agent version: upload the new RPM to
+# `s3://<bucket>/applications/wazuh-agent/wazuh-agent-<ver>-1.x86_64.rpm`, then update
+# `s3.agent_rpm_key` and `s3.agent_rpm_sha256` below. Compute the SHA with:
+#   sha256sum wazuh-agent-<ver>-1.x86_64.rpm
+# Current dev SHA is for the official Wazuh 4.14.5-1 x86_64 agent RPM.
+#
+# s3.bucket is RUNTIME-SUBSTITUTED (secure-wazuh ADR-0004), not operator-filled. The consuming
+# deployment reads the controller's required ANSIBLE_S3_BUCKET environment value and injects it
+# through the wazuh_agent override dict. Workflows derive and export that value; local operators
+# export the bucket name explicitly. Do NOT hand-edit this literal: it is a deliberate fail-fast
+# TRIPWIRE that role validation rejects before any AWS call. The real account id is never
+# committed to any repo.
+# =========================================================================================== #
+
+s3:
+  bucket: '<account-id>-ansible'
+  agent_rpm_key: 'applications/wazuh-agent/wazuh-agent-4.14.5-1.x86_64.rpm'
+  agent_rpm_sha256: 'e320cdd225e56b311557de7b7ed9f176f10ef20315beac3de8846705495990da'

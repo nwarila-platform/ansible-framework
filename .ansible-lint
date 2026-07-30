@@ -14,13 +14,13 @@ profile: safety
 # -----------------------------------------------------------------------------
 # Exclude Paths
 # -----------------------------------------------------------------------------
-# Avoid linting stub/placeholder files and test fixtures that are not yet
-# implemented. molecule/ and tests/ will be re-enabled when populated.
+# The Makefile supplies every cached or visible role YAML path explicitly because bare discovery
+# sees no role files through this repository's deny-all .gitignore. RedHat_Rocky_9 alone remains
+# excluded because it is an empty stub.
 # -----------------------------------------------------------------------------
 exclude_paths:
   - .git/
   - .github/
-  - operating_systems/RedHat_Rocky_8/
   - operating_systems/RedHat_Rocky_9/
 
 # -----------------------------------------------------------------------------
@@ -32,6 +32,11 @@ exclude_paths:
 warn_list:
   - experimental              # Rules still being stabilized in ansible-lint
   - yaml[line-length]         # Already warned by yamllint; avoid double noise
+  # The framework uses paired #region/#endregion markers as navigational delimiters. Their
+  # no-space spelling is intentional and shared by every loader and bootstrap task list.
+  - yaml[comments]
+  # Public OS role names retain their established CamelCase product identifiers.
+  - role-name
 
 # -----------------------------------------------------------------------------
 # Offline Mode

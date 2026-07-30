@@ -1,0 +1,147 @@
+---
+
+- name: 'OS Bootstrap | Initialize Dispatch State'
+  ansible.builtin.set_fact:
+    __os_bootstrap_detected_os__: ''
+    __os_bootstrap_detection_signal__: ''
+    __os_bootstrap_target_role__: ''
+    __os_bootstrap_available_roles__: []
+
+- name: 'OS Bootstrap | Record Shipped Bootstrap Roles'
+  loop: >-
+    {{
+      os_bootstrap_role_map | default({}) | dict2items
+      | map(attribute='value') | unique | sort | list
+    }}
+  loop_control:
+    loop_var: '__os_bootstrap_candidate_role__'
+  when: >-
+    query(
+      'ansible.builtin.fileglob',
+      (role_path | default('') | dirname) ~ '/' ~
+      (__os_bootstrap_candidate_role__ | default('')) ~ '/tasks/bootstrap.yml'
+    ) | length == 1
+  ansible.builtin.set_fact:
+    __os_bootstrap_available_roles__: >-
+      {{
+        (__os_bootstrap_available_roles__ | default([]))
+        + [__os_bootstrap_candidate_role__ | default('')]
+      }}
+
+- name: 'OS Bootstrap | Detect From Existing OS Family Fact'
+  when: (ansible_facts.os_family | default('') | string | trim | length) > 0
+  ansible.builtin.set_fact:
+    __os_bootstrap_detected_os__: "{{ ansible_facts.os_family | default('') | string | trim }}"
+    __os_bootstrap_detection_signal__: 'pre-populated ansible_facts.os_family'
+
+- name: 'OS Bootstrap | Detect Windows From EC2 Platform'
+  when:
+    - (__os_bootstrap_detected_os__ | default('') | length) == 0
+    - (platform | default('') | string | lower | trim) == 'windows'
+  ansible.builtin.set_fact:
+    __os_bootstrap_detected_os__: 'Windows'
+    __os_bootstrap_detection_signal__: 'inventory hostvar platform=Windows'
+
+- name: 'OS Bootstrap | Detect Windows From PowerShell Hint'
+  when:
+    - (__os_bootstrap_detected_os__ | default('') | length) == 0
+    - (ansible_shell_type | default('') | string | lower | trim) == 'powershell'
+  ansible.builtin.set_fact:
+    __os_bootstrap_detected_os__: 'Windows'
+    __os_bootstrap_detection_signal__: 'connection hint ansible_shell_type=powershell'
+
+- name: 'OS Bootstrap | Detect Windows From Connection Hint'
+  when:
+    - (__os_bootstrap_detected_os__ | default('') | length) == 0
+    - (ansible_connection | default('') | string | lower | trim) in ['winrm', 'psrp']
+  ansible.builtin.set_fact:
+    __os_bootstrap_detected_os__: 'Windows'
+    __os_bootstrap_detection_signal__: >-
+      connection hint ansible_connection={{ ansible_connection | default('') | string | lower | trim }}
+
+- name: 'OS Bootstrap | Mark Fact-Gather Fallback'
+  when: (__os_bootstrap_detected_os__ | default('') | length) == 0
+  ansible.builtin.set_fact:
+    __os_bootstrap_detection_signal__: 'fallback ansible.builtin.setup'
+
+- name: 'OS Bootstrap | Detect From Fact-Gather Fallback'
+  when: (__os_bootstrap_detected_os__ | default('') | length) == 0
+  block:
+    - name: 'OS Bootstrap | Gather OS Family Fact As Last Resort'
+      register: '__os_bootstrap_fallback_result__'
+      ignore_unreachable: true
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - 'distribution'
+
+    - name: 'OS Bootstrap | Require OS Family From Fact-Gather Fallback'
+      ansible.builtin.assert:
+        that:
+          - ((__os_bootstrap_fallback_result__ | default({})) is not failed)
+          - ((__os_bootstrap_fallback_result__ | default({})) is not unreachable)
+          - (ansible_facts.os_family | default('') | string | trim | length) > 0
+        fail_msg: >-
+          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
+          '{{ __os_bootstrap_detection_signal__ | default('') }}'. The fallback fact gather
+          did not return ansible_facts.os_family. Available bootstrap roles:
+          {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
+          default('<none>', true) }}.
+        quiet: true
+
+    - name: 'OS Bootstrap | Record Fallback OS Family'
+      ansible.builtin.set_fact:
+        __os_bootstrap_detected_os__: "{{ ansible_facts.os_family | default('') | string | trim }}"
+        __os_bootstrap_detection_signal__: 'fallback-gathered ansible_facts.os_family'
+
+  rescue:
+    - name: 'OS Bootstrap | Fail When Fact-Gather Fallback Cannot Detect OS'
+      ansible.builtin.fail:
+        msg: >-
+          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
+          '{{ __os_bootstrap_detection_signal__ | default('') }}'. Detail:
+          {{ ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
+          Available bootstrap roles:
+          {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
+          default('<none>', true) }}.
+
+- name: 'OS Bootstrap | Resolve Bootstrap Role'
+  ansible.builtin.set_fact:
+    __os_bootstrap_target_role__: >-
+      {{
+        (os_bootstrap_role_map | default({})).get(
+          __os_bootstrap_detected_os__ | default(''),
+          ''
+        )
+      }}
+
+- name: 'OS Bootstrap | Fail When OS Has No Route'
+  when: (__os_bootstrap_target_role__ | default('') | length) == 0
+  ansible.builtin.fail:
+    msg: >-
+      OS bootstrap dispatch failed. Detected OS: '{{ __os_bootstrap_detected_os__ |
+      default('<none>', true) }}'. Detection signal:
+      '{{ __os_bootstrap_detection_signal__ | default('<none>', true) }}'. No bootstrap role is
+      mapped for that OS. Available bootstrap roles:
+      {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
+      default('<none>', true) }}.
+
+- name: 'OS Bootstrap | Fail When Mapped Role Is Not Shipped'
+  when: >-
+    (__os_bootstrap_target_role__ | default('')) not in
+    (__os_bootstrap_available_roles__ | default([]))
+  ansible.builtin.fail:
+    msg: >-
+      OS bootstrap dispatch failed. Detected OS: '{{ __os_bootstrap_detected_os__ |
+      default('<none>', true) }}'. Detection signal:
+      '{{ __os_bootstrap_detection_signal__ | default('<none>', true) }}'. It resolved to
+      '{{ __os_bootstrap_target_role__ | default('<none>', true) }}', but that role does not
+      ship a tasks/bootstrap.yml entry point in this framework. Available bootstrap roles:
+      {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
+      default('<none>', true) }}.
+
+- name: 'OS Bootstrap | Run Selected Bootstrap Role'
+  ansible.builtin.include_role:
+    name: "{{ __os_bootstrap_target_role__ | default('') }}"
+    tasks_from: 'bootstrap'
