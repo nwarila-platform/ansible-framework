@@ -39,10 +39,9 @@ warn_list:
 # Rules intentionally disabled with documented rationale. Keep this list
 # short — each entry represents a debt to revisit.
 # -----------------------------------------------------------------------------
-skip_list:
-  # no-free-form: Our task names use the 'name: value\n  module:' style
-  # which older ansible-lint versions flag. Acceptable until upgrading baseline.
-  # - no-free-form
+# (empty) Every entry here was commented out, which made the key parse as null.
+# ansible-lint >= 26 requires an array, so the key is omitted entirely rather than
+# carried as `skip_list: []` — an absent skip list and an empty one behave alike.
 
 # -----------------------------------------------------------------------------
 # Offline Mode
