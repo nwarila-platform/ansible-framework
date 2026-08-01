@@ -1,5 +1,5 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/main.yml'                                      | Version 3.2.1 #
+# File: '{{ role_path }}/tasks/main.yml'                                      | Version 3.2.2 #
 # --- [ Description ] ----------------------------------------------------------------------- #
 #                                                                                             #
 #                        NO ROLE CUSTOMIZATIONS SHOULD HAPPEN IN THIS FILE                    #
@@ -101,6 +101,7 @@
         # Gather only the 'distribution' fact subset to populate os_family, distribution,
         # and distribution_major_version. Skipped if these facts already exist (e.g.,
         # from gather_facts: true in the playbook or a prior role).
+        # The unconditional postcondition below verifies all three facts are defined.
         # Uses ansible_facts.* namespace consistently — immune to inject_facts_as_vars.
         - name: "INIT | Loading Required Operating System (OS) Facts"
           when: >-
@@ -114,20 +115,38 @@
               - '!min'
               - 'distribution'
 
+        # Fail before any OS-specific work if fact gathering did not satisfy its contract.
+        - name: 'INIT | Verifying Required Operating System (OS) Facts'
+          ansible.builtin.assert:
+            that:
+              - ansible_facts.os_family is defined
+              - ansible_facts.distribution is defined
+              - ansible_facts.distribution_major_version is defined
+            fail_msg: >-
+              Required Operating System (OS) facts remain undefined after fact gathering.
+              Missing facts:
+              {% if ansible_facts.os_family is not defined %}ansible_facts.os_family;{% endif %}
+              {% if ansible_facts.distribution is not defined %}ansible_facts.distribution;{% endif %}
+              {% if ansible_facts.distribution_major_version is not defined %}
+              ansible_facts.distribution_major_version;
+              {% endif %}
+            quiet: true
+
         #endregion --- [ Initialization: Loading Required Operating System (OS) Facts ] ------------ #
 
         #region ------ [ Initialization: Loading Installed Package Facts ] -------------------------- #
 
-        # Populate ansible_facts.packages with the POSIX remote host's installed package list.
+        # Populate ansible_facts.packages with the known non-Windows host's installed package list.
         # Skipped if already populated (e.g., from gather_facts: true in the playbook or a
-        # prior role). Uses manager: auto so this task is POSIX-family agnostic — the correct
-        # backend (rpm, apt, etc.) is selected based on what is available on the target.
+        # prior role), or on Windows. The postcondition above guarantees os_family is defined
+        # before this guard. Uses manager: auto so the correct backend (rpm, apt, etc.) is
+        # selected based on what is available on the target.
         # OS-specific task files can assert against ansible_facts.packages without needing
         # their own gather task.
         - name: 'INIT | Loading Installed Package Facts'
           when:
             - ansible_facts.packages is not defined
-            - (ansible_facts.os_family | default('') | lower) != 'windows'
+            - (ansible_facts.os_family | lower) != 'windows'
 
           ansible.builtin.package_facts:
             manager: auto
@@ -262,9 +281,10 @@
 
         #region ------ [ Initialization: Creating Temp Directory ] --------------------------------- #
 
-        # Create a temporary directory on the POSIX remote host for staging files during role
-        # execution (e.g., downloaded packages, generated configs). Automatically cleaned
-        # up in the 'always' block. Disable by setting '<role_name>.temp_dir: false'.
+        # Create a temporary directory on a known non-Windows remote host for staging files
+        # during role execution (e.g., downloaded packages, generated configs). The OS-fact
+        # postcondition guarantees os_family is defined before this guard. Automatically
+        # cleaned up in the 'always' block. Disable by setting '<role_name>.temp_dir: false'.
         # The path is stored in '__temp_dir__.path' for use in OS-specific task files.
         - name: 'INIT | Creating Temporary Directory'
           become: true
@@ -272,20 +292,21 @@
           register: '__temp_dir__'
           when:
             - (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
-            - (ansible_facts.os_family | default('') | lower) != 'windows'
+            - (ansible_facts.os_family | lower) != 'windows'
 
           ansible.builtin.tempfile:
             state: directory
             prefix: "ansible_{{ role_name }}_"
 
         # Lock down the temp directory. ansible.builtin.tempfile does not support
-        # owner/group/mode/SELinux params, so a separate file task is required.
+        # owner/group/mode/SELinux params, so a separate file task is required. The
+        # OS-fact postcondition guarantees os_family is defined before this guard.
         - name: 'INIT | Securing Temporary Directory'
           become: true
           changed_when: false
           when:
             - __temp_dir__.path is defined
-            - (ansible_facts.os_family | default('') | lower) != 'windows'
+            - (ansible_facts.os_family | lower) != 'windows'
 
           ansible.builtin.file:
             path: "{{ __temp_dir__.path }}"
@@ -363,14 +384,17 @@
   # if the role errors out, preventing orphaned files from accumulating on the target.
   always:
 
-    # Remove the POSIX temp directory created during initialization. Skipped if temp_dir
-    # was disabled or if creation failed (i.e., __temp_dir__.path is not set).
+    # Remove the POSIX temp directory created during initialization. The os_family
+    # definedness check is deliberately first so a failed fact postcondition cannot
+    # dereference a missing family through stale registered __temp_dir__ state. Skipped
+    # if temp_dir was disabled or if creation failed (i.e., __temp_dir__.path is not set).
     - name: 'Cleanup | Removing Temp File(s)'
       become: true
       changed_when: false
       when:
+        - ansible_facts.os_family is defined
         - (( __temp_dir__ is defined ) and ( __temp_dir__.path is defined ))
-        - (ansible_facts.os_family | default('') | lower) != 'windows'
+        - (ansible_facts.os_family | lower) != 'windows'
 
       ansible.builtin.file:
         path: "{{ __temp_dir__.path }}"
