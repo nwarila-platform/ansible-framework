@@ -54,7 +54,7 @@ tasks/redhat.yml            ← family-level fallback
 A role like `python3_pip` can ship a single `redhat.yml` that works across all RedHat-family systems, while roles with version-specific logic provide `redhat_rocky_10.yml`.
 
 ### 4. Secure Temp Directory
-A `0700 root:root` temp directory is created before task execution and always cleaned up in an `always:` block — even on failure.
+A `0700 root:root` temp directory is created before task execution only after the required OS facts are verified, when temp-directory staging is enabled, and on non-Windows hosts; when created, it is cleaned up in an `always:` block — even on failure.
 
 ---
 
