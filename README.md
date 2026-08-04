@@ -61,6 +61,10 @@ A role like `python3_pip` can ship a single `redhat.yml` that works across all R
 ### 4. Secure Temp Directory
 After the required OS facts are verified, an enabled temp directory is created as `0700
 root:root` on non-Windows hosts and cleaned up in an `always:` block — even on failure.
+Its parent location is configurable per role via `<role_name>.temp_dir_path` for hosts
+whose default temp location is mounted `noexec` (STIG hardening); the parent must be a
+dedicated, root-controlled absolute path, and an existing parent is validated but never
+modified.
 
 ---
 
