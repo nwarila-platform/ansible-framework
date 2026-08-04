@@ -34,13 +34,16 @@ to select a named task file explicitly with `tasks_from`.
 Config is built from least to most specific, merged with `combine(recursive=True)`:
 
 ```
-role defaults/main.yml
+<role_name>_defaults variable when defined; otherwise {}
   → vars/<os_family>.yml
   → vars/<os_family>_<dist>.yml
   → vars/<os_family>_<dist>_<ver>.yml
   → vars/<os_family>_<dist>_<ver>_<env>.yml
   → caller-supplied role var overrides
 ```
+
+The seed variable may come from any normal Ansible variable source. Merely shipping
+`defaults/main.yml` does not make that variable mandatory.
 
 ### 3. Hierarchical Task Resolution
 The loader selects the **most specific** matching task file that exists:
@@ -54,7 +57,8 @@ tasks/redhat.yml            ← family-level fallback
 A role like `python3_pip` can ship a single `redhat.yml` that works across all RedHat-family systems, while roles with version-specific logic provide `redhat_rocky_10.yml`.
 
 ### 4. Secure Temp Directory
-A `0700 root:root` temp directory is created before task execution only after the required OS facts are verified, when temp-directory staging is enabled, and on non-Windows hosts; when created, it is cleaned up in an `always:` block — even on failure.
+After the required OS facts are verified, an enabled temp directory is created as `0700
+root:root` on non-Windows hosts and cleaned up in an `always:` block — even on failure.
 
 ---
 
@@ -111,7 +115,10 @@ yamllint --config-file .yamllint.yml .
 
 ### Overriding Defaults
 
-All role defaults live under a namespaced key in `defaults/main.yml`. Override specific settings without replacing the entire structure:
+Shared-loader application roles conventionally define a `<role_name>_defaults` mapping in
+`defaults/main.yml`. This is a repository convention, not a loader prerequisite: when the
+variable is undefined, the loader seeds an empty mapping before applying overlays and caller
+overrides. Override specific settings without replacing the entire structure:
 
 ```yaml
 # group_vars/prod.yml
