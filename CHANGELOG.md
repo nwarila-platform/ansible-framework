@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.2](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.1...v0.1.2) (2026-08-04)
+
+
+### Features
+
+* **loader:** configurable temp-directory parent for noexec-hardened hosts ([#53](https://github.com/nwarila-platform/ansible-framework/issues/53)) ([6878173](https://github.com/nwarila-platform/ansible-framework/commit/6878173fca2ad9928687edebbc1cf4f2ec085156))
+
+
+### Bug Fixes
+
+* **loader:** stop inferring a required defaults namespace from file presence ([#52](https://github.com/nwarila-platform/ansible-framework/issues/52)) ([2ad0afa](https://github.com/nwarila-platform/ansible-framework/commit/2ad0afad4d33ac27d1f947c551de8d2dc458c87c))
+* **loader:** verify required operating system facts before OS-specific work ([#51](https://github.com/nwarila-platform/ansible-framework/issues/51)) ([89c760a](https://github.com/nwarila-platform/ansible-framework/commit/89c760a6280daafc3be6be8810395bc96c0f3073))
+* **windows_disk_manager:** classify observed disk state and refuse foreign contents ([5f5cae8](https://github.com/nwarila-platform/ansible-framework/commit/5f5cae8104a8a64fd923e5c20271d0591d891bc9))
+
 ## [0.1.1](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.0...v0.1.1) (2026-07-30)
 
 
