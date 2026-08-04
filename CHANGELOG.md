@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.3](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.2...v0.1.3) (2026-08-04)
+
+
+### Features
+
+* **python3_pip:** validate the merged-seed dispatch contract at loader INIT ([#58](https://github.com/nwarila-platform/ansible-framework/issues/58)) ([141bf4b](https://github.com/nwarila-platform/ansible-framework/commit/141bf4b0d22a7032f74dbf240f1210d9c0943901))
+
+
+### CI/CD
+
+* **pre-commit:** drop the continue-on-error mask — the hook stage gates for real ([#57](https://github.com/nwarila-platform/ansible-framework/issues/57)) ([a3fae03](https://github.com/nwarila-platform/ansible-framework/commit/a3fae03af2edb0f2cd8a3e32195b5761febd7af3))
+
+
+### Miscellaneous
+
+* **ci:** bump googleapis/release-please-action from 4.4.0 to 5.0.0 ([#54](https://github.com/nwarila-platform/ansible-framework/issues/54)) ([d9d84c7](https://github.com/nwarila-platform/ansible-framework/commit/d9d84c732268f2e07c8231734cfc2820f0a593f7))
+* **ci:** truthful pin comments; working, aligned pre-commit hook stage ([#56](https://github.com/nwarila-platform/ansible-framework/issues/56)) ([5f5b487](https://github.com/nwarila-platform/ansible-framework/commit/5f5b48720a3b55465eba6eb4bbf281527e04d5f6))
+
 ## [0.1.2](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.1...v0.1.2) (2026-08-04)
 
 
