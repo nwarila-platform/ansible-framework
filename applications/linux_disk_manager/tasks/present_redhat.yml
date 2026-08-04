@@ -1,7 +1,7 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/tasks/present_redhat.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
-# RHEL-family implementation of linux_disk_manager, resolved by the v3.2.0 loader via
+# RHEL-family implementation of linux_disk_manager, resolved by the shared loader via
 # first_found. Receives the merged running config as 'config'.
 #
 # TWO KINDS OF LOGIC, kept distinct:

@@ -36,7 +36,9 @@ Config is built from least to most specific, merged with `combine(recursive=True
 ```
 <role_name>_defaults variable when defined; otherwise {}
   → vars/<os_family>.yml
+  → vars/<os_family>_<env>.yml
   → vars/<os_family>_<dist>.yml
+  → vars/<os_family>_<dist>_<env>.yml
   → vars/<os_family>_<dist>_<ver>.yml
   → vars/<os_family>_<dist>_<ver>_<env>.yml
   → caller-supplied role var overrides
