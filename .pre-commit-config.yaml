@@ -69,7 +69,10 @@ repos:
     rev: v26.6.0
     hooks:
       - id: ansible-lint
-        # Pass the ansible.cfg explicitly so roles_path is resolved correctly
+        # v26.6.0's hook manifest pins language_version python3.14, which neither the
+        # CI runner nor developer machines are guaranteed to have; 3.12 is what the
+        # requirements-based CI lint jobs prove this tree against.
+        language_version: python3.12
         additional_dependencies:
           - ansible-core>=2.21.2,<2.22
 
