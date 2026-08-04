@@ -122,11 +122,12 @@ jobs:
         run: make ansible-lint
 
   # ---------------------------------------------------------------------------
-  # Pre-Commit (full suite, non-blocking — informational only)
+  # Pre-Commit (full suite, blocking)
   # ---------------------------------------------------------------------------
   # Runs the full pre-commit suite to catch any hooks developers may have
-  # skipped locally. Results are reported but do not block merges while the
-  # conventional-commit hook is being adopted.
+  # skipped locally, and fails the job when a hook fails. Only
+  # no-commit-to-branch is skipped: it guards interactive commits, and on push
+  # events to main HEAD is main, which would fail the job by design.
   # ---------------------------------------------------------------------------
   pre-commit:
     name: Pre-Commit Hooks
