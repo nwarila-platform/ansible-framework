@@ -1,0 +1,58 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the shared loader's
+# 'INIT | Validating Merged Configuration' hook — immediately after defaults -> overlays ->
+# overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
+# config as 'config' (see tasks/main.yml INIT stage).
+#
+# WHY THIS EXISTS: present_redhat_rocky.yml's package install is gated by
+# `when: ansible_facts.os_family in config.package_manager`, with NO fail branch, and the
+# pip.conf deployment iterates `config.templates`. A merged config that lost its seed — the
+# exact shape of an orphaned or clobbered 'python3_pip_defaults' after a role-directory
+# rename (the runtime assert that guarded this was deliberately removed in PR #52; the
+# repo-side loader-defaults-convention-check catches renames at PR time but cannot see
+# consumer-side variable clobbering) — makes every gated task silently skip: no package
+# installed, no pip.conf managed, self-upgrade unset, and the final `pip3 --version` check
+# still passes on any already-provisioned host. The role exits GREEN while managing
+# nothing. Asserting here fails the whole role loudly before that can happen.
+#
+# STATE SCOPE: the loader runs this file for EVERY state (present/absent/clean), but only
+# the present path dispatches on package_manager/templates — clean removes caches and
+# absent uninstalls, both by explicit path — so the assert below is scoped to
+# state=present and is a deliberate no-op otherwise (a bare `-e state=clean` run must not
+# be blocked on inputs it never reads).
+#
+# TEMPLATES SHAPE: `templates` must be a mapping when present, but MAY be legitimately
+# empty — a consumer who wants pip installed without a managed pip.conf sets
+# `python3_pip: {templates: {}}` deliberately, so emptiness alone is not asserted.
+# =========================================================================================== #
+
+#region ------ [ Merged-seed contract guard ] -------------------------------------------------- #
+
+- name: 'BEGIN | Assert Merged Config Carries The Dispatch Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __pm__: "{{ config.package_manager | default({}, true) }}"
+    __templates__: "{{ config.templates | default({}, true) }}"
+    __self_upgrade__: "{{ config.self_upgrade | default({}, true) }}"
+  ansible.builtin.assert:
+    that:
+      - __pm__ is mapping
+      - (__pm__ | length) > 0
+      - ansible_facts.os_family in __pm__
+      - __templates__ is mapping
+      - __self_upgrade__ is mapping
+    fail_msg: >-
+      python3_pip's merged config is missing its dispatch contract on this
+      {{ ansible_facts.os_family }} host (package_manager families:
+      {{ __pm__ | list }}). The OS task file only installs when the host's os_family has a
+      package_manager entry, and pip.conf deployment reads `templates` — with the contract
+      absent every managed task silently skips and the role exits green while managing
+      nothing. This is the signature of an orphaned or clobbered 'python3_pip_defaults'
+      seed (e.g. a role-directory rename or a group_vars override replacing the whole
+      dict); see PR #52 and the loader-defaults-convention-check for the contract's
+      history. Restore the namespaced defaults seed or supply a complete override dict.
+    quiet: true
+
+#endregion --- [ Merged-seed contract guard ] -------------------------------------------------- #
