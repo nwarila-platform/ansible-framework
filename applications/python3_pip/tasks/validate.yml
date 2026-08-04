@@ -1,0 +1,94 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the shared loader's
+# 'INIT | Validating Merged Configuration' hook — immediately after defaults -> overlays ->
+# overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
+# config as 'config' (see tasks/main.yml INIT stage).
+#
+# WHY THIS EXISTS: the present AND absent task files gate their package work on
+# `when: ansible_facts.os_family in config.package_manager`, with NO fail branch, and the
+# pip.conf deployment/removal iterates `config.templates`. A merged config whose
+# package_manager key is present but empty, or lacks this host's family — the shape of a
+# clobbered 'python3_pip_defaults' seed or a group_vars override replacing the dict — makes
+# every gated task silently skip while the closing `pip3 --version` check passes on any
+# already-provisioned host: the role exits GREEN having installed, upgraded, configured, or
+# UNINSTALLED nothing. Worse, with an emptied config the self-upgrade task still runs
+# (`enabled` defaults true), pulling latest pip unpinned. A fully-absent config (role-dir
+# rename orphan) fails loudly today but with a cryptic attribute error. The runtime
+# defaults-contract assert that guarded some of this was deliberately removed in PR #52;
+# the repo-side loader-defaults-convention-check catches renames at PR time but cannot see
+# consumer-side variable clobbering. Asserting here fails the role loudly and legibly
+# before any of that can happen.
+#
+# STATE SCOPE: package_manager/templates are asserted for present AND absent — both states
+# dispatch on them identically (absent_redhat_rocky.yml and absent_debian_ubuntu.yml carry
+# the same no-fail-branch gate). clean reads no config at all (verified) and stays
+# unblocked. The self-upgrade shape matters only to the present path.
+#
+# WINDOWS / UNSUPPORTED FAMILIES: the loader includes this file on every OS, but on
+# Windows the loader's own 'MAIN | OS-specific task file not found' failure is the
+# accurate diagnosis (this role ships no Windows task files), so the asserts skip there
+# rather than misreporting an orphaned seed. Other unsupported families (e.g. Suse) fail
+# item 3 with a message that names the unsupported-platform alternative explicitly.
+#
+# TEMPLATES SHAPE: `templates` must be a mapping but MAY be empty. Note that overriding
+# with `templates: {}` does NOT clear seeded entries — the loader's recursive combine
+# treats an empty mapping as a no-op — so emptiness here means a deliberately empty
+# fully-supplied override dict, and emptiness alone is not asserted.
+# =========================================================================================== #
+
+#region ------ [ Merged-seed contract guards ] ------------------------------------------------- #
+
+- name: 'BEGIN | Assert Merged Config Carries The Dispatch Contract'
+  when:
+    - (state | default('present') | string | lower | trim) in ['present', 'absent']
+    - (ansible_facts.os_family | lower) != 'windows'
+  vars:
+    __pm__: "{{ config.package_manager | default({}) }}"
+    __templates__: "{{ config.templates | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - __pm__ is mapping
+      - (__pm__ | length) > 0
+      - ansible_facts.os_family in __pm__
+      - __templates__ is mapping
+    fail_msg: >-
+      {% if __pm__ is not mapping %}
+      python3_pip.package_manager is {{ __pm__ | type_debug }}, expected a mapping keyed by
+      os_family — a non-mapping value makes the OS task files' dispatch gate skip or error.
+      {% elif (__pm__ | length) == 0 %}
+      python3_pip's merged config has an EMPTY package_manager — the signature of a
+      clobbered 'python3_pip_defaults' seed (e.g. a group_vars override replacing the whole
+      dict). Every install/uninstall gate would silently skip and the role would exit green
+      while managing nothing; see PR #52 and the loader-defaults-convention-check for the
+      contract's history. Restore the namespaced defaults seed or supply a complete
+      override dict.
+      {% elif ansible_facts.os_family not in __pm__ %}
+      This {{ ansible_facts.os_family }} host has no python3_pip.package_manager entry
+      (supported families: {{ __pm__ | list }}). Either this platform is unsupported by the
+      role — add a family entry and matching task files — or an override clobbered the
+      family key.
+      {% else %}
+      python3_pip.templates is {{ __templates__ | type_debug }}, expected a mapping of
+      destination paths to template definitions (an empty mapping is valid).
+      {% endif %}
+    quiet: true
+
+- name: 'BEGIN | Assert Self-Upgrade Shape'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | lower) != 'windows'
+  vars:
+    __self_upgrade__: "{{ config.self_upgrade | default({}) }}"
+  ansible.builtin.assert:
+    that:
+      - __self_upgrade__ is mapping
+    fail_msg: >-
+      python3_pip.self_upgrade is {{ __self_upgrade__ | type_debug }}, expected a mapping
+      (e.g. {enabled: false} to disable). A non-mapping value does NOT disable the
+      self-upgrade — the present path's `enabled` check defaults true — so this fails
+      loudly instead of letting a miswritten disable attempt upgrade pip unpinned.
+    quiet: true
+
+#endregion --- [ Merged-seed contract guards ] ------------------------------------------------- #
