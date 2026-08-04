@@ -63,7 +63,8 @@ After the required OS facts are verified, an enabled temp directory is created a
 root:root` on non-Windows hosts and cleaned up in an `always:` block — even on failure.
 Its parent location is configurable per role via `<role_name>.temp_dir_path` for hosts
 whose default temp location is mounted `noexec` (STIG hardening); the parent must be a
-dedicated absolute path, and an existing parent is validated but never modified.
+dedicated, root-controlled absolute path, and an existing parent is validated but never
+modified.
 
 ---
 

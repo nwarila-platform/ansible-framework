@@ -92,9 +92,12 @@ argument_specs:
             type: 'str'
             required: false
             description: >-
-              Parent directory the temp directory is created under. Unset, the
-              system default temp location is used. Set on hosts whose default
-              temp location is mounted noexec (STIG hardening). Must be a
-              dedicated absolute path: shared system temp locations are
-              refused, an existing parent is validated but never modified, and
-              a missing parent is created 0700 root:root.
+              Parent directory the temp directory is created under. Unset or
+              null, the system default temp location is used. Set on hosts
+              whose default temp location is mounted noexec (STIG hardening).
+              Fail-closed: must be a dedicated absolute path without dot
+              components; empty or relative values and shared system temp
+              locations are refused. An existing parent must be a root-owned
+              directory without group- or world-write (root group-write
+              tolerated); it is validated but never modified. A missing parent
+              is created 0700 root:root.
