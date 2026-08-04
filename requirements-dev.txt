@@ -1,7 +1,9 @@
 # =============================================================================
 # Development Dependencies
 # =============================================================================
-# Pin exact versions for reproducible local and CI environments.
+# Pin tool versions for reproducible local and CI environments: exact pins for
+# linters and pre-commit; ansible-core is a bounded range (>=2.21.2,<2.22) so
+# the toolchain tracks the supported minor.
 # Update via: pip install --upgrade -r requirements-dev.txt
 # Or let Dependabot open a PR automatically.
 # =============================================================================

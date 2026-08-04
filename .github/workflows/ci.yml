@@ -122,11 +122,13 @@ jobs:
         run: make ansible-lint
 
   # ---------------------------------------------------------------------------
-  # Pre-Commit (full suite, non-blocking — informational only)
+  # Pre-Commit (all pre-commit-stage hooks, blocking)
   # ---------------------------------------------------------------------------
-  # Runs the full pre-commit suite to catch any hooks developers may have
-  # skipped locally. Results are reported but do not block merges while the
-  # conventional-commit hook is being adopted.
+  # Runs every pre-commit-stage hook to catch any checks developers may have
+  # skipped locally, and fails the job when a hook fails. commit-msg-stage hooks
+  # (conventional-pre-commit) only run on real commits, never under --all-files.
+  # Only no-commit-to-branch is skipped: it guards interactive commits, and on
+  # push events to main HEAD is main, which would fail the job by design.
   # ---------------------------------------------------------------------------
   pre-commit:
     name: Pre-Commit Hooks
@@ -149,4 +151,8 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files
-        continue-on-error: true  # Remove once adoption is complete
+        env:
+          # no-commit-to-branch protects interactive commits; CI never commits, and
+          # on push events to main HEAD *is* main, which would fail this job by
+          # design. Every other pre-commit-stage hook runs and gates for real.
+          SKIP: no-commit-to-branch
