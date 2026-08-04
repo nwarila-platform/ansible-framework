@@ -1,5 +1,5 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/main.yml'                                      | Version 3.2.3 #
+# File: '{{ role_path }}/tasks/main.yml'                                      | Version 3.3.0 #
 # --- [ Description ] ----------------------------------------------------------------------- #
 #                                                                                             #
 #                        NO ROLE CUSTOMIZATIONS SHOULD HAPPEN IN THIS FILE                    #
@@ -256,6 +256,68 @@
 
         #region ------ [ Initialization: Creating Temp Directory ] --------------------------------- #
 
+        # '<role_name>.temp_dir_path' (str, optional) selects the PARENT directory the temp
+        # directory is created under. Unset, the system default (usually /tmp) is used. Set
+        # it on hosts whose default temp location is mounted 'noexec' (STIG hardening) and
+        # the role must execute staged content. The parent must be a dedicated absolute
+        # path: shared system temp locations are refused, an existing parent is validated
+        # but never modified, and only a missing parent is created 0700 root:root. The
+        # inspection result always re-registers so state from an earlier role in the same
+        # play cannot leak into this role's guards.
+        - name: 'INIT | Inspecting Temp-Dir Parent Override'
+          become: true
+          register: '__temp_parent__'
+          vars:
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('') }}"
+          when:
+            - (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
+            - __temp_dir_path__ | length > 0
+            - (ansible_facts.os_family | lower) != 'windows'
+
+          ansible.builtin.stat:
+            path: "{{ __temp_dir_path__ }}"
+
+        # Fail closed before any privileged filesystem action: the override must be an
+        # absolute, dedicated location, and an existing target must already be a directory
+        # that is not world-writable (a symlink or shared scratch space is refused).
+        - name: 'INIT | Validating Temp-Dir Parent Override'
+          vars:
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('') }}"
+            __temp_dir_parent__: "{{ __temp_dir_path__ | regex_replace('/+$', '') }}"
+          when:
+            - __temp_parent__.stat is defined
+
+          ansible.builtin.assert:
+            that:
+              - __temp_dir_path__ is match('^/')
+              - __temp_dir_parent__ not in ['', '/tmp', '/var/tmp', '/dev/shm']
+              - (not __temp_parent__.stat.exists) or __temp_parent__.stat.isdir
+              - (not __temp_parent__.stat.exists) or (__temp_parent__.stat.mode[-1] not in ['2', '3', '6', '7'])
+            fail_msg: >-
+              '{{ role_name }}.temp_dir_path' ('{{ __temp_dir_path__ }}') must be a dedicated
+              absolute directory: not a shared system temp location, and an existing target
+              must be a non-world-writable directory (symlinks are refused). Refusing to
+              stage files there.
+            quiet: true
+
+        # An existing parent is used as-is so the loader never rewrites the ownership or
+        # mode of a directory it did not create.
+        - name: 'INIT | Ensuring Temp-Dir Parent Exists'
+          become: true
+          changed_when: false
+          vars:
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('') }}"
+          when:
+            - __temp_parent__.stat is defined
+            - not __temp_parent__.stat.exists
+
+          ansible.builtin.file:
+            path: "{{ __temp_dir_path__ }}"
+            state: 'directory'
+            owner: 'root'
+            group: 'root'
+            mode: '0700'
+
         # Create a temporary directory on a known non-Windows remote host for staging files
         # during role execution (e.g., downloaded packages, generated configs). The OS-fact
         # postcondition guarantees os_family is defined before this guard. Automatically
@@ -271,6 +333,7 @@
 
           ansible.builtin.tempfile:
             state: directory
+            path: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default(omit, true) }}"
             prefix: "ansible_{{ role_name }}_"
 
         # Lock down the temp directory. ansible.builtin.tempfile does not support

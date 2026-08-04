@@ -87,3 +87,14 @@ argument_specs:
             description: >-
               Set to false to skip temp directory creation and cleanup. Useful
               when the caller manages its own staging area.
+
+          temp_dir_path:
+            type: 'str'
+            required: false
+            description: >-
+              Parent directory the temp directory is created under. Unset, the
+              system default temp location is used. Set on hosts whose default
+              temp location is mounted noexec (STIG hardening). Must be a
+              dedicated absolute path: shared system temp locations are
+              refused, an existing parent is validated but never modified, and
+              a missing parent is created 0700 root:root.
