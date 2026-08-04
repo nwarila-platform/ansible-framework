@@ -45,7 +45,7 @@ in a separate play, so consumers that split agent deployment across plays must e
 agent-name uniqueness themselves. Keeping all endpoint deployment in one mixed play lets the
 normal Windows-safe loader provide the complete host set to this guard.
 
-`tasks_from: main_windows` remains as a deprecated forwarding alias for loader v3.2.0 so existing
+`tasks_from: main_windows` remains as a deprecated forwarding alias for the shared loader so existing
 callers receive the same behavior. New callers should use the normal role entry point. The alias
 will be removed in loader v4.0.0.
 

@@ -18,7 +18,7 @@
 #   4. That miss then lands on the loader's 'fail' + 'ignore_errors: true' pair, i.e. the role #
 #      prints an error and SILENTLY DOES NOTHING. Silent success is the worst possible failure #
 #      mode for a bootstrap everything downstream depends on.                                 #
-# Application roles now use the Windows-safe v3.2.0 loader. This bootstrap role still must not #
+# Application roles now use the Windows-safe shared loader. This bootstrap role still must not #
 # use it: bootstrap has no ENV/state application contract and must repair transport first.     #
 #                                                                                             #
 # WHY THIS FILE EXISTS AT ALL RATHER THAN BEING OMITTED: with no tasks/main.yml, ansible-core's#

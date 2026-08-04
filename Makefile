@@ -9,11 +9,13 @@
 #                     Fail if a deliverable file is silently ignored
 #   make loader-identity-check
 #                     Assert every framework application loader is byte-identical
+#   make loader-defaults-convention-check
+#                     Assert every loader role's defaults file defines its namespaced key
 #   make clean        Remove Python cache artifacts
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint yamllint ansible-lint allowlist-check loader-identity-check pre-commit clean
+.PHONY: help install lint yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check pre-commit clean
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
@@ -38,6 +40,8 @@ help:
 	@echo "                     Fail if a deliverable file is silently ignored"
 	@echo "  make loader-identity-check"
 	@echo "                     Assert every framework application loader is byte-identical"
+	@echo "  make loader-defaults-convention-check"
+	@echo "                     Assert every loader role's defaults file defines its namespaced key"
 	@echo "  make pre-commit    Run full pre-commit suite against all files"
 	@echo "  make clean         Remove Python cache artifacts"
 	@echo ""
@@ -53,7 +57,7 @@ install:
 # ---------------------------------------------------------------------------
 # Lint
 # ---------------------------------------------------------------------------
-lint: yamllint ansible-lint allowlist-check loader-identity-check
+lint: yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check
 
 yamllint:
 	yamllint --config-file .yamllint.yml .
@@ -115,6 +119,28 @@ loader-identity-check:
 	fi; \
 	digest=$$(sha256sum $(firstword $(LOADER_PATHS)) | cut -d' ' -f1); \
 	printf 'loader-identity-check: OK — all framework copies share sha256 %s\n' "$$digest"
+
+# The loader (v3.2.3+) treats '<role_name>_defaults' as optional and seeds {} when it is
+# undefined, so a role-directory rename that orphans the hand-written key no longer fails at
+# runtime. This repository-side check catches that orphan at PR time instead: every role in
+# LOADER_PATHS that ships defaults/main.yml must define its own namespaced top-level key.
+# Roles outside LOADER_PATHS (empty or flat defaults shapes) are deliberately not covered.
+loader-defaults-convention-check:
+	@status=0; \
+	for path in $(LOADER_PATHS); do \
+	  role_dir=$$(dirname $$(dirname $$path)); \
+	  role=$$(basename $$role_dir); \
+	  defaults=$$role_dir/defaults/main.yml; \
+	  if [ -f "$$defaults" ] && ! grep -Eq "^$${role}_defaults:" "$$defaults"; then \
+	    printf 'ERROR: %s exists but defines no top-level "%s_defaults:" key.\n' "$$defaults" "$$role"; \
+	    printf 'Rename the key to match the role directory, or drop the defaults file.\n'; \
+	    status=1; \
+	  fi; \
+	done; \
+	if [ "$$status" -eq 0 ]; then \
+	  printf 'loader-defaults-convention-check: OK — every loader role defaults file defines its namespaced key\n'; \
+	fi; \
+	exit $$status
 
 # ---------------------------------------------------------------------------
 # Pre-Commit

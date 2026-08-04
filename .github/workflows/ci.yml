@@ -93,6 +93,9 @@ jobs:
       - name: Check application loader byte identity
         run: make loader-identity-check
 
+      - name: Check loader role defaults naming convention
+        run: make loader-defaults-convention-check
+
   # ---------------------------------------------------------------------------
   # Ansible Lint
   # ---------------------------------------------------------------------------

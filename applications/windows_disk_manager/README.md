@@ -10,7 +10,7 @@ unformatted disks. A foreign classification refuses provisioning for the entire 
 
 ## Configuration
 
-Defaults live under `windows_disk_manager_defaults` and merge through the framework v3.2.0
+Defaults live under `windows_disk_manager_defaults` and merge through the framework shared
 loader with OS overlays and the playbook's `windows_disk_manager:` override dictionary.
 
 | key | Required | Default | Purpose |
