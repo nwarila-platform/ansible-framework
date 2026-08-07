@@ -14,15 +14,13 @@
   block:
 
     # The role pulls the facts it needs itself (plays run gather_facts: false): the vendor
-    # assertion below reads ansible_facts.system_vendor, which lives in the hardware subset —
-    # the loader's OS-facts pass does not carry it.
-    - name: 'BEGIN | Load Hardware Facts For The Vendor Assertion'
+    # assertion below reads ansible_facts.system_vendor, which the loader's OS-facts pass
+    # does not carry — and the Windows setup module's named subsets do not map it either
+    # (proven live: the 'hardware' subset still left it '<missing>'), so gather the full set
+    # once, guarded.
+    - name: 'BEGIN | Load Facts For The Vendor Assertion'
       when: ansible_facts.system_vendor is not defined
       ansible.windows.setup:
-        gather_subset:
-          - '!all'
-          - '!min'
-          - 'hardware'
 
     - name: 'BEGIN | Assert Detected Vendor Matches Declared Platform'
       vars:
