@@ -29,19 +29,29 @@ windows_disk_manager_defaults:
   #endregion --- [ Platform targeting ] --------------------------------------------------------- #
 
   #region ------ [ Managed disks ] -------------------------------------------------------------- #
-  # Declared disks to manage. Empty by default. Each entry has this contract:
+  # Declared disks to manage. Empty by default. Each entry declares EXACTLY ONE of
+  # unique_id / function (tasks/validate.yml rejects the silent-wrong BOTH case at loader
+  # INIT):
   #
-  #   - unique_id:       VMware whole-disk identity ('eui.<hex>'); required on vmware.
-  #     function:        AWS EBS Function tag; alternative identity to unique_id.
-  #                      Do not declare both unique_id and function.
+  #   - unique_id:       Whole-disk identity as Windows reports it ('eui.<hex>' on VMware);
+  #                      required on vmware.
+  #     function:        AWS ONLY (the non-AWS path fails loudly without `unique_id`).
+  #                      The EBS volume's `Function` tag value (e.g. 'WSUSDB') — an
+  #                      alternative to a literal `unique_id` for a target whose EBS
+  #                      volume-id is only known at apply time (Terraform assigns it, not
+  #                      CI/CD). Resolved by tasks/resolve_aws.yml: ONE controller-side
+  #                      describe per host maps the tag to its attached volume-id, and the
+  #                      physical disk is matched via the Nitro guarantee that the NVMe
+  #                      serial equals the volume-id without its hyphen. Same contract as
+  #                      linux_disk_manager's resolver.
   #     drive_letter:    One ASCII letter with optional colon and optional backslash after the
   #                      colon: D, D:, or D:\ (case-insensitive).
   #     label:           NTFS volume label.
   #     allocation_unit: Allocation-unit size in bytes (default 4096).
   #     fstype:          Reserved/ignored; this role currently provisions NTFS only.
   #
-  # Literal unique_id values are trusted configuration. AWS Function-tag resolution remains
-  # deferred. A resolved disk is provisioned only when positively classified as RAW/blank or
+  # Literal unique_id values are trusted configuration; a resolved function becomes one at
+  # run time. A resolved disk is provisioned only when positively classified as RAW/blank or
   # GPT/unformatted, skipped when an NTFS volume has the declared label case-insensitively, and
   # refused when its observed contents do not match one of those recognized states.
   disks: []

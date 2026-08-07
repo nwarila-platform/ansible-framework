@@ -2,8 +2,10 @@
 # File: '{{ role_path }}/tasks/present_windows.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 # Windows / state=present provider. Receives merged configuration as 'config'.
-# Resolves literal disk identities, makes declared disks online/writable, classifies their
-# observed contents, and provisions only positively recognized blank or unformatted disks.
+# Resolves disk identities (literal unique_id, or on aws a declared `function` resolved via
+# tasks/resolve_aws.yml + the Nitro serial==volume-id guarantee), makes declared disks
+# online/writable, classifies their observed contents, and provisions only positively
+# recognized blank or unformatted disks.
 # =========================================================================================== #
 
 #region ------ [ Script ] -------------------------------------------------------------------- #
@@ -26,22 +28,41 @@
           '{{ ansible_facts.system_vendor | default('<missing>') }}'.
         quiet: true
 
-    # AWS Function-tag resolution is deliberately outside this stage. This guard must run
-    # before disk facts or the online/writable fixup so an absent ID can never become an empty
-    # Get-Disk match.
-    - name: 'BEGIN | Assert Every Disk Has A Literal Unique ID'
+    # Identity-mode guard, before any facts or mutation: a disk with NO resolvable identity
+    # must fail here, so an absent ID can never become an empty Get-Disk match. On non-aws
+    # platforms the only identity is a literal unique_id (mirrors linux_disk_manager: the
+    # non-AWS path fails loudly without one); on aws a `function` declaration is resolved by
+    # the include below. The both-declared and duplicate cases are already rejected at loader
+    # INIT by tasks/validate.yml.
+    - name: 'BEGIN | Assert Every Disk Declares A Resolvable Identity'
       when: (config.disks | length) > 0
       loop: "{{ config.disks }}"
       loop_control:
         loop_var: 'disk'
         label: "{{ disk.unique_id | default(disk.function | default('<missing>')) }}"
+      vars:
+        __is_aws__: "{{ (config.platform | string | lower | trim) == 'aws' }}"
+        __has_unique_id__: "{{ disk.unique_id is defined and (disk.unique_id | string | trim | length) > 0 }}"
+        __has_function__: "{{ disk.function is defined and (disk.function | string | trim | length) > 0 }}"
       ansible.builtin.assert:
         that:
-          - disk.function is not defined
-          - disk.unique_id is defined
-          - (disk.unique_id | default('') | string | trim | length) > 0
-        fail_msg: 'AWS function resolution not yet implemented (deferred)'
+          - (__has_unique_id__ | bool) or ((__is_aws__ | bool) and (__has_function__ | bool))
+        fail_msg: >-
+          windows_disk_manager.disks entry
+          '{{ disk.unique_id | default(disk.function | default('<missing>')) }}' declares no
+          resolvable identity. Platform '{{ config.platform }}' requires a literal `unique_id`
+          {{ '(or an EBS `function` tag value)' if (__is_aws__ | bool) else
+          '(`function` is AWS-only)' }}.
         quiet: true
+
+    # AWS `function` resolution: one controller-side describe for the whole host maps each
+    # declared Function tag to its attached volume-id (see resolve_aws.yml). The volume-id is
+    # matched to a physical disk AFTER facts load, via the Nitro serial==volume-id guarantee.
+    - name: 'BEGIN (aws) | Resolve Declared Function Tags To Attached Volumes'
+      when: >-
+        (config.platform | string | lower | trim) == 'aws'
+        and (config.disks | selectattr('unique_id', 'undefined') | list | length) > 0
+      ansible.builtin.include_tasks: 'resolve_aws.yml'
 
     - name: 'BEGIN | Load Disk, Partition And Volume Facts'
       when: (config.disks | length) > 0
@@ -51,9 +72,79 @@
           - 'partitions'
           - 'volumes'
 
-    - name: 'BEGIN | Assert Declared Disks Are Attached'
+    # NEGATIVE PROOF, per function-declared entry: exactly one physical disk may carry the
+    # resolved volume's serial (Nitro: NVMe serial == volume-id without its hyphen, sometimes
+    # with a padded suffix — hence the anchored prefix match). Runs before materialization so
+    # a zero or multiple match names the function and the observed serials, not a downstream
+    # empty-unique_id symptom.
+    - name: 'BEGIN (aws) | Assert Exactly One Attached Disk Serial Per Resolved Function'
+      when: (config.platform | string | lower | trim) == 'aws'
+      loop: "{{ config.disks | selectattr('unique_id', 'undefined') | list }}"
+      loop_control:
+        loop_var: 'disk'
+        label: "{{ disk.function }}"
+      vars:
+        __volume_id__: >-
+          {{ (__aws_vol_info__.volumes | selectattr('tags')
+          | selectattr('tags.Function', 'defined')
+          | selectattr('tags.Function', 'equalto', disk.function)
+          | map(attribute='id') | first) }}
+        __expected_serial__: "{{ __volume_id__ | replace('-', '') }}"
+        __serial_matches__: >-
+          {{ ansible_facts.disks
+          | selectattr('serial_number', 'defined')
+          | selectattr('serial_number', 'match', '(?i)' ~ __expected_serial__)
+          | list }}
+      ansible.builtin.assert:
+        that:
+          - __serial_matches__ | length == 1
+        fail_msg: >-
+          Expected exactly one attached disk whose serial starts with
+          '{{ __expected_serial__ }}' (volume {{ __volume_id__ }},
+          Function={{ disk.function }}), found {{ __serial_matches__ | length }}. Observed
+          disks: {% for attached in ansible_facts.disks %}number={{ attached.number
+          | default('unknown') }}, serial={{ attached.serial_number | default('unknown')
+          }}{%- if not loop.last %}; {% endif %}{% endfor %}.
+        quiet: true
+
+    # Materialize ONE declaration list in which every entry carries a unique_id — literal
+    # entries verbatim, function entries filled from the serial-matched disk's OBSERVED
+    # UniqueId (the same storage-subsystem value every downstream Get-Disk/win_disk_facts
+    # comparison uses). Everything below this point loops __declared_disks__, never
+    # config.disks, so the two identity modes converge here.
+    - name: 'BEGIN | Reset Materialized Disk Declarations'
+      when: (config.disks | length) > 0
+      ansible.builtin.set_fact:
+        __declared_disks__: []
+
+    - name: 'BEGIN | Materialize Declared Disk Identities'
       when: (config.disks | length) > 0
       loop: "{{ config.disks }}"
+      loop_control:
+        loop_var: 'disk'
+        label: "{{ disk.unique_id | default(disk.function) }}"
+      vars:
+        __volume_id__: >-
+          {{ (__aws_vol_info__.volumes | default([], true) | selectattr('tags')
+          | selectattr('tags.Function', 'defined')
+          | selectattr('tags.Function', 'equalto', disk.function | default(''))
+          | map(attribute='id') | first | default('')) }}
+        __expected_serial__: "{{ __volume_id__ | replace('-', '') }}"
+        __serial_matches__: >-
+          {{ ansible_facts.disks
+          | selectattr('serial_number', 'defined')
+          | selectattr('serial_number', 'match', '(?i)' ~ (__expected_serial__ | default('\\A(?!x)x', true)))
+          | list }}
+        __resolved_unique_id__: >-
+          {{ disk.unique_id | default(__serial_matches__ | map(attribute='unique_id') | first | default('')) }}
+      ansible.builtin.set_fact:
+        __declared_disks__: >-
+          {{ (__declared_disks__ | default([]))
+          + [disk | combine({'unique_id': (__resolved_unique_id__ | trim)})] }}
+
+    - name: 'BEGIN | Assert Declared Disks Are Attached'
+      when: (config.disks | length) > 0
+      loop: "{{ __declared_disks__ | default([]) }}"
       loop_control:
         loop_var: 'disk'
         label: "{{ disk.unique_id }}"
@@ -100,7 +191,7 @@
             Write-Output 'nochange'
         }
       environment:
-        DISK_IDS: "{{ config.disks | map(attribute='unique_id') | join(';') }}"
+        DISK_IDS: "{{ __declared_disks__ | default([]) | map(attribute='unique_id') | join(';') }}"
       register: '__disk_online__'
       changed_when: (__disk_online__.stdout | trim) == 'changed'
 
@@ -124,7 +215,7 @@
 
     - name: 'MAIN | Resolve Declared Disks And Classify Observed State'
       when: (config.disks | length) > 0
-      loop: "{{ config.disks }}"
+      loop: "{{ __declared_disks__ | default([]) }}"
       loop_control:
         loop_var: 'disk'
         label: "{{ disk.unique_id }}"
