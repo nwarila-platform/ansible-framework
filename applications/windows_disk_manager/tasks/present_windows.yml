@@ -13,6 +13,17 @@
 - name: 'INFO | Entering OS Tasks (present_windows - windows_disk_manager)'
   block:
 
+    # The role pulls the facts it needs itself (plays run gather_facts: false): the vendor
+    # assertion below reads ansible_facts.system_vendor, which lives in the hardware subset —
+    # the loader's OS-facts pass does not carry it.
+    - name: 'BEGIN | Load Hardware Facts For The Vendor Assertion'
+      when: ansible_facts.system_vendor is not defined
+      ansible.windows.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - 'hardware'
+
     - name: 'BEGIN | Assert Detected Vendor Matches Declared Platform'
       vars:
         __platform__: "{{ config.platform | string | lower | trim }}"
