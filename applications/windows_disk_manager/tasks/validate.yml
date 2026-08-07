@@ -30,9 +30,9 @@
 
 #region ------ [ Disk contract guards ] ------------------------------------------------------ #
 
-# Declaring both identities is ambiguous: a literal unique_id and an AWS Function tag could
-# identify different disks. The provider accepts only literal unique_id entries until AWS
-# Function-tag resolution is implemented.
+# Declaring both identities is SILENT-WRONG: the provider treats `unique_id` as authoritative
+# and would silently ignore `function`, so a stale literal could target a different disk than
+# the tag names (same guard class as linux_disk_manager).
 - name: 'BEGIN | Reject Ambiguous Disk Identity Declarations'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
