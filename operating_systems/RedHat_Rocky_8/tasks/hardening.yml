@@ -1,0 +1,179 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/hardening.yml'                                  | Version 1.0.0 #
+# --- [ Description ] ----------------------------------------------------------------------- #
+# DISA STIG remediation for RHEL / Rocky 8, applied as configuration on disk.                  #
+#                                                                                             #
+# Scope is driven by measurement, not by the benchmark's table of contents: an OpenSCAP        #
+# evaluation of the unhardened image reported 217 failing rules, and this file addresses the   #
+# groups that are both highest-value and safe to apply to an image — kernel parameters, the    #
+# SSH daemon, and four of the seven high-severity findings. Audit rules (68 failures, the       #
+# largest single group) and the crypto policy land in their own increments; see the deviations  #
+# section below for what is deliberately NOT here and why.                                     #
+#                                                                                             #
+# --- [ Why Nothing Is Restarted ] ------------------------------------------------------------ #
+# Every task writes configuration and stops there. Nothing reloads sshd, applies sysctl, or     #
+# restarts a unit, for two reasons:                                                            #
+#                                                                                             #
+#   1. This runs inside an image build. The artifact is the filesystem, so a value applied to   #
+#      the running kernel is discarded while the file that sets it at boot is what ships.       #
+#   2. Reloading sshd from a task that arrived over SSH is how a hardening run becomes an       #
+#      outage. The settings below take effect on the next boot of the built image, which the    #
+#      publishing pipeline proves with a canary launch before anything is published.           #
+#                                                                                             #
+# On a long-lived host the caller is responsible for the restart, deliberately and with the     #
+# service's own change window.                                                                 #
+#                                                                                             #
+# --- [ How To Call It ] --------------------------------------------------------------------- #
+#   - name: 'Harden | RHEL/Rocky 8 STIG'
+#     ansible.builtin.include_role:
+#       name: 'RedHat_Rocky_8'
+#       tasks_from: 'hardening'
+#
+#   * Requires 'tasks/bootstrap.yml' to have run first (interpreter and remote-tmp base).
+#   * Every control is individually switchable through a 'rhel8_hardening_*' default, so a
+#     consumer that cannot accept one deviates from that control alone rather than from the
+#     whole file.
+#
+# --- [ Deliberate Deviations ] ---------------------------------------------------------------- #
+#   * grub2_uefi_password (high) is NOT set. It protects interactive bootloader editing, which
+#     needs console access no EC2 instance grants, and the only way to ship it in an image is to
+#     bake one hash into every instance built from that image — a shared secret whose compromise
+#     is silent and whose rotation means rebuilding. The control is a poor fit for the threat
+#     model here; the scan will keep reporting it, which is the honest outcome.
+#   * configure_crypto_policy (high) is NOT set here. Satisfying the rule is a one-line change,
+#     but setting the policy to FIPS without also enabling kernel FIPS mode produces a host that
+#     PASSES the check while not being FIPS at all. It belongs with the kernel change and a
+#     reboot, in its own increment.
+# =========================================================================================== #
+
+#region ------ [ Script ] ------------------------------------------------------------------- #
+
+- name: 'INFO | Entering Hardening'
+  block:
+
+  #region ------ [ Initialization ] ---------------------------------------------------------- #
+
+    - name: 'INIT | Loading Required Operating System (OS) Facts'
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - 'distribution'
+      when: ansible_distribution is not defined
+
+    - name: 'INIT | Perform OS Check'
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution in ['RedHat', 'Rocky']
+          - ansible_distribution_major_version is version('8', '==')
+        fail_msg: >-
+          'RedHat_Rocky_8/tasks/hardening.yml' applies DISA STIG content for RHEL/Rocky 8 and
+          was called on {{ ansible_distribution | default('an unknown distribution') }}
+          {{ ansible_distribution_major_version | default('') }}. Rule identifiers, file paths,
+          and PAM stack layout all differ across major versions, so applying it here would
+          write plausible-looking configuration that hardens nothing.
+        quiet: true
+
+  #endregion --- [ Initialization ] ---------------------------------------------------------- #
+
+  #region ------ [ Main ] -------------------------------------------------------------------- #
+
+    # --- Kernel parameters (23 scored rules) ----------------------------------------------- #
+    - name: 'MAIN | Writing STIG Kernel Parameters'
+      ansible.builtin.template:
+        src: 'stig-sysctl.conf.j2'
+        dest: '/etc/sysctl.d/90-stig.conf'
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+      when: rhel8_hardening_sysctl | bool
+
+    # --- SSH daemon (14 scored rules) -------------------------------------------------------- #
+    #
+    # RHEL 8 ships no 'Include /etc/ssh/sshd_config.d/*.conf' line in sshd_config, so a drop-in
+    # would be read by nothing. The directives are set in the main file, each replacing any
+    # existing occurrence rather than appending a duplicate: sshd takes the FIRST value for most
+    # keywords, so an appended line under an existing one is silently inert.
+    - name: 'MAIN | Setting STIG SSH Daemon Directives'
+      ansible.builtin.lineinfile:
+        path: '/etc/ssh/sshd_config'
+        regexp: '^\s*(?i){{ item.key }}\s'
+        line: '{{ item.key }} {{ item.value }}'
+        state: 'present'
+        validate: '/usr/sbin/sshd -T -f %s'
+        owner: 'root'
+        group: 'root'
+        mode: '0600'
+      loop: "{{ rhel8_hardening_sshd_directives | dict2items }}"
+      loop_control:
+        label: '{{ item.key }}'
+      when: rhel8_hardening_sshd | bool
+
+    # sshd_use_strong_rng is an environment setting for the daemon, not an sshd_config keyword.
+    - name: 'MAIN | Seeding The SSH Daemon From A Strong RNG'
+      ansible.builtin.lineinfile:
+        path: '/etc/sysconfig/sshd'
+        regexp: '^\s*#?\s*SSH_USE_STRONG_RNG='
+        line: 'SSH_USE_STRONG_RNG=32'
+        state: 'present'
+        create: true
+        owner: 'root'
+        group: 'root'
+        mode: '0640'
+      when: rhel8_hardening_sshd | bool
+
+    # --- High-severity findings -------------------------------------------------------------- #
+
+    # ensure_gpgcheck_local_packages: a package installed from a local file is unsigned content
+    # until proven otherwise, and the repository-level gpgcheck does not cover that path.
+    - name: 'MAIN | Requiring Signatures On Locally Installed Packages'
+      ansible.builtin.lineinfile:
+        path: '/etc/dnf/dnf.conf'
+        regexp: '^\s*localpkg_gpgcheck\s*='
+        line: 'localpkg_gpgcheck=1'
+        insertafter: '^\[main\]'
+        state: 'present'
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+      when: rhel8_hardening_gpgcheck | bool
+
+    # disable_ctrlaltdel_reboot / disable_ctrlaltdel_burstaction: without both, anyone with
+    # console access reboots the host without authenticating. Masking the target covers the
+    # single press; the burst action covers seven presses, which systemd handles separately and
+    # which masking alone does not reach.
+    - name: 'MAIN | Disabling Ctrl-Alt-Del Reboot'
+      ansible.builtin.file:
+        src: '/dev/null'
+        dest: '/etc/systemd/system/ctrl-alt-del.target'
+        state: 'link'
+        force: true
+      when: rhel8_hardening_ctrlaltdel | bool
+
+    - name: 'MAIN | Disabling The Ctrl-Alt-Del Burst Action'
+      ansible.builtin.lineinfile:
+        path: '/etc/systemd/system.conf'
+        regexp: '^\s*#?\s*CtrlAltDelBurstAction\s*='
+        line: 'CtrlAltDelBurstAction=none'
+        state: 'present'
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+      when: rhel8_hardening_ctrlaltdel | bool
+
+    # no_empty_passwords: 'nullok' lets an account with an empty password hash authenticate.
+    # Both stacks carry it on RHEL 8 and both are consulted, so removing it from one leaves the
+    # hole open through the other.
+    - name: 'MAIN | Removing nullok From The PAM Stacks'
+      ansible.builtin.replace:
+        path: '/etc/pam.d/{{ item }}'
+        regexp: '\s+nullok\b'
+        replace: ''
+      loop:
+        - 'system-auth'
+        - 'password-auth'
+      when: rhel8_hardening_no_empty_passwords | bool
+
+  #endregion --- [ Main ] --------------------------------------------------------------------- #
+
+#endregion --- [ Script ] -------------------------------------------------------------------- #

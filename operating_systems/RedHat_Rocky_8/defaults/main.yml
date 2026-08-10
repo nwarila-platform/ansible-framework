@@ -106,3 +106,58 @@ rhel8_bootstrap_remote_tmp_base: >-
      | default(lookup('ansible.builtin.config', 'remote_tmp', plugin_type='shell', plugin_name='sh')) }}
 
 #endregion --- [ Ansible Remote-Tmp Base ] ---------------------------------------------------- #
+
+
+#region ------ [ STIG Hardening ] ------------------------------------------------------------- #
+
+# Overridable inputs for 'tasks/hardening.yml'. Each control group is switchable on its own, so
+# a consumer that cannot accept one deviates from that control rather than abandoning the file.
+# Every one defaults to true: the role exists to harden, and a default-off control is a control
+# nobody turns on.
+
+# Kernel parameters written to /etc/sysctl.d/90-stig.conf (23 scored rules).
+rhel8_hardening_sysctl: true
+
+# 2 randomises the address space fully, including the heap. STIG accepts nothing lower; the knob
+# exists because a kernel debugger or a legacy JIT occasionally needs it relaxed under protest.
+rhel8_hardening_sysctl_randomize_va_space: 2
+
+# user.max_user_namespaces = 0. Held apart from the rest because it is the only kernel parameter
+# here that breaks working software: rootless containers stop functioning. Turn it off on hosts
+# that run podman or buildah, and record the deviation.
+rhel8_hardening_disable_user_namespaces: true
+
+# SSH daemon directives (14 scored rules) plus the strong-RNG environment setting.
+rhel8_hardening_sshd: true
+
+# The directives themselves, as a map so a consumer can override one value without restating the
+# set. Keys are matched case-insensitively against existing lines and replaced in place.
+#
+# PermitRootLogin no is the one to read twice: an image whose only account is the cloud user is
+# fine, but a host reached ONLY as root over SSH locks itself out on the next sshd restart.
+rhel8_hardening_sshd_directives:
+  Banner: '/etc/issue'
+  ClientAliveCountMax: '1'
+  ClientAliveInterval: '600'
+  GSSAPIAuthentication: 'no'
+  IgnoreUserKnownHosts: 'yes'
+  KerberosAuthentication: 'no'
+  PermitEmptyPasswords: 'no'
+  PermitRootLogin: 'no'
+  PermitUserEnvironment: 'no'
+  PrintLastLog: 'yes'
+  RekeyLimit: '1G 1h'
+  StrictModes: 'yes'
+  X11Forwarding: 'no'
+  X11UseLocalhost: 'yes'
+
+# localpkg_gpgcheck=1 in /etc/dnf/dnf.conf (high severity).
+rhel8_hardening_gpgcheck: true
+
+# Ctrl-Alt-Del reboot and burst action (two high-severity rules).
+rhel8_hardening_ctrlaltdel: true
+
+# nullok removal from the PAM stacks (high severity).
+rhel8_hardening_no_empty_passwords: true
+
+#endregion --- [ STIG Hardening ] ------------------------------------------------------------- #
