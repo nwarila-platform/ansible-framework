@@ -1,0 +1,97 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Lowest-precedence configuration for the domain_member role. The v3 loader merges the OS overlay
+# in vars/ over this map and publishes the result as 'domain_member_running'; tasks read only the
+# merged map, never these keys directly.
+#
+# ONE CONTRACT, TWO PLATFORMS. Every key below means the same thing on RedHat and on Windows and
+# produces the same end state. The RedHat path hands them to redhat.rhel_system_roles.ad_integration,
+# whose variable names these deliberately mirror; the Windows path implements the same semantics
+# against microsoft.ad and the registry. A key that could only ever mean something on one platform
+# does not belong here -- it belongs in that platform's overlay, or nowhere.
+#
+# WHAT DOES NOT BELONG HERE: the realm, the account that joins it, and where its password lives.
+# Those are site identity, and a default for site identity is not a default -- it is one site's
+# value wearing a default's clothes. They come from the PLAYBOOK, are described in meta/main.yml,
+# and are enforced by tasks/validate.yml.
+#
+# NOT OFFERED, deliberately: renaming the machine, and any way to re-admit RC4. A rename is a
+# separate change with its own consequences -- certificates, monitoring, DNS -- and nobody expects
+# a domain join to perform one. RC4 is excluded by the benchmark this org builds to, so a per-play
+# setting for it would only ever be a way to fall out of compliance quietly; both platforms hold
+# that line in the way their platform expresses it, and neither reads a variable to decide.
+#
+# =========================================================================================== #
+---
+domain_member_defaults:
+
+  #region ------ [ Identity: what to join, and as whom ] -------------------------------------- #
+
+  # The realm this host joins, as its DNS name -- 'corp.example.com', not the NetBIOS short name.
+  # REQUIRED, and deliberately empty here.
+  realm: ''
+
+  # The account permitted to create or reuse this machine's computer object. REQUIRED, and
+  # deliberately empty rather than defaulted to Administrator, which is what the system role does:
+  # a default that is a real privileged account name is a default nobody notices they are using.
+  user: ''
+
+  # WHERE the join password lives, never the password itself. The role fetches the object through
+  # the CONTROLLER, verifies it against the pinned digest, and hands the value to the join, so the
+  # guest is never given cloud credentials and no task in this role ever writes the value to a file.
+  #
+  # That is not the same as "it never touches disk". With pipelining off -- which is Ansible's
+  # default and what this chassis leaves in place -- every module payload is staged as a file in
+  # the target's temp directory before it executes, and for the join that payload carries the
+  # password. Enable pipelining for plays that run this role if that transit matters to you.
+  #
+  # The digest is a hash of a live credential, committed to a repository: use a generated password,
+  # not a memorable one.
+  #
+  # All three are REQUIRED. The digest is not decoration: it is what makes a re-uploaded or
+  # truncated object fail loudly here instead of failing as a wrong password at the directory,
+  # where the error names neither the object nor the upload.
+  password:
+    bucket: ''
+    object: ''
+    sha256: ''
+
+  #endregion --- [ Identity: what to join, and as whom ] -------------------------------------- #
+
+  #region ------ [ Join behaviour ] ----------------------------------------------------------- #
+
+  # The distinguished name of the OU the computer object is created in --
+  # 'OU=Servers,OU=Prod,DC=corp,DC=example,DC=com'. Null means the directory's own default
+  # computers container, which is what happens when nobody says otherwise.
+  #
+  # It applies when the object is CREATED. A machine that already has a computer object is not
+  # moved by a converge, on either platform: moving objects between OUs changes which policy
+  # applies to them, and that is a directory operation rather than a side effect of running a role.
+  computer_ou: null
+
+  # Leave the current realm and join again from scratch. False is the only safe default: a rejoin
+  # destroys the existing computer account association and builds a new one, which is the right
+  # repair for a broken machine-account credential and the wrong answer to everything else.
+  #
+  # WINDOWS CAVEAT: a forced rejoin unjoins to a workgroup and restarts before joining again, so
+  # the connection account must be a LOCAL administrator. A domain account cannot authenticate to
+  # a host that is, at that moment, not in the domain.
+  force_rejoin: false
+
+  #endregion --- [ Join behaviour ] ----------------------------------------------------------- #
+
+  #region ------ [ Security posture ] --------------------------------------------------------- #
+
+  # The time source to synchronise the clock with. Kerberos rejects a ticket whose timestamp is
+  # outside the directory's tolerance -- five minutes by default -- so a joined host with a drifting
+  # clock stops authenticating and reports a Kerberos error that names nothing about time.
+  #
+  # Null leaves the platform's own arrangement alone, which is the right default for both: a
+  # RedHat host normally has chrony pointed somewhere already, and a domain-joined Windows host
+  # syncs from the domain hierarchy, which is what a member is supposed to do. Declare a source
+  # only where that arrangement does not exist or must be overridden.
+  timesync_source: null
+
+  #endregion --- [ Security posture ] --------------------------------------------------------- #

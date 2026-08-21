@@ -1,0 +1,445 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_redhat.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Joins a RedHat-family host to the declared realm as an SSSD member.
+#
+# The join is NOT implemented here. redhat.rhel_system_roles.ad_integration is the vendor's own
+# implementation of it -- packages, realmd.conf, the realm join, the leave-and-rejoin path, the
+# crypto policy, the timesync source and the sssd.conf edits -- and it ships in the RHEL mirror,
+# which is the only source an offline controller has. Re-implementing any of that here would mean
+# owning its bugs and its portability without owning its testing. This file therefore does three
+# things the system role cannot do for us, and nothing else:
+#
+#   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
+#            already belongs to a different realm.
+#   PROCESS  fetches the join password through the controller, proves it against its digest, and
+#            hands the whole contract to the system role.
+#   END      proves the result from the machine rather than from the system role's report.
+#
+# RC4 IS NOT A KNOB: the system role can re-admit it through a crypto subpolicy, and this role
+# never asks it to nor offers a playbook any way to ask. That decision also settles the crypto
+# policy: the role leaves it alone entirely. On RHEL 8 the AD-SUPPORT subpolicy IS the thing that
+# enables RC4 -- the system role's own source says so in a comment beside the step, and so does
+# Red Hat's system-wide-crypto-policies documentation -- so applying it would re-admit exactly
+# what is being excluded. Red Hat documents RC4 as off by default since 8.3, which means the
+# untouched default is already the intended posture, and leaving the policy alone additionally
+# means a FIPS host stays in FIPS rather than being moved to DEFAULT:AD-SUPPORT by a role nobody
+# asked to change its crypto policy.
+#
+# The password is fetched by the CONTROLLER and handed to the system role as a variable, so the
+# guest is never given cloud credentials and no task here writes the value to a file. What
+# pipelining does and does not change about that is in the README.
+#
+# ============================================================================================= #
+---
+#region ------ [ Begin: Join This RedHat Host To The Realm ] ---------------------------------- #
+
+- name: 'BEGIN | Read The Machine And Decide One Action'
+  become: true
+
+  # Begin The 'Begin' Block
+  block:
+
+    #region ------ [ Begin: Read The Current Realm Membership ] ------------------------------- #
+    # One action, two tasks: realmd is not present on a host that has never been joined -- the
+    # system role installs it -- so the command that answers the question cannot run until
+    # something establishes that it exists, and the stat is that something. The stat asks only
+    # whether the file is there, because a digest and a MIME type are answers to
+    # questions nobody here is asking, and both reads are marked read-only rather than left to be
+    # skipped under --check, because a run that cannot report what a machine currently is has
+    # nothing to say about it.
+
+    - name: 'BEGIN | Look For The Realm Client'
+      check_mode: false
+      register: '__domain_member_realm_binary__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ domain_member_running.realm_binary }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read The Realms This Host Is Joined To'
+      changed_when: false
+      check_mode: false
+      register: '__domain_member_realms__'
+      when: __domain_member_realm_binary__.stat.exists
+
+      ansible.builtin.command:
+        argv:
+          - "{{ domain_member_running.realm_binary }}"
+          - 'list'
+          - '--name-only'
+        expand_argument_vars: false
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+    # A missing realm client usually means a host that has never been joined -- but not always. A
+    # membership written by other tooling (adcli by hand, a golden image, a hand-built sssd.conf)
+    # leaves a machine keytab behind and no realmd, and for that host "the realm client is not
+    # there" is not an answer to "what is this host joined to" -- it is the absence of one. The
+    # keytab is the cheapest artifact that separates the two: every working AD membership keys the
+    # machine, whatever tool wrote it. Only read when the realm client is missing, because when it
+    # exists the realm list above is the authoritative answer.
+
+    - name: 'BEGIN | Look For A Machine Keytab When The Realm Client Is Missing'
+      check_mode: false
+      register: '__domain_member_keytab__'
+      when: not __domain_member_realm_binary__.stat.exists
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/etc/krb5.keytab'
+
+    #endregion --- [ Begin: Read The Current Realm Membership ] ------------------------------- #
+
+    #region ------ [ Begin: Refuse A Membership That Cannot Be Read ] ------------------------- #
+    # Fail closed on the case the realm list cannot see: no realm client, but a machine keytab.
+    # Treating that host as "not joined" would let the system role rewrite realmd.conf and sssd
+    # configuration over a membership it never read, which is exactly what the refusal below
+    # exists to prevent -- so an unreadable membership gets the same refusal as a foreign one.
+    # Skipped when a rejoin is forced, because the operator has already declared the old state
+    # forfeit, exactly as with the refusal below.
+
+    - name: 'BEGIN | Refuse A Membership That Cannot Be Read'
+      when: not (domain_member_running.force_rejoin | bool)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' has a machine keytab at /etc/krb5.keytab but no realm client
+          at '{{ domain_member_running.realm_binary }}', so what this host is joined to cannot be
+          read -- and a membership that cannot be read cannot be safely written over. If the host
+          is joined (by adcli, an image, or a hand-built sssd.conf), set
+          domain_member.force_rejoin to declare that membership forfeit; if the keytab is a
+          leftover, remove it; if the realm client lives elsewhere, correct realm_binary.
+        quiet: true
+        that:
+          - __domain_member_realm_binary__.stat.exists
+            or not (__domain_member_keytab__.stat.exists | default(false))
+
+    #endregion --- [ Begin: Refuse A Membership That Cannot Be Read ] ------------------------- #
+
+    #region ------ [ Begin: Refuse A Host Joined To Another Realm ] --------------------------- #
+    # Skipped when a rejoin is forced, because that is exactly the operator saying "I know, leave
+    # it and join the other one". Unforced, this is not a friendlier version of a failure the
+    # join would produce anyway -- it is a refusal that has to happen BEFORE the system role
+    # starts. That role installs packages, rewrites /etc/realmd.conf to name the DECLARED realm,
+    # and can repoint the timesync source and move the system-wide crypto policy, all before it
+    # ever runs the join command. A host joined to one realm with another declared therefore gets
+    # a rewritten realmd.conf naming a realm it is not joined to, and possibly a changed crypto
+    # policy, before anything notices the mismatch. Whatever the join itself would then say, the
+    # machine has already been half moved.
+    #
+    # Compared case-insensitively, because realmd prints the realm in the directory's own case and
+    # a case difference is the same realm.
+    #
+    # The test is exact, not membership: a host joined to the declared realm AND a second one is
+    # still a host joined to another realm, and letting it converge green would put this role's
+    # name on a membership set it never declared and cannot account for.
+
+    - name: 'BEGIN | Refuse A Host Already Joined To Another Realm'
+      vars:
+        __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
+        __joined_realms__: >-
+          {{ __domain_member_realms__.stdout_lines | default([], true)
+             | map('lower') | map('trim') | select | list }}
+      when: not (domain_member_running.force_rejoin | bool)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' is joined to {{ __joined_realms__ }}, but this play declares
+          '{{ __declared_realm__ }}' and only that. Refusing before anything is written:
+          continuing would rewrite this host's realmd configuration around memberships this play
+          does not declare, and the computer objects the host already owns are not this role's to
+          abandon. Set domain_member.force_rejoin to leave the old realm deliberately, or correct
+          domain_member.realm -- and if the list holds more than one realm, the extras must be
+          left by hand, because a forced rejoin authenticates only to the declared realm.
+        quiet: true
+        that:
+          - __joined_realms__ | reject('eq', __declared_realm__) | list | length == 0
+
+    #endregion --- [ Begin: Refuse A Host Joined To Another Realm ] --------------------------- #
+
+#endregion --- [ Begin: Join This RedHat Host To The Realm ] ---------------------------------- #
+
+
+#region ------ [ Process: Join This RedHat Host To The Realm ] -------------------------------- #
+
+- name: 'PROCESS | Join The Realm Through The System Role'
+  become: true
+  vars:
+    __timesync_declared__: >-
+      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
+
+  # Begin The 'Process' Block
+  block:
+
+    #region ------ [ Process: Fetch The Join Password ] --------------------------------------- #
+    # Pulled as a STRING through the controller and never written to a file by this role. The
+    # object holds the password with no trailing newline, so it is used verbatim; the digest pins
+    # that byte-for-byte, and a re-upload that adds whitespace fails the next task loudly. Reading
+    # changes nothing and the task says so, which is what lets a converged host report no changes
+    # at all -- a fetch that claimed one would hide real drift behind constant noise.
+    #
+    # become is off explicitly. The framework chassis turns become on for every task, and this one
+    # runs on the CONTROLLER, where elevation buys nothing and a controller that cannot sudo
+    # without a password would fail the play on a task that never needed root.
+    # check_mode is off for a sharper reason (verified in amazon.aws s3_object.py,
+    # download_s3str): s3_object supports check mode by RETURNING EARLY -- its getstr path exits
+    # with a message and NO 'contents' key -- so under --check the register exists but the field
+    # the next task reads does not, and the digest assert dies on a template error instead of its
+    # own message. Running the fetch for real under --check costs a read the task already
+    # declares changeless, and buys the most useful thing --check can say here: that the object
+    # exists and still matches the digest pinned in the playbook.
+
+    - name: 'PROCESS | Fetch The Join Password'
+      become: false
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      no_log: true
+      register: '__domain_member_password__'
+
+      amazon.aws.s3_object:
+        bucket: "{{ domain_member_running.password.bucket }}"
+        ceph: false
+        debug_botocore_endpoint_logs: false
+        dualstack: false
+        encrypt: true
+        encryption_mode: 'AES256'
+        expiry: 600
+        ignore_nonexistent_bucket: true
+        mode: 'getstr'
+        object: "{{ domain_member_running.password.object }}"
+        overwrite: 'different'
+        permission: [ 'private' ]
+        prefix: ''
+        purge_tags: true
+        retries: 0
+        sig_v4: true
+        validate_bucket_name: true
+        validate_certs: true
+
+    #endregion --- [ Process: Fetch The Join Password ] --------------------------------------- #
+
+    #region ------ [ Process: Verify The Join Password Digest ] ------------------------------- #
+    # An object is trusted only once it matches the digest pinned in the playbook. Deliberately
+    # NOT no_log: assert reports the expression text and our message, never the value, so a
+    # mismatch stays diagnosable without exposing a secret.
+
+    - name: 'PROCESS | Verify The Join Password Digest'
+      ansible.builtin.assert:
+        fail_msg: >-
+          The join password object '{{ domain_member_running.password.object }}' does not match
+          the sha256 pinned in the playbook. Refusing to authenticate to the directory with an
+          unverified secret.
+        quiet: true
+        that:
+          - __domain_member_password__.contents | hash('sha256')
+            == domain_member_running.password.sha256
+
+    #endregion --- [ Process: Verify The Join Password Digest ] ------------------------------- #
+
+    #region ------ [ Process: Hand The Contract To The System Role ] -------------------------- #
+    # Every variable below is this role's contract translated into the system role's own names,
+    # which is the whole reason the contract uses those names: the mapping is mechanical, so there
+    # is nowhere for a translation bug to hide.
+    #
+    # Four are pinned here rather than exposed in the contract:
+    #
+    #   allow_rc4_crypto        false, always, and not reachable from the contract. See the file
+    #                           header.
+    #   manage_crypto_policies  false, always, for the same reason: on RHEL 8 the subpolicy this
+    #                           would apply is what enables RC4.
+    #   manage_timesync         on exactly when a source was declared. The system role fails if it
+    #                           is on without one, so the two are derived from the same value
+    #                           rather than declared separately and allowed to disagree.
+    #   secure_logging          true, which is the system role's own default, stated because it is
+    #                           what keeps the password out of its task output.
+    #
+    # The include carries 'not ansible_check_mode' because the system role cannot support check
+    # mode on the host that most needs a dry run: on a machine with no realmd yet, --check installs
+    # nothing and the role's own 'ensure services started' step then fails on a service that does
+    # not exist, which is an error about systemd rather than an honest account of what a real run
+    # would do. Skipped explicitly, --check reaches END and END says the useful thing instead.
+
+    - name: 'PROCESS | Hand The Contract To The System Role'
+      vars:
+        ad_integration_allow_rc4_crypto: false
+        # Passed raw rather than omitted like the Windows mirror does: null IS this variable's
+        # default in the system role, so passing it through is the same as not passing it.
+        ad_integration_computer_ou: "{{ domain_member_running.computer_ou }}"
+        ad_integration_force_rejoin: "{{ domain_member_running.force_rejoin | bool }}"
+        ad_integration_manage_crypto_policies: false
+        ad_integration_manage_timesync: "{{ __timesync_declared__ | bool }}"
+        ad_integration_password: "{{ __domain_member_password__.contents }}"
+        ad_integration_realm: "{{ domain_member_running.realm | string | trim }}"
+        ad_integration_secure_logging: true
+        ad_integration_sssd_custom_settings: "{{ domain_member_running.sssd_custom_settings }}"
+        ad_integration_timesync_source: "{{ domain_member_running.timesync_source }}"
+        ad_integration_user: "{{ domain_member_running.user | string | trim }}"
+
+      when: not ansible_check_mode
+
+      ansible.builtin.include_role:
+        name: 'redhat.rhel_system_roles.ad_integration'
+
+    #endregion --- [ Process: Hand The Contract To The System Role ] -------------------------- #
+
+#endregion --- [ Process: Join This RedHat Host To The Realm ] -------------------------------- #
+
+
+#region ------ [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+# The system role flushes handlers once, EARLY -- straight after it writes realmd.conf, verified in
+# the ad_integration source shipped with redhat.rhel_system_roles -- and then
+# writes the SSSD settings that carry this role's machine-account posture, which notify a restart
+# that is still pending when its tasks end. A converge where a later role in the play fails would
+# leave that restart unflushed, and the NEXT converge would write nothing, because the settings are
+# already correct, so it would notify nothing and never restart either. SSSD would run without the
+# posture for good, under runs that report success. An 'always' runs even when the block above
+# failed, and a handler that already ran is not run again, so a successful converge still restarts
+# exactly once. This is the same defence the Windows path makes for the same reason.
+
+  # Begin the 'Always' block
+  always:
+
+    - name: 'PROCESS | Apply Any Pending Restart Even After A Failure'
+      ansible.builtin.meta: 'flush_handlers'
+
+#endregion --- [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+
+
+#region ------ [ End: Join This RedHat Host To The Realm ] ------------------------------------ #
+
+- name: 'END | Prove The Result'
+  become: true
+
+  # Begin The 'End' Block
+  block:
+
+    #region ------ [ End: Re-Read The Realm Membership ] -------------------------------------- #
+    # One action, two tasks, for a different reason than BEGIN's pair: BEGIN looks for the realm
+    # client because a host that was never joined has never had it, and END looks again because
+    # PROCESS is what installs it -- and under --check PROCESS installed nothing. Reading BEGIN's
+    # answer here instead would skip the proof on exactly the hosts that just joined, and running
+    # the command unguarded would end a --check run with a missing-file error rather than the
+    # assert below explaining that a join cannot happen in check mode at all.
+
+    - name: 'END | Look For The Realm Client'
+      check_mode: false
+      register: '__domain_member_final_realm_binary__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ domain_member_running.realm_binary }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Re-Read The Realms This Host Is Joined To'
+      changed_when: false
+      check_mode: false
+      register: '__domain_member_final_realms__'
+      when: __domain_member_final_realm_binary__.stat.exists
+
+      ansible.builtin.command:
+        argv:
+          - "{{ domain_member_running.realm_binary }}"
+          - 'list'
+          - '--name-only'
+        expand_argument_vars: false
+        strip_empty_ends: true
+
+    #endregion --- [ End: Re-Read The Realm Membership ] -------------------------------------- #
+
+    #region ------ [ End: Prove The Declared Membership ] ------------------------------------- #
+    # The system role reports what it did; the realm list is what the machine actually holds. They
+    # come apart when a join half-succeeds -- a computer object created, a configuration not
+    # written -- which is exactly the case that must not pass as joined.
+
+    - name: 'END | Prove The Declared Realm Is Configured'
+      vars:
+        __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
+        __joined_realms__: >-
+          {{ __domain_member_final_realms__.stdout_lines | default([], true)
+             | map('lower') | map('trim') | select | list }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          {% if ansible_check_mode %}
+          A realm join cannot be performed in check mode, so this host cannot be proven a member
+          of '{{ __declared_realm__ }}'. Run without --check to join.
+          {% else %}
+          '{{ inventory_hostname }}' does not hold exactly '{{ __declared_realm__ }}'; realmd
+          reports {{ __joined_realms__ }}. A missing declared realm after a join that reported
+          success means the membership was never written. An EXTRA realm means the host holds a
+          membership this play never declared -- a forced rejoin does not remove it, because the
+          leave authenticates only to the declared realm, so the extra membership must be left by
+          hand before this role will call the host converged.
+          {% endif %}
+        quiet: true
+        that:
+          - __declared_realm__ in __joined_realms__
+          - __joined_realms__ | reject('eq', __declared_realm__) | list | length == 0
+
+    #endregion --- [ End: Prove The Declared Membership ] ------------------------------------- #
+
+    #region ------ [ End: Prove The Machine Account Credential ] ------------------------------ #
+    # One action, two tasks: a configured realm is not a working membership. The configuration can
+    # name a realm this host can no longer authenticate to -- a machine account deleted or reset in
+    # the directory, a keytab that no longer matches -- and every file on disk still looks correct.
+    # adcli asks the directory, using the machine's own credential, which is the only answer that
+    # means the membership actually works. It is also what a forced rejoin exists to repair, so
+    # this is the task that tells an operator whether they need one.
+    #
+    # The test is allowed to fail so its result can be reported: ignore_errors keeps the failure
+    # readable in the register, where failed_when: false would rewrite it and turn a real error
+    # into a pass. The assert beside it is what fails the run.
+
+    - name: 'END | Test The Machine Account Credential Against The Directory'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_testjoin__'
+
+      ansible.builtin.command:
+        argv:
+          - "{{ domain_member_running.adcli_binary }}"
+          - 'testjoin'
+        expand_argument_vars: false
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Machine Account Credential Works'
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' is configured for '{{ domain_member_running.realm }}' but
+          cannot authenticate to it with its own machine account:
+          {{ __domain_member_testjoin__.stderr | default('', true) | trim
+          | default(__domain_member_testjoin__.msg | default('adcli testjoin failed', true), true) }}.
+          If that names a missing command, the realm client is incomplete; otherwise the membership
+          exists on disk only and the computer object was most likely removed or reset in the
+          directory, which domain_member.force_rejoin rebuilds.
+        quiet: true
+        that:
+          - not (__domain_member_testjoin__.failed | default(true) | bool)
+
+    #endregion --- [ End: Prove The Machine Account Credential ] ------------------------------ #
+
+#endregion --- [ End: Join This RedHat Host To The Realm ] ------------------------------------ #
