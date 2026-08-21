@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.4](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.3...v0.1.4) (2026-08-21)
+
+
+### Features
+
+* **RedHat_Rocky_8:** add a STIG hardening entry point ([#61](https://github.com/nwarila-platform/ansible-framework/issues/61)) ([f44236f](https://github.com/nwarila-platform/ansible-framework/commit/f44236f5de9ea6299371b6cb2be990b8899c4147))
+* **windows_disk_manager:** resolve AWS Function-tag disk identities (un-defer) ([#59](https://github.com/nwarila-platform/ansible-framework/issues/59)) ([24a8ec7](https://github.com/nwarila-platform/ansible-framework/commit/24a8ec74a7965b3a6f9cc827455962d541ff6d73))
+
+
+### Miscellaneous
+
+* **deps-dev:** bump ansible-lint from 26.6.0 to 26.8.0 ([#63](https://github.com/nwarila-platform/ansible-framework/issues/63)) ([2e08e06](https://github.com/nwarila-platform/ansible-framework/commit/2e08e06de43a4b9204403f8ac4e5b2a329d336ba))
+* **deps-dev:** bump pre-commit from 4.6.1 to 4.6.2 ([#62](https://github.com/nwarila-platform/ansible-framework/issues/62)) ([43f2697](https://github.com/nwarila-platform/ansible-framework/commit/43f26971fafeca9d1cb6eb84be7b2be9844b6085))
+* **deps-dev:** update ansible-core requirement from &lt;2.22,&gt;=2.21.2 to &gt;=2.21.3,&lt;2.22 ([#64](https://github.com/nwarila-platform/ansible-framework/issues/64)) ([aefe825](https://github.com/nwarila-platform/ansible-framework/commit/aefe825db90263dedd382a72fcff4bf1057f05d4))
+
 ## [0.1.3](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.2...v0.1.3) (2026-08-04)
 
 
