@@ -16,4 +16,4 @@ ansible-lint==26.6.0
 ansible-core>=2.21.2,<2.22
 
 # Pre-commit hook framework
-pre-commit==4.6.1
+pre-commit==4.6.2
