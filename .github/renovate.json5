@@ -1,0 +1,92 @@
+{
+  // ===========================================================================
+  // Renovate Configuration
+  // ===========================================================================
+  // Replaces .github/dependabot.yml. Opens PRs to keep dependency versions
+  // current. All PRs target main and use Conventional Commit prefixes so
+  // release-please categorises them in the changelog.
+  //
+  // Policy source: nwarila-platform/.github ADR-0004 (Use Renovate for
+  // Dependency Updates with Per-Template Baselines). The stack baseline lives
+  // in NWarila/ansible-framework-template and is inherited below; only
+  // genuinely repo-specific overrides belong in this file.
+  // ===========================================================================
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+
+  // ADR-0004 requires exactly one type-template preset, referenced by explicit
+  // path — a bare `github>owner/repo` would resolve to default.json, which the
+  // template does not publish.
+  "extends": [
+    "github>NWarila/ansible-framework-template//.github/renovate.json5"
+  ],
+
+  // ---------------------------------------------------------------------------
+  // Cadence
+  // ---------------------------------------------------------------------------
+  // Deliberate deviation from the template's portfolio cadence ("before 6am on
+  // monday", weekly): this repository runs nightly so updates surface the
+  // morning after they clear quarantine rather than waiting for the next Monday.
+  //
+  // Cron syntax (Later syntax is deprecated). Minutes must be the `*` wildcard.
+  // The window is 00:00-05:59 rather than a single hour because `schedule` is a
+  // permission window, not a trigger — Renovate docs recommend allowing at
+  // least 3-4 hours so a late run still lands inside it.
+  // ---------------------------------------------------------------------------
+  "timezone": "America/New_York",
+  "schedule": ["* 0-5 * * *"],
+
+  // ---------------------------------------------------------------------------
+  // Supply-chain quarantine
+  // ---------------------------------------------------------------------------
+  // No release is offered until it has been public for 7 days. This is also the
+  // template/ADR-0004 default; it is restated here because nightly cadence makes
+  // the quarantine the only thing standing between a compromised upstream
+  // release and a PR, so it should not be able to disappear via template drift.
+  // ---------------------------------------------------------------------------
+  "minimumReleaseAge": "7 days",
+
+  "packageRules": [
+    // -------------------------------------------------------------------------
+    // Commit type for the Python/pre-commit managers.
+    //
+    // The template emits `deps(deps):` for these managers. `deps` is not a type
+    // this repository can accept: it appears in neither the changelog-sections
+    // of release-please-config.json nor the allowed-types list that
+    // conventional-pre-commit enforces. Left inherited, dependency updates would
+    // drop out of the changelog silently.
+    //
+    // `chore(deps-dev)` is what Dependabot emitted and what the Miscellaneous
+    // changelog section is keyed to. Consumer rules are appended after the
+    // template's, so these win.
+    //
+    // github-actions is deliberately NOT overridden — the template's `ci(deps)`
+    // is a valid type here and maps to the CI/CD changelog section.
+    // -------------------------------------------------------------------------
+    {
+      "matchManagers": ["pip_requirements", "pre-commit", "ansible-galaxy"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps-dev"
+    },
+
+    // -------------------------------------------------------------------------
+    // ansible-core stays a bounded range.
+    //
+    // The template sets rangeStrategy "pin" for pip_requirements, which would
+    // rewrite `ansible-core>=2.21.3,<2.22` to `ansible-core==2.21.3` and break
+    // the intent documented in requirements-dev.txt — the range exists so the
+    // toolchain tracks one supported minor rather than a single point release.
+    //
+    // "bump" raises the floor and leaves the ceiling alone, which is what
+    // Dependabot did. allowedVersions holds the ceiling so that a 2.22 release
+    // cannot widen it; crossing a minor is a deliberate decision, not an
+    // automated one. The exact pins (yamllint, ansible-lint, pre-commit) are
+    // unaffected and keep their `==` form.
+    // -------------------------------------------------------------------------
+    {
+      "matchManagers": ["pip_requirements"],
+      "matchDepNames": ["ansible-core"],
+      "rangeStrategy": "bump",
+      "allowedVersions": "<2.22"
+    }
+  ]
+}
