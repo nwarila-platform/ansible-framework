@@ -5,7 +5,7 @@
 # linters and pre-commit; ansible-core is a bounded range (>=2.21.3,<2.22) so
 # the toolchain tracks the supported minor.
 # Update via: pip install --upgrade -r requirements-dev.txt
-# Or let Dependabot open a PR automatically.
+# Or let Renovate open a PR automatically.
 # =============================================================================
 
 # YAML linting
