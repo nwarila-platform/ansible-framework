@@ -14,24 +14,14 @@
 # none of these inputs, so requiring a digest to run it would fail a host for a contract it is not
 # using.
 #
-# The merged configuration arrives as 'config', scoped to the include by the loader.
+# Guards here are the REQUIRED-INPUT class only (style guide 4b): a documented input with no safe
+# default, whose fail_msg names what the playbook must declare -- plus the two whose wrong value is
+# destructive or silent-wrong rather than merely wrong. Nothing here pre-asserts a state an Ansible
+# action already fails loudly on: the platform is enforced by the loader's first_found, which fails
+# a non-Windows host with 'OS task file not found', so this file does not check it.
 #
 # =========================================================================================== #
 ---
-- name: 'VALIDATE | Require A Windows Host'
-  when: (state | default('present') | string | lower | trim) == 'present'
-
-  ansible.builtin.assert:
-    fail_msg: >-
-      openvpn_client implements the present path for Windows only, and this host reports
-      '{{ ansible_facts.os_family | default('unknown') }}'. The role installs the OpenVPN community
-      MSI, holds a Windows service and writes a Name Resolution Policy Table rule -- none of which
-      has a meaning on another platform. Restrict the play to Windows hosts, or use the platform's
-      own client.
-    quiet: true
-    that:
-      - (ansible_facts.os_family | default('') | lower) == 'windows'
-
 - name: 'VALIDATE | Require The Installer Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
 
@@ -45,15 +35,15 @@
       it executes rather than half-installing. See meta/main.yml for the full input contract.
     quiet: true
     that:
-      - (config.installer.bucket | default('', true) | string | trim) | length > 0
-      - (config.installer.path | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.installer.bucket | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.installer.path | default('', true) | string | trim) | length > 0
       # Two or three parts only. A FOUR-part version is the resource string this message forbids,
       # and it would break the role permanently rather than loudly: the role appends its own '.0',
       # so '2.6.12.0' becomes the pin '2.6.12.0.0' -- above the binary's own resource forever, so
       # BEGIN reinstalls on every converge and END can never prove the result.
-      - (config.installer.version | default('', true) | string | trim)
+      - (openvpn_client_running.installer.version | default('', true) | string | trim)
         is match('^[0-9]+([.][0-9]+){1,2}$')
-      - (config.installer.sha256 | default('', true) | string | trim)
+      - (openvpn_client_running.installer.sha256 | default('', true) | string | trim)
         is match('^[0-9a-f]{64}$')
 
 - name: 'VALIDATE | Require The Profile Contract'
@@ -68,9 +58,9 @@
       and failing later as a TLS error that names nothing.
     quiet: true
     that:
-      - (config.profile.bucket | default('', true) | string | trim) | length > 0
-      - (config.profile.object | default('', true) | string | trim) | length > 0
-      - (config.profile.sha256 | default('', true) | string | trim)
+      - (openvpn_client_running.profile.bucket | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.profile.object | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.profile.sha256 | default('', true) | string | trim)
         is match('^[0-9a-f]{64}$')
 
 - name: 'VALIDATE | Require A Profile Name That Is A File Name'
@@ -86,16 +76,16 @@
       Refusing to place a profile: openvpn_client.profile_name must be a bare file name WITHOUT the
       '.ovpn' suffix, which the role appends -- 'homelab', not 'homelab.ovpn', not a path and not a
       drive-qualified name. It names the one profile this role owns in
-      '{{ config.config_dir | default('the profile directory', true) }}', and the automatic service
+      '{{ openvpn_client_running.config_dir | default('the profile directory', true) }}', and the automatic service
       runs every profile it finds there.
     quiet: true
     that:
-      - (config.profile_name | default('', true) | string | trim) | length > 0
-      - (config.profile_name | default('', true) | string | trim)
+      - (openvpn_client_running.profile_name | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.profile_name | default('', true) | string | trim)
         is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
-      - not ((config.profile_name | default('', true) | string | trim | lower)
+      - not ((openvpn_client_running.profile_name | default('', true) | string | trim | lower)
         is search('[.]ovpn$'))
-      - not ((config.profile_name | default('', true) | string) is search('[.][.]'))
+      - not ((openvpn_client_running.profile_name | default('', true) | string) is search('[.][.]'))
 
 - name: 'VALIDATE | Require A Coherent Name-Resolution Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
@@ -117,19 +107,19 @@
       # template error naming NoneType instead of the message below. 'is not mapping' is separate
       # from 'is sequence' because a dict satisfies 'sequence' and would otherwise be iterated as
       # its keys.
-      - (config.dns | default({}, true)).servers is not string
-      - (config.dns | default({}, true)).servers is not mapping
-      - (config.dns | default({}, true)).servers is sequence
-      - ((config.dns.domain | default('', true) | string | trim) | length == 0)
-        or ((config.dns.domain | default('', true) | string | trim)
+      - (openvpn_client_running.dns | default({}, true)).servers is not string
+      - (openvpn_client_running.dns | default({}, true)).servers is not mapping
+      - (openvpn_client_running.dns | default({}, true)).servers is sequence
+      - ((openvpn_client_running.dns.domain | default('', true) | string | trim) | length == 0)
+        or ((openvpn_client_running.dns.domain | default('', true) | string | trim)
         is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'))
-      - ((config.dns.domain | default('', true) | string | trim) | length == 0)
-        or ((config.dns.servers | default([], true) | length) > 0)
+      - ((openvpn_client_running.dns.domain | default('', true) | string | trim) | length == 0)
+        or ((openvpn_client_running.dns.servers | default([], true) | length) > 0)
       # select('string') first, so a non-string entry is filtered out and caught by the length
       # comparison rather than exploding trim() with a template error that names nothing.
-      - (config.dns.servers | default([], true) | select('string')
+      - (openvpn_client_running.dns.servers | default([], true) | select('string')
         | map('trim') | select | list | length)
-        == (config.dns.servers | default([], true) | length)
+        == (openvpn_client_running.dns.servers | default([], true) | length)
 
 - name: 'VALIDATE | Require Usable Tunnel Proofs'
   when: (state | default('present') | string | lower | trim) == 'present'
@@ -146,24 +136,24 @@
     quiet: true
     that:
       # Shielded and mapping-checked for the same reasons the resolver contract above is.
-      - (config.proofs | default([], true)) is not string
-      - (config.proofs | default([], true)) is not mapping
-      - (config.proofs | default([], true)) is sequence
-      - (config.proofs | default([], true) | selectattr('host', 'defined') | list | length)
-        == (config.proofs | default([], true) | length)
+      - (openvpn_client_running.proofs | default([], true)) is not string
+      - (openvpn_client_running.proofs | default([], true)) is not mapping
+      - (openvpn_client_running.proofs | default([], true)) is sequence
+      - (openvpn_client_running.proofs | default([], true) | selectattr('host', 'defined') | list | length)
+        == (openvpn_client_running.proofs | default([], true) | length)
       # A null or empty host passes 'defined' and then fails inside win_wait_for as a module error
       # that names nothing about this contract.
-      - (config.proofs | default([], true) | map(attribute='host')
+      - (openvpn_client_running.proofs | default([], true) | map(attribute='host')
         | select('string') | map('trim') | select | list | length)
-        == (config.proofs | default([], true) | length)
-      - (config.proofs | default([], true) | selectattr('port', 'defined') | list | length)
-        == (config.proofs | default([], true) | length)
-      - (config.proofs | default([], true)
+        == (openvpn_client_running.proofs | default([], true) | length)
+      - (openvpn_client_running.proofs | default([], true) | selectattr('port', 'defined') | list | length)
+        == (openvpn_client_running.proofs | default([], true) | length)
+      - (openvpn_client_running.proofs | default([], true)
         | map(attribute='port') | map('int') | select('gt', 0) | list | length)
-        == (config.proofs | default([], true) | length)
-      - (config.proofs | default([], true)
+        == (openvpn_client_running.proofs | default([], true) | length)
+      - (openvpn_client_running.proofs | default([], true)
         | map(attribute='port') | map('int') | select('le', 65535) | list | length)
-        == (config.proofs | default([], true) | length)
+        == (openvpn_client_running.proofs | default([], true) | length)
 
 - name: 'VALIDATE | Require Usable Bounds'
   when: (state | default('present') | string | lower | trim) == 'present'
@@ -176,8 +166,8 @@
       comes up hangs the play instead of failing inside it.
     quiet: true
     that:
-      - (config.install.timeout_seconds | default(0, true) | int) > 0
-      - (config.proof_timeout_seconds | default(0, true) | int) > 0
+      - (openvpn_client_running.install.timeout_seconds | default(0, true) | int) > 0
+      - (openvpn_client_running.proof_timeout_seconds | default(0, true) | int) > 0
 
 - name: 'VALIDATE | Require The Platform Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
@@ -192,7 +182,7 @@
     # Normalised to lower case and FORWARD slashes before it is examined, so the tests below read
     # plainly and need no escaping of their own.
     __staging__: >-
-      {{ (config.install | default({}, true)).staging_dir | default('', true)
+      {{ (openvpn_client_running.install | default({}, true)).staging_dir | default('', true)
          | string | trim | lower | replace(__bs__, '/') | regex_replace('/+$', '') }}
 
   # These come from the Windows overlay rather than the playbook, so they are normally present --
@@ -209,10 +199,10 @@
       prefix before applying it. It is applied verbatim to the file holding the tunnel's private key.
     quiet: true
     that:
-      - (config.binary_path | default('', true) | string | trim) | length > 0
-      - (config.config_dir | default('', true) | string | trim) | length > 0
-      - (config.service_name | default('', true) | string | trim) | length > 0
-      - (config.service_account | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.binary_path | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.config_dir | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.service_name | default('', true) | string | trim) | length > 0
+      - (openvpn_client_running.service_account | default('', true) | string | trim) | length > 0
       # NOT merely non-empty. This directory is deleted RECURSIVELY -- by the present path's own
       # cleanup and again by clean_windows.yml -- so an override naming 'C:\Windows\Temp', or a
       # drive root, would have this role remove someone else's data on its way past. Require a
@@ -224,10 +214,10 @@
                              'c:/users/public', 'c:/programdata', 'c:/program files' ]
       # The script's own ValidatePattern, restated: a descriptor this guard accepts and the script
       # then refuses would be a contract that disagrees with itself.
-      - (config.profile_sddl | default('', true) | string | trim)
+      - (openvpn_client_running.profile_sddl | default('', true) | string | trim)
         is match('^D:P(AI)?([(][^()]+[)])+$')
       # Shape is not enough. A well-formed descriptor granting Everyone, Authenticated Users or
       # Builtin Users a read is exactly the exposure this descriptor exists to prevent, and the
       # script would apply it without complaint. Refuse the permissive well-known SIDs by name.
-      - not ((config.profile_sddl | default('', true) | string | upper)
+      - not ((openvpn_client_running.profile_sddl | default('', true) | string | upper)
         is search('[;](WD|AU|BU|IU|WR|AN)[)]'))
