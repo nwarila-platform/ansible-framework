@@ -1,0 +1,895 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Installs the OpenVPN community client at the pinned version, places the pinned connection
+# profile where the automatic service runs it, holds that service on and running as its own
+# account, points the realm's DNS at the domain controllers, and proves the tunnel delivers what
+# the playbook declared.
+#
+# BEGIN reads the machine and decides ONE action -- install, upgrade, or none -- and refuses a
+# host whose automatic service would run profiles this role did not declare. PROCESS acts on that
+# decision, and END proves the result and cleans up. Every PROCESS task that belongs to the
+# install carries the decision individually rather than the stage carrying it once, so a run
+# always lists the same steps in the same order: a converged host reads as a column of skips,
+# not a stage that vanished. The profile, its permissions, the service and the DNS rule are
+# state the role owns on every converge, not part of the install decision, so they are not
+# gated on it -- with the check-mode exception below.
+#
+# END is deliberately ungated, so a converged host proves the same state as a freshly built one.
+#
+# CHECK MODE. The controller-side reads -- the staging directory and both fetches -- run for real
+# under --check: they mutate nothing on the target, and running them is what lets a dry run prove
+# the pinned objects exist (and, for the profile, match the pinned digest). The install itself is
+# SKIPPED under --check, explicitly: the package module cannot predict an MSI it was never handed,
+# so the install is a unit that does not support check mode, and the ratified rule is to skip
+# such a unit honestly rather than let it begin and fail. On a host where an install or upgrade
+# is therefore pending, the tasks that need the client -- the profile file, its permissions, the
+# service -- are skipped too, and END says in plain words that a dry run cannot prove an install
+# it did not perform. On a host whose client is current, --check runs every one of them and
+# predicts honestly, with one more honest gap: the permissions of a profile that does not yet
+# exist cannot be read, so PROCESS skips that enforcement and END stops at the profile proof with
+# a message that says a dry run cannot create the file it would prove.
+#
+# Install state is read from the client binary's own version resource, through a native module
+# rather than a script, because native-module-first is the rule: OpenVPN stamps openvpn.exe with
+# PACKAGE_VERSION plus a trailing '.0' (openvpn_win32_resources.rc), a documented property of the
+# build, and the numeric form of that resource is what the decision compares.
+#
+# Everything moves through the runner: the controller fetches the installer and the profile and
+# hands them to the target, so the guest never receives cloud credentials or any other reach into
+# S3. The installer's digest is verified on the guest, because that is the copy that executes;
+# the profile's digest is verified on the controller, because that is the string that is written,
+# and proven again from the file in END.
+#
+# The MSI registers the automatic service DISABLED, running as its own virtual account (msi.wxs,
+# ServiceInstall Start="disabled" Account="NT SERVICE\OpenVPNService"), so an install alone
+# connects nothing. The role holds the service on, running as that account, and restarts it
+# whenever the profile it runs or the account it runs as changes, through a handler flushed
+# before END proves anything. The profile's permissions admit exactly SYSTEM, Administrators and
+# that account, enforced wholesale by a first-class script and proven exact in END. A host whose
+# binary is present but whose service has been removed is a broken install, and the service task
+# fails on it loudly and by name -- it is not repaired silently.
+#
+# Return code 3010 is a success: it means the product installed and wants a restart -- the data
+# channel offload driver asks for one on a first install. The role restarts when the installer
+# asks for one, and only then.
+#
+# Cleanup lives under END's 'always', which means it does NOT run after an unrescued PROCESS
+# failure. That is the accepted trade of the three-stage shape: the residue is a controller temp
+# directory and an installer on the guest, and the proof bed is rebuilt for every run. PROCESS
+# carries an 'always' of its own for one thing only -- flushing a notified restart -- because a
+# service left running a profile that was already replaced is not residue to tidy up later, it
+# is a wrong state no later converge would ever correct.
+#
+# ============================================================================================= #
+---
+#region ------ [ Begin: Install The OpenVPN Client on Windows ] ------------------------------- #
+
+- name: 'BEGIN | Read The Machine And Decide One Action'
+
+  # Begin The 'Begin' Block
+  block:
+
+    #region ------ [ Begin: Read The Installed Client ] --------------------------------------- #
+    # One action, two tasks: the version module fails on a path that does not exist, and a host
+    # that has never had the client has no binary to ask. The stat answers "is it there" and the
+    # version read answers "at what version", and together they are the one question BEGIN asks.
+    # The stat asks only whether the file exists -- a digest and a size are answers to questions
+    # nobody here is asking. No changed_when on either: reading a machine changes nothing about
+    # it, and the version module documents that it always reports no change.
+
+    - name: 'BEGIN | Look For The Client Binary'
+      register: '__openvpn_client_binary__'
+
+      ansible.windows.win_stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_checksum: false
+        get_size: false
+        path: "{{ openvpn_client_running.binary_path }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read The Installed Client Version From The Binary'
+      register: '__openvpn_client_version__'
+      when: __openvpn_client_binary__.stat.exists
+
+      community.windows.win_file_version:
+        path: "{{ openvpn_client_running.binary_path }}"
+
+    #endregion --- [ Begin: Read The Installed Client ] --------------------------------------- #
+
+    #region ------ [ Begin: Refuse A Host Running Profiles This Role Did Not Declare ] -------- #
+    # One action, three tasks: the automatic service runs EVERY profile in config-auto, so a file
+    # this role did not place is a tunnel this role does not know about, running under the same
+    # service and the same account. The directory is listed -- hidden files included, because a
+    # hidden profile runs just the same -- and anything other than the declared profile is
+    # refused before a single write, because a machine this role owns must not be quietly running
+    # someone else's tunnel. The listing is gated on the DIRECTORY existing, not on the client:
+    # config-auto survives an uninstall, and a stale foreign profile left there would come back
+    # to life the moment the client is installed again. Listing an absent directory would only
+    # warn, so the stat decides. Compared case-insensitively, because the file system is.
+
+    - name: 'BEGIN | Look For The Profile Directory'
+      register: '__openvpn_client_config_dir__'
+
+      ansible.windows.win_stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_checksum: false
+        get_size: false
+        path: "{{ openvpn_client_running.config_dir }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | List The Profiles The Automatic Service Would Run'
+      register: '__openvpn_client_profiles__'
+      when: __openvpn_client_config_dir__.stat.exists
+
+      ansible.windows.win_find:
+        age_stamp: 'mtime'
+        case_sensitive: false
+        checksum_algorithm: 'sha1'
+        file_type: 'file'
+        follow: false
+        get_checksum: false
+        hidden: true
+        paths: [ "{{ openvpn_client_running.config_dir }}" ]
+        patterns: [ '*.ovpn' ]
+        recurse: false
+        use_regex: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Refuse A Host Running Profiles This Role Did Not Declare'
+      vars:
+        __declared_profile__: "{{ (openvpn_client_running.profile_name ~ '.ovpn') | lower }}"
+        __found_profiles__: >-
+          {{ __openvpn_client_profiles__.files | default([], true)
+             | map(attribute='filename') | map('lower') | list }}
+        __undeclared_profiles__: >-
+          {{ __found_profiles__ | reject('equalto', __declared_profile__) | list }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' has profiles in '{{ openvpn_client_running.config_dir }}' that
+          this role did not declare: {{ __undeclared_profiles__ }}. The automatic service runs every
+          profile in that directory, so these are tunnels this role does not own. Refusing before
+          anything is written: remove them deliberately, or declare the one you mean as
+          openvpn_client.profile_name.
+        quiet: true
+        that:
+          - __undeclared_profiles__ | length == 0
+
+    #endregion --- [ Begin: Refuse A Host Running Profiles This Role Did Not Declare ] -------- #
+
+#endregion --- [ Begin: Install The OpenVPN Client on Windows ] ------------------------------- #
+
+
+#region ------ [ Process: Install The OpenVPN Client on Windows ] ----------------------------- #
+
+- name: 'PROCESS | Install The Client, Place The Profile And Hold The Service'
+  vars:
+    # The key is rendered ONCE and everything else derives from it: the overlay's path template
+    # carries the version marker in the file name as well as the directory, so a basename taken
+    # before the substitution would carry literal angle brackets into a Windows path.
+    __installer_key__: >-
+      {{ openvpn_client_running.installer.path
+         | replace('<version>', openvpn_client_running.installer.version) }}
+    __installer_name__: "{{ __installer_key__ | basename }}"
+    __guest_installer__: "{{ openvpn_client_running.install.staging_dir }}\\{{ __installer_name__ }}"
+    # A host without the binary skipped the version read, so its version defaults to '0', which is
+    # below every pin: "absent" and "too old" are the same decision, stated once.
+    __action_required__: >-
+      {{ __openvpn_client_version__.win_file_version.file_version_raw | default('0', true)
+         is version(openvpn_client_running.installer.version ~ '.0', '<') }}
+    # A dry run on a host whose client is absent or too old: the install is skipped, so nothing
+    # that needs the installed client can be predicted either. The tasks that need it are skipped
+    # on exactly this, and END explains why the host cannot be proven.
+    __dry_run_with_install_pending__: "{{ ansible_check_mode and (__action_required__ | bool) }}"
+    __profile_path__: >-
+      {{ openvpn_client_running.config_dir }}\{{ openvpn_client_running.profile_name }}.ovpn
+    # The comment every rule this role writes carries, and finds them by again. Stated once, because
+    # the present and absent paths must agree on it or the absent path strands the present one's.
+    __ownership_marker__: 'Managed by openvpn_client'
+    # Whether a realm is declared decides which of the two DNS tasks runs; stated once so the two
+    # gates cannot drift apart and run both rules, or neither.
+    __dns_declared__: >-
+      {{ (openvpn_client_running.dns.domain | default('', true) | string | trim | length) > 0 }}
+
+  # Begin The 'Process' Block
+  block:
+
+    #region ------ [ Process: Create The Controller Staging Directory ] ----------------------- #
+    # become is off explicitly. The framework chassis turns become on for every task, and this one
+    # runs on the CONTROLLER, where elevation buys nothing and a controller that cannot sudo
+    # without a password would fail the play on a task that never needed root. check_mode is off
+    # because the module has no check-mode support and would be skipped, leaving the fetch below
+    # nowhere to land; a temp directory on the controller mutates nothing on the target, and END's
+    # cleanup removes it under --check as well.
+
+    - name: 'PROCESS | Create The Controller Staging Directory'
+      become: false
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      register: '__openvpn_client_stage__'
+      when: __action_required__ | bool
+
+      ansible.builtin.tempfile:
+        path: '/tmp'
+        prefix: 'openvpn-client-'
+        state: 'directory'
+        suffix: ''
+
+    #endregion --- [ Process: Create The Controller Staging Directory ] ----------------------- #
+
+    #region ------ [ Process: Fetch The Installer To The Controller ] ------------------------- #
+    # The module probes the BUCKET before the object, and that probe is authorized by a bucket-
+    # level grant this deployment deliberately does not hold: reading one pinned prefix must not
+    # imply the right to see the bucket. Skipping the probe is the module's documented answer for
+    # exactly that policy shape. A missing object still fails loudly -- the key check uses
+    # head_object, which the object-level grant does authorize. become is off for the reason the
+    # staging directory gives; check_mode is off because a read to the controller mutates nothing
+    # on the target, and running it is what lets a dry run prove the pinned object exists.
+
+    - name: 'PROCESS | Fetch The Installer To The Controller'
+      become: false
+      check_mode: false
+      delegate_to: 'localhost'
+      when: __action_required__ | bool
+
+      amazon.aws.s3_object:
+        bucket: "{{ openvpn_client_running.installer.bucket }}"
+        ceph: false
+        debug_botocore_endpoint_logs: false
+        dest: "{{ __openvpn_client_stage__.path }}/{{ __installer_name__ }}"
+        dualstack: false
+        encrypt: true
+        encryption_mode: 'AES256'
+        expiry: 600
+        ignore_nonexistent_bucket: true
+        mode: 'get'
+        object: "{{ __installer_key__ }}"
+        overwrite: 'different'
+        permission: [ 'private' ]
+        prefix: ''
+        purge_tags: true
+        retries: 0
+        sig_v4: true
+        validate_bucket_name: true
+        validate_certs: true
+
+    #endregion --- [ Process: Fetch The Installer To The Controller ] ------------------------- #
+
+    #region ------ [ Process: Ensure The Guest Staging Directory Exists ] --------------------- #
+    # Everything moves through the runner: the controller holds the S3 credentials and hands the
+    # file to the guest, so the guest never receives any reach into S3. From here to the install,
+    # every task is skipped under --check: the package module cannot predict an MSI it was never
+    # handed, so the install is a unit that does not support check mode and is skipped honestly,
+    # as one, rather than half-begun.
+
+    - name: 'PROCESS | Ensure The Guest Staging Directory Exists'
+      when:
+        - __action_required__ | bool
+        - not ansible_check_mode
+
+      ansible.windows.win_file:
+        access_time: 'preserve'
+        access_time_format: 'yyyy-MM-dd HH:mm:ss'
+        modification_time: 'preserve'
+        modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+        path: "{{ openvpn_client_running.install.staging_dir }}"
+        state: 'directory'
+
+    #endregion --- [ Process: Ensure The Guest Staging Directory Exists ] --------------------- #
+
+    #region ------ [ Process: Copy The Installer To The Guest ] ------------------------------- #
+
+    - name: 'PROCESS | Copy The Installer To The Guest'
+      register: '__openvpn_client_copied__'
+      when:
+        - __action_required__ | bool
+        - not ansible_check_mode
+
+      ansible.windows.win_copy:
+        backup: false
+        decrypt: true
+        dest: "{{ __guest_installer__ }}"
+        # True so a partial or stale staged file is replaced rather than trusted.
+        force: true
+        local_follow: true
+        remote_src: false
+        src: "{{ __openvpn_client_stage__.path }}/{{ __installer_name__ }}"
+
+    #endregion --- [ Process: Copy The Installer To The Guest ] ------------------------------- #
+
+    #region ------ [ Process: Install Silently From The Verified Copy ] ----------------------- #
+    # The feature set and the success codes are properties of this MSI, not operator choices, so
+    # they live beside the package invocation. ADDLOCAL names exactly what a headless client
+    # needs and nothing else: the client itself, the automatic service that runs config-auto, and
+    # the data channel offload driver -- no GUI, no TAP-Windows6, no documentation or sample
+    # configurations. Parents are listed with their children because Windows Installer installs
+    # only the features named. The DCO driver is the only driver, which holds on Server 2022 and
+    # later (the MSI itself gates it on Windows 10 2004) and is what the pinned profile's AEAD
+    # ciphers run on. The digest is verified on the guest, because that is the copy that
+    # executes. A wrong feature name would fail the install rather than prompt, but the run is
+    # still bounded so a hung installer fails inside Ansible. 3010 is accepted alongside 0
+    # because it is not a failure: the driver install can ask for a restart, the module turns
+    # that exact code into reboot_required, and the next region acts on it.
+
+    - name: 'PROCESS | Install Silently From The Verified Copy'
+      async: "{{ openvpn_client_running.install.timeout_seconds }}"
+      poll: 15
+      register: '__openvpn_client_installed__'
+      when:
+        - __action_required__ | bool
+        - not ansible_check_mode
+
+      ansible.windows.win_package:
+        arguments: 'ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.OvpnDco'
+        checksum: "{{ openvpn_client_running.installer.sha256 }}"
+        checksum_algorithm: 'sha256'
+        expected_return_code: [ 0, 3010 ]
+        follow_redirects: 'safe'
+        force_basic_auth: false
+        http_agent: 'ansible-httpget'
+        maximum_redirection: 50
+        path: "{{ __guest_installer__ }}"
+        provider: 'msi'
+        proxy_use_default_credential: false
+        state: 'present'
+        url_timeout: 30
+        use_default_credential: false
+        use_proxy: true
+        validate_certs: true
+        verify_signature: false
+        wait_for_children: false
+
+    #endregion --- [ Process: Install Silently From The Verified Copy ] ----------------------- #
+
+    #region ------ [ Process: Reboot When The Installer Requires It ] ------------------------- #
+    # reboot_required is set by the module for return code 3010 and nothing else, so this acts on
+    # the installer's own request rather than on a guess. It is the only condition needed: a run
+    # that never installed leaves no reboot_required to be true. boot_time_command is the one
+    # documented default left unpinned -- it is the module's own probe for "has the host returned"
+    # rather than a setting, so pinning it would freeze an implementation we want fixes to.
+
+    - name: 'PROCESS | Reboot When The Installer Requires It'
+      when: __openvpn_client_installed__.reboot_required | default(false) | bool
+
+      ansible.windows.win_reboot:
+        connect_timeout: 5
+        msg: 'Restarting to finalise the OpenVPN client installation.'
+        post_reboot_delay: 0
+        pre_reboot_delay: 2
+        reboot_timeout: 600
+
+    #endregion --- [ Process: Reboot When The Installer Requires It ] ------------------------- #
+
+    #region ------ [ Process: Fetch The Connection Profile ] ---------------------------------- #
+    # The profile is key material, so it is pulled as a STRING: getstr hands the content to the
+    # tasks below, and nothing in this role writes it anywhere but its destination -- the
+    # transport's own transient temp files on either side are the module's, and the module
+    # removes them. no_log covers the task because the value is the secret itself, not merely a
+    # parameter that touches one. Reading changes nothing and the task says so, which is what
+    # lets a converged host report no changes at all. become is off for the reason the staging
+    # directory gives. check_mode is off for a sharper reason: the module supports check mode by
+    # RETURNING EARLY -- its getstr path exits with a message and NO contents key -- so under
+    # --check the register would exist but the field the digest check reads would not, and the
+    # assert would die on a template error instead of its own message. Running the fetch for real
+    # under --check costs a read the task already declares changeless, and buys the most useful
+    # thing --check can say here: that the object exists and still matches the pinned digest.
+
+    - name: 'PROCESS | Fetch The Connection Profile'
+      become: false
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      no_log: true
+      register: '__openvpn_client_profile_object__'
+
+      amazon.aws.s3_object:
+        bucket: "{{ openvpn_client_running.profile.bucket }}"
+        ceph: false
+        debug_botocore_endpoint_logs: false
+        dualstack: false
+        encrypt: true
+        encryption_mode: 'AES256'
+        expiry: 600
+        ignore_nonexistent_bucket: true
+        mode: 'getstr'
+        object: "{{ openvpn_client_running.profile.object }}"
+        overwrite: 'different'
+        permission: [ 'private' ]
+        prefix: ''
+        purge_tags: true
+        retries: 0
+        sig_v4: true
+        validate_bucket_name: true
+        validate_certs: true
+
+    #endregion --- [ Process: Fetch The Connection Profile ] ---------------------------------- #
+
+    #region ------ [ Process: Verify The Connection Profile Digest ] -------------------------- #
+    # The same contract the installer gets: an object is trusted only after it matches the digest
+    # pinned in the playbook, so a re-exported, truncated or replaced profile stops the run
+    # instead of reaching the guest and failing as a TLS error that names nothing. Verified at the
+    # point of USE -- this is the content the write below places. Deliberately NOT no_log: assert
+    # reports the expression text and our message, never the evaluated value, so the failure
+    # stays readable without exposing the key.
+
+    - name: 'PROCESS | Verify The Connection Profile Digest'
+      ansible.builtin.assert:
+        fail_msg: >-
+          The connection profile object '{{ openvpn_client_running.profile.object }}' does not
+          match the sha256 pinned in the playbook. Refusing to place an unverified profile: the
+          object in the bucket has changed, or the pin is stale.
+        quiet: true
+        that: [ __openvpn_client_profile_object__.contents | hash('sha256') == openvpn_client_running.profile.sha256 ]
+
+    #endregion --- [ Process: Verify The Connection Profile Digest ] -------------------------- #
+
+    #region ------ [ Process: Create The Profile File Before Any Key Material Lands ] --------- #
+    # The file is created EMPTY, so its permissions can be enforced before the key is written into
+    # it -- written first, the key would briefly carry config-auto's inherited grant to every user
+    # on the machine. touch with both timestamps preserved leaves an existing file exactly as it
+    # is and reports no change, so this is idempotent without a read of its own. The directory is
+    # the installer's: config-auto exists on every host whose client is installed, and a host where
+    # someone removed it fails here by name rather than being silently rebuilt. Skipped on a dry
+    # run with an install pending, because there is no directory to create the file in.
+
+    - name: 'PROCESS | Create The Profile File Empty'
+      when: not (__dry_run_with_install_pending__ | bool)
+
+      ansible.windows.win_file:
+        access_time: 'preserve'
+        access_time_format: 'yyyy-MM-dd HH:mm:ss'
+        modification_time: 'preserve'
+        modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+        path: "{{ __profile_path__ }}"
+        state: 'touch'
+
+    #endregion --- [ Process: Create The Profile File Before Any Key Material Lands ] --------- #
+
+    #region ------ [ Process: Enforce The Profile Permissions ] ------------------------------- #
+    # One action, two tasks. The profile carries a private key, and config-auto inherits the
+    # volume's grant to every user, so the DACL is ENFORCED wholesale by a first-class script
+    # rather than granted entry by entry: the native module never removes an entry it did not
+    # write, so a hand-added grant would survive every converge. The script owns the whole list --
+    # inheritance severed, SYSTEM and Administrators full control, the automatic service's own
+    # virtual account read and nothing else, because that account is the process that opens the
+    # profile and every other reader is a leak. The descriptor is the overlay's, where its service
+    # SID is explained; the script compares the normalised form Windows reads back, so a
+    # converged file compares equal byte for byte, and a write that did not take fails the run.
+    # The stat before it exists for the dry run: a descriptor can only be read from a file that
+    # exists, and under --check the touch above created nothing, so on a host whose profile is
+    # missing the dry run reports the file and its content as would-change and says nothing about
+    # permissions -- the real run enforces them. The referenced .ps1 is MATERIALIZED from scripts/
+    # by scripts/materialize-role-scripts.sh (the role tracks only files/Set-FileAcl.ps1.stub);
+    # run it before this role.
+
+    - name: 'PROCESS | Look For The Profile File'
+      register: '__openvpn_client_profile_file__'
+      when: not (__dry_run_with_install_pending__ | bool)
+
+      ansible.windows.win_stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_checksum: false
+        get_size: false
+        path: "{{ __profile_path__ }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Enforce The Profile Permissions'
+      when:
+        - not (__dry_run_with_install_pending__ | bool)
+        - (not ansible_check_mode) or (__openvpn_client_profile_file__.stat.exists | default(false) | bool)
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Path: "{{ __profile_path__ }}"
+          Sddl: "{{ openvpn_client_running.profile_sddl }}"
+        remote_src: false
+        script: "{{ lookup('ansible.builtin.file', 'Set-FileAcl.ps1') }}"
+
+    #endregion --- [ Process: Enforce The Profile Permissions ] ------------------------------- #
+
+    #region ------ [ Process: Place The Profile Where The Automatic Service Runs It ] --------- #
+    # The automatic service runs every profile it finds in config-auto when it starts, so this
+    # directory IS the declaration "connect this tunnel at boot, with nobody signed in". The file
+    # is written from the verified string, byte for byte, which is what lets END prove it by
+    # digest; written in place over the file whose permissions were just enforced, so the key
+    # lands under the locked descriptor. The module compares before it writes, so a converged host
+    # writes nothing and the restart below is notified only when the profile actually changed --
+    # the service reads the directory once, at start. no_log because the content is the key
+    # material itself. Skipped on a dry run with an install pending, because there is no directory
+    # to place the profile in.
+
+    - name: 'PROCESS | Place The Profile Where The Automatic Service Runs It'
+      no_log: true
+      notify: 'openvpn-client-restart-required'
+      when: not (__dry_run_with_install_pending__ | bool)
+
+      ansible.windows.win_copy:
+        backup: false
+        content: "{{ __openvpn_client_profile_object__.contents }}"
+        decrypt: true
+        dest: "{{ __profile_path__ }}"
+        force: true
+        local_follow: true
+        remote_src: false
+
+    #endregion --- [ Process: Place The Profile Where The Automatic Service Runs It ] --------- #
+
+    #region ------ [ Process: Hold The Automatic Service On ] --------------------------------- #
+    # The MSI registers the automatic service DISABLED and never started -- read from the
+    # installer's own source, msi.wxs, ServiceInstall Start="disabled" -- so without this the
+    # profile sits in config-auto and nothing ever opens it. Auto, not delayed: the tunnel is what
+    # the domain join and everything behind the domain controllers depends on, and delayed start
+    # holds it back by minutes after every boot. The logon account is HELD, not inherited: it is
+    # the identity the profile's permissions admit, and a service moved to any other account would
+    # look healthy and open nothing. A virtual account carries no password, so none is given, and
+    # update_password is pinned to the module's documented current default because the module
+    # itself says that default may move. A changed account takes effect on restart, so it notifies
+    # the same handler the profile does; on a first build the profile notifies and the cold start
+    # here also starts, so the flush below bounces a service that just came up -- one extra
+    # restart per first install, accepted. Skipped on a dry run with an install pending, because
+    # there is no service to hold.
+
+    - name: 'PROCESS | Hold The Automatic Service On'
+      notify: 'openvpn-client-restart-required'
+      when: not (__dry_run_with_install_pending__ | bool)
+
+      ansible.windows.win_service:
+        dependency_action: 'set'
+        desktop_interact: false
+        force_dependent_services: false
+        name: "{{ openvpn_client_running.service_name }}"
+        start_mode: 'auto'
+        state: 'started'
+        update_password: 'on_create'
+        username: "{{ openvpn_client_running.service_account }}"
+
+    #endregion --- [ Process: Hold The Automatic Service On ] --------------------------------- #
+
+    #region ------ [ Process: Point The Realm At The Domain Controllers ] --------------------- #
+    # A multi-homed host answers a name from whichever adapter's resolver replies first, and the
+    # cloud resolver replies NXDOMAIN for the realm faster than a domain controller across the
+    # tunnel replies with an answer. The Name Resolution Policy Table is how Windows pins one
+    # namespace to named servers regardless of adapter, which is exactly the conditional forwarder
+    # the domain join needs. No module manages the NRPT, so the rule is held by a first-class
+    # PowerShell script rather than an inline block: the guest-side logic is developed and
+    # Pester-tested once under scripts/, and the role executes a materialized copy. Parameters
+    # cross as typed module options, never Jinja spliced into the script source, which is what
+    # keeps the injection surface at zero. The script owns every rule carrying the role's marker:
+    # present holds exactly one, for the declared namespace alone, with the declared servers in
+    # the declared order, and removes any owned rule for a namespace no longer declared; absent
+    # removes them all. It refuses to shadow a rule for the namespace that the role did not write
+    # -- a second resolver policy for the realm is a decision for a person. One action, two tasks:
+    # which of the two the host gets is decided by whether a domain is declared, so the same
+    # script runs either way and a domain removed from the playbook removes its rule rather than
+    # stranding it. The leading dot is what makes the rule cover the realm and everything beneath
+    # it. The referenced .ps1 is MATERIALIZED from scripts/ by scripts/materialize-role-scripts.sh
+    # (the role tracks only files/Set-DnsNamespaceForwarder.ps1.stub); run it before this role.
+
+    - name: 'PROCESS | Point The Realm At The Domain Controllers'
+      when: __dns_declared__ | bool
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Comment: "{{ __ownership_marker__ }}"
+          NameServers: "{{ openvpn_client_running.dns.servers }}"
+          Namespace: ".{{ openvpn_client_running.dns.domain | string | trim }}"
+          State: 'Present'
+        remote_src: false
+        script: "{{ lookup('ansible.builtin.file', 'Set-DnsNamespaceForwarder.ps1') }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Remove Any Realm Rule This Role Wrote When No Realm Is Declared'
+      when: not (__dns_declared__ | bool)
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Comment: "{{ __ownership_marker__ }}"
+          State: 'Absent'
+        remote_src: false
+        script: "{{ lookup('ansible.builtin.file', 'Set-DnsNamespaceForwarder.ps1') }}"
+
+    #endregion --- [ Process: Point The Realm At The Domain Controllers ] --------------------- #
+
+    #region ------ [ Process: Apply Any Pending Restart ] ------------------------------------- #
+    # Handlers would otherwise run at the very END of the play, after this role's own proofs.
+    # Flushing here means the service has already re-read config-auto, as its own account, by the
+    # time END asks whether the tunnel reaches what the playbook declared -- so that proof
+    # describes the converged host rather than the one that existed before the bounce.
+
+    - name: 'PROCESS | Apply Any Pending Restart'
+      ansible.builtin.meta: 'flush_handlers'
+
+    #endregion --- [ Process: Apply Any Pending Restart ] ------------------------------------- #
+
+#endregion --- [ Process: Install The OpenVPN Client on Windows ] ----------------------------- #
+
+
+#region ------ [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+# The flush above is reached only when PROCESS runs to completion. A converge that replaced the
+# profile and then failed before it would leave the service running the old one -- and the NEXT
+# converge would write nothing, because the file is already correct, so it would notify nothing
+# and never restart either. The service would run a retired profile for good, under a run that
+# reports success. This closes that: an 'always' runs even when the block above failed, and a
+# handler that already ran is not run again, so a successful converge still restarts exactly
+# once. Restart only -- cleanup stays under END.
+
+  # Begin the 'Always' block
+  always:
+
+    - name: 'PROCESS | Apply Any Pending Restart Even After A Failure'
+      ansible.builtin.meta: 'flush_handlers'
+
+#endregion --- [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+
+
+#region ------ [ End: Install The OpenVPN Client on Windows ] --------------------------------- #
+
+- name: 'END | Prove The Result And Clean Up'
+  vars:
+    # Restated from PROCESS deliberately: block vars do not cross stages, and END must compose
+    # the path from the same two inputs PROCESS did so the two cannot disagree about which file
+    # is the profile.
+    __profile_path__: >-
+      {{ openvpn_client_running.config_dir }}\{{ openvpn_client_running.profile_name }}.ovpn
+
+  # Begin The 'End' Block
+  block:
+
+    #region ------ [ End: Re-Read The Installed Client ] -------------------------------------- #
+    # Ungated, so a converged host proves the same state as a freshly built one. This is the same
+    # pair of reads BEGIN performed, against the same binary, so the two cannot disagree about
+    # what counts as installed.
+
+    - name: 'END | Look For The Client Binary'
+      register: '__openvpn_client_final_binary__'
+
+      ansible.windows.win_stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_checksum: false
+        get_size: false
+        path: "{{ openvpn_client_running.binary_path }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Re-Read The Installed Client Version From The Binary'
+      register: '__openvpn_client_final_version__'
+      when: __openvpn_client_final_binary__.stat.exists
+
+      community.windows.win_file_version:
+        path: "{{ openvpn_client_running.binary_path }}"
+
+    #endregion --- [ End: Re-Read The Installed Client ] -------------------------------------- #
+
+    #region ------ [ End: Prove The Client Is Installed At Or Above The Pin ] ----------------- #
+    # An exit code is the installer's opinion; the binary on disk is the machine's. A missing
+    # binary means the installer reported success without placing the product, and a lower
+    # version means the MSI refused the upgrade -- both pass unnoticed otherwise. This is the
+    # first proof on purpose: on a dry run with an install pending it stops the stage here with
+    # a message that says why, before the proofs that need the client to exist.
+
+    - name: 'END | Prove The Client Is Installed At Or Above The Pin'
+      vars:
+        __final_version__: "{{ __openvpn_client_final_version__.win_file_version.file_version_raw | default('0', true) }}"
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          {% if ansible_check_mode %}
+          The client cannot be installed or upgraded in check mode, so this host cannot be proven
+          to carry OpenVPN {{ openvpn_client_running.installer.version }} -- nor can the profile,
+          its permissions or the service be proven on a host whose install is still pending. Run
+          without --check to install.
+          {% else %}
+          Expected OpenVPN {{ openvpn_client_running.installer.version }} or above at
+          '{{ openvpn_client_running.binary_path }}'; found '{{ __final_version__ }}'. A version
+          of 0 means the binary is absent: the installer reported success without placing the
+          product.
+          {% endif %}
+        quiet: true
+        that:
+          - __final_version__ is version(openvpn_client_running.installer.version ~ '.0', '>=')
+
+    #endregion --- [ End: Prove The Client Is Installed At Or Above The Pin ] ----------------- #
+
+    #region ------ [ End: Prove The Profile Is What The Playbook Pinned ] --------------------- #
+    # One action, two tasks: the file the service reads is re-hashed and proven equal to the
+    # digest pinned in the playbook. Written byte for byte from the verified string, the file's
+    # own sha256 IS the object's, so this proves both that the profile is in place and that it is
+    # the one declared -- a profile edited by hand, or left over from an earlier pin, fails here
+    # rather than as a tunnel that connects somewhere else.
+
+    - name: 'END | Re-Read The Profile The Service Runs'
+      register: '__openvpn_client_final_profile__'
+
+      ansible.windows.win_stat:
+        checksum_algorithm: 'sha256'
+        follow: false
+        get_checksum: true
+        get_size: false
+        path: "{{ __profile_path__ }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Profile Is What The Playbook Pinned'
+      ansible.builtin.assert:
+        fail_msg: >-
+          {% if ansible_check_mode and not (__openvpn_client_final_profile__.stat.exists | bool) %}
+          The profile at '{{ __profile_path__ }}' does not exist, and a dry run cannot create it, so
+          neither it nor its permissions can be proven on this host. Run without --check to place
+          the profile.
+          {% else %}
+          The profile at '{{ __profile_path__ }}' is missing or does not hash to the sha256 pinned
+          in the playbook. The service is running something other than the declared profile, or
+          nothing at all.
+          {% endif %}
+        quiet: true
+        that:
+          - __openvpn_client_final_profile__.stat.exists | bool
+          - __openvpn_client_final_profile__.stat.checksum | default('', true)
+            == openvpn_client_running.profile.sha256
+
+    #endregion --- [ End: Prove The Profile Is What The Playbook Pinned ] --------------------- #
+
+    #region ------ [ End: Prove The Profile Permissions Are Exact ] --------------------------- #
+    # One action, two tasks: the same script that enforced the descriptor is run again in CHECK
+    # mode, which makes it a read -- it compares the normalised form Windows holds against the
+    # declared one and reports whether it WOULD change, writing nothing; changed_when is false
+    # because a read changes nothing, and the assert reads the script's own verdict. A would-
+    # change here is a descriptor someone altered since PROCESS, or a write the platform
+    # reshaped, and either is a key readable by someone it should not be. The proof is the
+    # machine's descriptor, not the enforcing task's report.
+
+    - name: 'END | Re-Read The Profile Permissions'
+      changed_when: false
+      check_mode: true
+      register: '__openvpn_client_final_acl__'
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Path: "{{ __profile_path__ }}"
+          Sddl: "{{ openvpn_client_running.profile_sddl }}"
+        remote_src: false
+        script: "{{ lookup('ansible.builtin.file', 'Set-FileAcl.ps1') }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Profile Permissions Are Exact'
+      ansible.builtin.assert:
+        fail_msg: >-
+          The permissions on '{{ __profile_path__ }}' are not the declared descriptor: the file
+          reads back as '{{ __openvpn_client_final_acl__.result.before | default('unknown', true) }}'.
+          A profile readable by anyone other than SYSTEM, Administrators and the automatic
+          service's own account is a private key exposed.
+        quiet: true
+        that:
+          - not (__openvpn_client_final_acl__.result.changed | default(true) | bool)
+
+    #endregion --- [ End: Prove The Profile Permissions Are Exact ] --------------------------- #
+
+    #region ------ [ End: Prove The Automatic Service Is On ] --------------------------------- #
+    # One action, two tasks: the service must exist, and it must be running, starting at boot,
+    # as its own account. A service left disabled by the installer, stopped by a failed profile,
+    # or moved to an account the profile's permissions do not admit looks healthy to everything
+    # except the tunnel it never opens. SCM reports the account in its resolved form, so the
+    # comparison is case-insensitive on the whole name.
+
+    - name: 'END | Prove The Automatic Service Exists'
+      failed_when: (__openvpn_client_service__.services | default([]) | length) != 1
+      register: '__openvpn_client_service__'
+
+      ansible.windows.win_service_info:
+        name: "{{ openvpn_client_running.service_name }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Automatic Service Runs At Boot As Its Own Account'
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ openvpn_client_running.service_name }}' is
+          '{{ __openvpn_client_service__.services[0].state }}' with start mode
+          '{{ __openvpn_client_service__.services[0].start_mode }}' as
+          '{{ __openvpn_client_service__.services[0].username }}'; expected started, auto and
+          '{{ openvpn_client_running.service_account }}'. A service that is not running opens no
+          tunnel, one that is not automatic opens none after the next reboot, and one running as
+          any other account cannot read the profile.
+        quiet: true
+        that:
+          - __openvpn_client_service__.services[0].state == 'started'
+          - __openvpn_client_service__.services[0].start_mode == 'auto'
+          - __openvpn_client_service__.services[0].username | lower
+            == openvpn_client_running.service_account | lower
+
+    #endregion --- [ End: Prove The Automatic Service Is On ] --------------------------------- #
+
+    #region ------ [ End: Prove The Tunnel Delivers What The Playbook Declared ] -------------- #
+    # A running service is not a working tunnel: the handshake can fail, the route can be
+    # missing, the far firewall can refuse -- and every local answer still looks correct. Each
+    # declared proof is a host and port the tunnel must reach, asked from the guest, which is the
+    # only answer that means the tunnel works for the thing it exists for. Bounded, so a tunnel
+    # that never comes up fails inside Ansible instead of hanging the play. An empty list proves
+    # only the service and the profile, which is what the playbook declared.
+
+    - name: 'END | Prove The Tunnel Delivers What The Playbook Declared'
+      loop: "{{ openvpn_client_running.proofs }}"
+      loop_control:
+        label: "{{ __proof__.host }}:{{ __proof__.port }}"
+        loop_var: '__proof__'
+
+      ansible.windows.win_wait_for:
+        connect_timeout: 5
+        host: "{{ __proof__.host }}"
+        port: "{{ __proof__.port }}"
+        sleep: 1
+        state: 'started'
+        timeout: "{{ openvpn_client_running.proof_timeout_seconds }}"
+
+    #endregion --- [ End: Prove The Tunnel Delivers What The Playbook Declared ] -------------- #
+
+#endregion --- [ End: Install The OpenVPN Client on Windows ] --------------------------------- #
+
+
+#region ------ [ Always: Install The OpenVPN Client on Windows ] ------------------------------ #
+
+  # Begin the 'Always' block
+  always:
+
+    #region ------ [ Always: Remove The Staged Installer From The Guest ] --------------------- #
+    # Gated on the copy having been attempted, so a run that never staged deletes nothing while a
+    # partial copy is still cleaned up.
+
+    - name: 'END | Remove The Staged Installer From The Guest'
+      when: __openvpn_client_copied__ is defined and not (__openvpn_client_copied__ is skipped)
+
+      ansible.windows.win_file:
+        access_time: 'preserve'
+        access_time_format: 'yyyy-MM-dd HH:mm:ss'
+        modification_time: 'preserve'
+        modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+        path: "{{ openvpn_client_running.install.staging_dir }}"
+        state: 'absent'
+
+    #endregion --- [ Always: Remove The Staged Installer From The Guest ] --------------------- #
+
+    #region ------ [ Always: Remove The Controller Staging Directory ] ------------------------ #
+    # become and check_mode are off for the reasons the staging directory gives: the directory
+    # was created for real on the controller, under --check too, so it is removed for real.
+
+    - name: 'END | Remove The Controller Staging Directory'
+      become: false
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      when: __openvpn_client_stage__ is defined and not (__openvpn_client_stage__ is skipped)
+
+      ansible.builtin.file:
+        access_time_format: '%Y%m%d%H%M.%S'
+        follow: true
+        force: false
+        modification_time_format: '%Y%m%d%H%M.%S'
+        path: "{{ __openvpn_client_stage__.path }}"
+        recurse: false
+        state: 'absent'
+        unsafe_writes: false
+
+    #endregion --- [ Always: Remove The Controller Staging Directory ] ------------------------ #
+
+#endregion --- [ Always: Install The OpenVPN Client on Windows ] ------------------------------ #

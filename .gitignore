@@ -23,6 +23,17 @@
 !/release-please-config.json
 !/requirements-dev.txt
 
+# First-class PowerShell scripts and their Pester specs. A role that executes one tracks only
+# files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies the source below into the role
+# before it runs. The source and its spec are reviewed once, here -- the materialized copy in a
+# role's files/ directory is a build artifact and is never allowlisted anywhere.
+!/scripts/
+!/scripts/materialize-role-scripts.sh
+!/scripts/Set-DnsNamespaceForwarder.ps1
+!/scripts/Set-DnsNamespaceForwarder.pester.ps1
+!/scripts/Set-FileAcl.ps1
+!/scripts/Set-FileAcl.pester.ps1
+
 # GitHub
 !/.github/
 !/.github/**
@@ -30,6 +41,7 @@
 # Role directories
 !/applications/
 !/applications/domain_member/
+!/applications/openvpn_client/
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
 !/applications/python3_pip/
@@ -49,6 +61,18 @@
 !/applications/domain_member/templates/
 !/applications/domain_member/tests/
 !/applications/domain_member/vars/
+!/applications/openvpn_client/defaults/
+!/applications/openvpn_client/files/
+!/applications/openvpn_client/handlers/
+!/applications/openvpn_client/library/
+!/applications/openvpn_client/lookup_plugins/
+!/applications/openvpn_client/meta/
+!/applications/openvpn_client/module_utils/
+!/applications/openvpn_client/molecule/
+!/applications/openvpn_client/tasks/
+!/applications/openvpn_client/templates/
+!/applications/openvpn_client/tests/
+!/applications/openvpn_client/vars/
 !/applications/linux_disk_manager/defaults/
 !/applications/linux_disk_manager/files/
 !/applications/linux_disk_manager/handlers/
@@ -124,6 +148,13 @@
 !/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/modules/
 !/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/modules/sts_assume_role.py
 !/applications/wazuh_agent/files/GPG-KEY-WAZUH
+
+# openvpn_client executes two PowerShell scripts that are MATERIALIZED into files/ from the
+# consuming repository's scripts/ directory. Only the build markers naming those sources are
+# tracked here; the materialized .ps1 copies are build artifacts and are deliberately NOT
+# allowlisted, so a stale or hand-edited copy can never be committed.
+!/applications/openvpn_client/files/Set-DnsNamespaceForwarder.ps1.stub
+!/applications/openvpn_client/files/Set-FileAcl.ps1.stub
 
 !/operating_systems/
 !/operating_systems/RedHat_Rocky_10/

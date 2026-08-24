@@ -19,11 +19,18 @@
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
-GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$)
+# The last alternative covers MATERIALIZED role scripts. A role that executes a first-class
+# PowerShell script tracks only files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies
+# the reviewed source from scripts/ to files/<Name>.ps1 before the role runs. That copy is a build
+# artifact, so it is deliberately unallowlistable AND must not fail this guard on a checkout where
+# the build step has run. Scoped to the one role that has stubs, so an unreviewed .ps1 dropped into
+# any other role's files/ is still caught -- widen it per-role, never to a wildcard.
+GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/openvpn_client/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
 	applications/domain_member/tasks/main.yml \
 	applications/linux_disk_manager/tasks/main.yml \
+	applications/openvpn_client/tasks/main.yml \
 	applications/python3_pip/tasks/main.yml \
 	applications/wazuh_agent/tasks/main.yml \
 	applications/windows_disk_manager/tasks/main.yml

@@ -1,0 +1,29 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/clean_windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# state=clean removes only the staged-installer cache created by this role. The present path
+# removes it under its own 'always', so a run that completes leaves nothing -- but a run killed
+# between the copy and the install never reaches that cleanup, and this is what removes what it
+# left behind.
+#
+# The client, the connection profile, the automatic service and the resolver policy are untouched.
+# Removing them tears down a working tunnel, and on a host that reaches its domain controllers
+# across it, name resolution with it; that is a decommission a person decides on, not something a
+# converge does on its way past. This role implements no state=absent.
+#
+# ============================================================================================= #
+---
+
+#region ------ [ Process: Remove Any Staged Installer ] --------------------------------------- #
+
+- name: 'PROCESS | Remove Any Staged Installer Left On The Guest'
+  ansible.windows.win_file:
+    access_time: 'preserve'
+    access_time_format: 'yyyy-MM-dd HH:mm:ss'
+    modification_time: 'preserve'
+    modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+    path: "{{ openvpn_client_running.install.staging_dir }}"
+    state: 'absent'
+
+#endregion --- [ Process: Remove Any Staged Installer ] --------------------------------------- #

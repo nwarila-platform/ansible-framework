@@ -1,0 +1,146 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Validates load-bearing openvpn_client configuration after the v3 loader merge, on the CONTROLLER,
+# before anything touches the guest. The buckets, object keys, digests and version pin are supplied
+# by the playbook rather than defaulted, so this is where a missing or malformed one is caught — in
+# a second, rather than part-way through an install that leaves a staged MSI, a half-written
+# profile and a service pointed at nothing.
+#
+# meta/main.yml describes these inputs; this file is what enforces them.
+#
+# Guards are the required-input class (style guide 4b) and the shape prongs the modules that
+# consume these values would otherwise fail on less legibly, plus one retained silent-wrong guard:
+# profile_sddl decides who can read a private key, and a permissive descriptor converges GREEN
+# because END proves the machine against that same declared value.
+#
+# The platform is NOT checked here — the loader's first_found already fails a non-Windows host with
+# 'OS task file not found'.
+#
+# =========================================================================================== #
+---
+- name: 'VALIDATE | Require A Staging Directory Safe To Delete'
+
+  # NOT scoped to present: clean_windows.yml removes this path recursively too, so a guard that
+  # only runs for present leaves 'state=clean' with an override free to delete anything.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: openvpn_client.install.staging_dir must be a drive-rooted Windows path with
+      at least one component past the root and no '..' in it. This role removes it RECURSIVELY —
+      during the present path's cleanup and again on clean — so a value naming a drive root, a
+      system directory, or a path that walks back out of itself deletes something that is not this
+      role's to delete.
+    quiet: true
+    that:
+      - openvpn_client_running.install.staging_dir | default('') is match('^[A-Za-z]:\\\\.')
+      - openvpn_client_running.install.staging_dir | default('') is not search('[.][.]')
+
+- name: 'VALIDATE | Require The Installer Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to install: the installer contract is incomplete. The playbook must supply
+      installer.bucket and installer.path naming the pinned MSI object, installer.version as the
+      OpenVPN community version exactly as the release is named ('2.6.12' — two or three parts,
+      never the four-part resource string, which the role would pin above the binary's own version
+      forever), and installer.sha256 as a lowercase 64-character digest verified on the guest.
+      See meta/main.yml.
+    quiet: true
+    that:
+      - openvpn_client_running.installer.bucket | default('', true) | string | trim | length > 0
+      - openvpn_client_running.installer.path | default('', true) | string | trim | length > 0
+      - openvpn_client_running.installer.version | default('') is match('^[0-9]+([.][0-9]+){1,2}$')
+      - openvpn_client_running.installer.sha256 | default('') is match('^[0-9a-f]{64}$')
+
+- name: 'VALIDATE | Require The Profile Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to place a profile: the profile contract is incomplete. The playbook must supply
+      profile.bucket and profile.object naming the connection profile, profile.sha256 as a
+      lowercase 64-character digest, and profile_name as a BARE file name without the '.ovpn' the
+      role appends — 'homelab', not 'homelab.ovpn' and not a path. profile_name is joined into a
+      Windows path and also decides which files this role treats as its own. See meta/main.yml.
+    quiet: true
+    that:
+      - openvpn_client_running.profile.bucket | default('', true) | string | trim | length > 0
+      - openvpn_client_running.profile.object | default('', true) | string | trim | length > 0
+      - openvpn_client_running.profile.sha256 | default('') is match('^[0-9a-f]{64}$')
+      - openvpn_client_running.profile_name | default('') is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - openvpn_client_running.profile_name | default('') is not search('[.]ovpn$')
+      - openvpn_client_running.profile_name | default('') is not search('[.][.]')
+
+- name: 'VALIDATE | Require A Coherent Name-Resolution Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  vars:
+    __domain__: "{{ openvpn_client_running.dns.domain | default('', true) }}"
+    __servers__: "{{ openvpn_client_running.dns.servers | default([], true) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to write a resolver policy: openvpn_client.dns.domain and openvpn_client.dns.servers
+      must be declared together. dns.domain is the realm whose names must resolve through the
+      tunnel, as a DNS name; dns.servers is a non-empty list of the server addresses that answer
+      for it, in the order Windows should ask them. Leave dns.domain null to write no rule at all —
+      the role then removes any rule it previously wrote.
+    quiet: true
+    that:
+      - __servers__ is not string
+      - __servers__ is not mapping
+      - __servers__ is sequence
+      - __servers__ | reject('string') | list | length == 0
+      - __servers__ | select('eq', '') | list | length == 0
+      - __domain__ | length == 0 or __domain__ is match('^[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$')
+      - __domain__ | length == 0 or __servers__ | length > 0
+      - __servers__ | length == 0 or __domain__ | length > 0
+
+- name: 'VALIDATE | Require Usable Tunnel Proofs'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  vars:
+    __proofs__: "{{ openvpn_client_running.proofs | default([], true) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: openvpn_client.proofs must be a list of '{ host, port }' mappings — each a
+      host and TCP port the tunnel must actually reach, asked from the guest. Leave it empty to
+      prove only the client, the profile and the service. A deployment that joins a domain across
+      this tunnel should list its domain controllers here.
+    quiet: true
+    that:
+      - __proofs__ is not string
+      - __proofs__ is not mapping
+      - __proofs__ is sequence
+      - __proofs__ | rejectattr('host', 'defined') | list | length == 0
+      - __proofs__ | rejectattr('port', 'defined') | list | length == 0
+      - __proofs__ | map(attribute='host') | reject('string') | list | length == 0
+      - __proofs__ | map(attribute='host') | select('eq', '') | list | length == 0
+      - __proofs__ | map(attribute='port') | reject('integer') | list | length == 0
+      - __proofs__ | map(attribute='port') | select('lt', 1) | list | length == 0
+      - __proofs__ | map(attribute='port') | select('gt', 65535) | list | length == 0
+
+- name: 'VALIDATE | Require The Platform Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: a value supplied by the role's Windows overlay is missing or malformed.
+      binary_path and config_dir must be absolute, drive-letter-rooted Windows paths. profile_sddl
+      must grant NOBODY but SYSTEM, Administrators and a service account: it is applied verbatim to
+      the file holding the tunnel's private key, and END proves the machine against that same
+      declared descriptor — so any other principal is a key exposed under a run that reports
+      converged. Set-FileAcl.ps1 rejects a malformed descriptor on its own, so its shape is not
+      restated here.
+    quiet: true
+    that:
+      - openvpn_client_running.binary_path | default('') is match('^[A-Za-z]:\\\\')
+      - openvpn_client_running.config_dir | default('') is match('^[A-Za-z]:\\\\')
+      - openvpn_client_running.install.timeout_seconds | int > 0
+      - openvpn_client_running.proof_timeout_seconds | int > 0
+      - openvpn_client_running.profile_sddl | default('') | upper
+        | regex_findall('[;]([^;()]+)[)]')
+        | reject('match', '^(SY|BA|S-1-5-80-[0-9-]+)$') | list | length == 0

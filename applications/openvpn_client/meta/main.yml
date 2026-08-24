@@ -1,0 +1,92 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Role metadata for openvpn_client. Description-only (style guide 8): NOT an enforcing argument
+# spec. The role's tasks/validate.yml enforces its merged-config guards.
+#
+# REQUIRED INPUTS -- supplied by the playbook, not defaulted here.
+#
+# These are site inventory and site identity: which build of the client, which tunnel, and what
+# each must hash to. Defaulting them would ship one deployment's values as if they were universally
+# safe, so the playbook states them where a reader can see what is being installed and connected.
+#
+#   openvpn_client.installer.bucket    S3 bucket holding the pinned MSI.
+#   openvpn_client.installer.path      Object key of the MSI. May carry the literal marker
+#                                      '<version>', replaced with installer.version -- in the file
+#                                      name as well as the directory.
+#   openvpn_client.installer.version   OpenVPN community version as the release is named
+#                                      ('2.6.12'). Compared against the binary's own version
+#                                      resource, to which the role appends the '.0' OpenVPN stamps.
+#   openvpn_client.installer.sha256    Lowercase 64-character digest, verified ON THE GUEST because
+#                                      the guest copy is the one that executes.
+#   openvpn_client.profile.bucket      S3 bucket holding the connection profile.
+#   openvpn_client.profile.object      Object key of the profile. Fetched through the CONTROLLER as
+#                                      a string; the guest is never given cloud credentials. See
+#                                      the README for what pipelining does and does not change.
+#   openvpn_client.profile.sha256      Lowercase 64-character digest, verified before the profile
+#                                      is written and proven again from the file in END.
+#   openvpn_client.profile_name        Bare file name, without '.ovpn', which the role appends.
+#                                      Also the name the role OWNS: any other profile in the
+#                                      automatic service's directory is refused.
+#
+# OPTIONAL: dns.domain and dns.servers (the realm pinned to named servers in the Name Resolution
+# Policy Table -- declared together or not at all), proofs (hosts and ports the tunnel must
+# actually reach, asked from the guest), proof_timeout_seconds, install.timeout_seconds.
+#
+# NOT OFFERED: any way to run the client interactively or hand the guest credentials for the
+# bucket. The role installs the automatic service, running config-auto with nobody signed in, and
+# everything moves through the controller.
+#
+# COLLECTIONS. min_ansible_version below is a CORE floor and cannot express these; nothing in this
+# repository pins collection versions, so they are stated here and must be checked by the consumer:
+#
+#   ansible.windows    >= 3.4.0   the win_file timestamp options the present path declares
+#   community.windows  >= 2.4.0   win_file_version, which reads the installed client's version
+#                                 resource -- the whole install decision rests on it
+#   amazon.aws         >= 5.0.0   s3_object's getstr mode and the modifiers the fetches pass
+#
+# 'ansible.windows' also supplies the package, file, copy, service, reboot and PowerShell modules;
+# 'amazon.aws' runs on the CONTROLLER only.
+#
+# SCRIPTS. The two PowerShell scripts this role executes -- Set-FileAcl.ps1 and
+# Set-DnsNamespaceForwarder.ps1 -- are MATERIALIZED into files/ from the consuming repository's
+# scripts/ directory before the role is linted or run. The role tracks only the '.ps1.stub' build
+# markers that name their sources; the materialized copies are build artifacts the .gitignore
+# deliberately never allowlists. Run the materializer before this role.
+# =========================================================================================== #
+---
+galaxy_info:
+
+  role_name: 'openvpn_client'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    OpenVPN community client for Windows hosts, installed at a pinned version from S3 through the
+    controller and verified against a pinned digest on the guest. Places one pinned connection
+    profile where the automatic service runs it at boot with nobody signed in, enforces that
+    profile's permissions wholesale so the private key admits only SYSTEM, Administrators and the
+    service's own virtual account, holds the service on and running as that account, and pins the
+    realm's names to the domain controllers through the Name Resolution Policy Table. Refuses a
+    host carrying profiles the role did not declare, and proves the client, the profile, its
+    permissions, the service and the tunnel's actual reachability from the machine rather than from
+    the installer's report.
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'Windows'
+      versions:
+        - '2022'
+        - '2025'
+
+  galaxy_tags:
+    - 'networking'
+    - 'nrpt'
+    - 'openvpn'
+    - 'vpn'
+    - 'windows'
+
+allow_duplicates: false
+
+dependencies: []

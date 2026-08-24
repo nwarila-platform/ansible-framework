@@ -1,0 +1,31 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/handlers/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# The automatic service reads its profile directory ONCE, at start. Two things therefore only take
+# effect on a restart: a profile that changed, and a change to the account the service runs as.
+# Each notifies this handler rather than a result some growing condition would have to test.
+#
+# A handler runs once however many times it was notified: a converge that replaces the profile AND
+# moves the service account bounces the service exactly once, and a converge that changes neither
+# never bounces it -- which is what lets a converged host report no changes at all.
+#
+# The topic is deliberately specific, because handler names and listen topics are play-global and
+# another role in the same play may have its own reason to touch a VPN service.
+#
+# WHEN THIS RUNS: present_windows.yml flushes handlers itself, at the end of PROCESS and again in
+# an 'always', rather than leaving them to the end of the play. END must prove the tunnel that the
+# converged host actually runs, not the one that was running before the profile was replaced.
+# Note that flushing is play-global: it runs every pending handler, not only this role's.
+#
+# =========================================================================================== #
+---
+- name: 'Restart the OpenVPN automatic service'
+  listen: 'openvpn-client-restart-required'
+
+  ansible.windows.win_service:
+    dependency_action: 'set'
+    desktop_interact: false
+    force_dependent_services: false
+    name: "{{ openvpn_client_running.service_name }}"
+    state: 'restarted'
