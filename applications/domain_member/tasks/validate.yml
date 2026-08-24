@@ -62,6 +62,15 @@
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | lower) == 'redhat'
 
+  vars:
+    # Named here rather than in the overlay: these are the settings the ROLE requires to exist,
+    # which is a different statement from the values the overlay declares for them. A site may
+    # legitimately change a value; dropping the key altogether is what this refuses.
+    __posture_keys__:
+      - 'ad_machine_account_password_renewal_opts'
+      - 'ad_maximum_machine_account_password_age'
+      - 'krb5_validate'
+
   ansible.builtin.assert:
     fail_msg: >-
       Refusing to join: the RedHat overlay is incomplete. realm_binary and adcli_binary must be
@@ -69,19 +78,23 @@
       path that does not resolve makes BEGIN's stat report absent, skips the realm read, and leaves
       the refuse-if-joined-elsewhere guard looking at an empty list, so a host already joined
       somewhere else sails past the one refusal this role exists to make. sssd_custom_settings must
-      be a non-empty list of key/value pairs, which is the shape the system role writes into
-      sssd.conf; emptying it silently drops the machine account posture this role exists to hold.
+      be a list of key/value pairs -- the shape the system role writes into sssd.conf -- and it must
+      still carry all three machine-account settings: ad_maximum_machine_account_password_age,
+      ad_machine_account_password_renewal_opts and krb5_validate. A caller override REPLACES this
+      list rather than extending it, so declaring one unrelated setting silently drops the posture
+      this role exists to hold, and every membership proof still passes.
     quiet: true
     that:
       - domain_member_running.realm_binary | default('') is match('^/')
       - domain_member_running.adcli_binary | default('') is match('^/')
       - domain_member_running.sssd_custom_settings is not string
       - domain_member_running.sssd_custom_settings is sequence
-      - domain_member_running.sssd_custom_settings | length > 0
       - domain_member_running.sssd_custom_settings | rejectattr('key', 'defined')
         | list | length == 0
       - domain_member_running.sssd_custom_settings | rejectattr('value', 'defined')
         | list | length == 0
+      - __posture_keys__ | difference(domain_member_running.sssd_custom_settings
+        | map(attribute='key') | list) | length == 0
 
 - name: 'VALIDATE | Require The Windows Security Posture'
   when:
