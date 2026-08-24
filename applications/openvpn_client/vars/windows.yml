@@ -1,0 +1,82 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Windows-family overlay merged over openvpn_client_defaults by the v3 loader.
+#
+# Everything here is a property of the OpenVPN community MSI rather than a choice a site makes:
+# where it installs the client, what it calls its automatic service, which account that service
+# runs as, and therefore which account the profile's permissions must admit. They live in the
+# merged map rather than in the task so a caller who repackages the client can still override
+# them -- but the defaults below are read from the installer's own source (msi.wxs) rather than
+# guessed, and a site that changes one is describing a different package.
+#
+# =========================================================================================== #
+---
+#region ------ [ Where the MSI puts things ] -------------------------------------------------- #
+
+# The client binary. Its version RESOURCE is what the install decision reads: OpenVPN stamps
+# openvpn.exe with PACKAGE_VERSION plus a trailing '.0' (openvpn_win32_resources.rc), which is a
+# documented property of the build rather than an inference from the file name.
+binary_path: 'C:\Program Files\OpenVPN\bin\openvpn.exe'
+
+# The directory the automatic service reads at start. This directory IS the declaration "connect
+# these tunnels at boot, with nobody signed in" -- the service runs EVERY profile it finds here,
+# which is why BEGIN refuses a host carrying a profile this role did not place.
+#
+# It survives an uninstall, which is why the role reads it before it reads the client.
+config_dir: 'C:\Program Files\OpenVPN\config-auto'
+
+# Where the installer is staged on the guest before it runs, and removed from afterwards. Under
+# the system temp directory rather than a user's, because the role runs with nobody signed in.
+install:
+  staging_dir: 'C:\Windows\Temp\openvpn-client'
+
+#endregion --- [ Where the MSI puts things ] -------------------------------------------------- #
+
+#region ------ [ The automatic service ] ------------------------------------------------------ #
+
+# The service that runs config-auto. The MSI registers it DISABLED and never started
+# (msi.wxs, ServiceInstall Start="disabled"), so installing the client alone connects nothing --
+# the role holds it on.
+service_name: 'OpenVPNService'
+
+# The virtual account the MSI registers the service under (msi.wxs,
+# Account="NT SERVICE\OpenVPNService"). It is HELD rather than inherited: this is the identity the
+# profile's permissions admit, and a service moved to any other account would look healthy and
+# open nothing. A virtual account carries no password, so none is ever supplied.
+service_account: 'NT SERVICE\OpenVPNService'
+
+#endregion --- [ The automatic service ] ------------------------------------------------------ #
+
+#region ------ [ The profile's permissions ] -------------------------------------------------- #
+
+# The EXACT descriptor the connection profile carries, enforced wholesale rather than granted
+# entry by entry: the profile holds a private key, config-auto inherits the volume's grant to
+# every user, and the native ACL modules never remove an entry they did not write -- so a
+# hand-added grant would survive every converge. The role writes this descriptor and END proves
+# the machine still reads back the same one.
+#
+# Read it left to right:
+#   O:SY G:SY   owned by SYSTEM, primary group SYSTEM
+#   D:PAI       the DACL is Protected (inheritance from config-auto is SEVERED) and
+#               Auto-Inherited -- the form Windows normalises to, so a converged file compares
+#               equal rather than merely equivalent
+#   (A;;FA;;;SY)  SYSTEM: full control
+#   (A;;FA;;;BA)  BUILTIN\Administrators: full control
+#   (A;;FR;;;S-1-5-80-3750127322-3829920079-842246558-474445854-3948885660)
+#                 NT SERVICE\OpenVPNService: READ only -- it is the process that opens the
+#                 profile, and read is all opening it requires
+#
+# and nothing else, because every other reader of a private key is a leak.
+#
+# THE SERVICE SID IS DERIVED, NOT INVENTED. Windows computes a service account's SID as
+# S-1-5-80-<the SHA-1 of the UPPERCASED service name in UTF-16LE, taken as five little-endian
+# uint32s>. The value above is that computation for 'OPENVPNSERVICE'. It is written as a literal
+# SID because SDDL has no two-letter abbreviation for a service account, and it is stated here
+# rather than resolved on the host because the descriptor must be comparable before it is applied.
+# Verify it on any host that carries the service with: sc.exe showsid OpenVPNService
+profile_sddl: >-
+  O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-3750127322-3829920079-842246558-474445854-3948885660)
+
+#endregion --- [ The profile's permissions ] -------------------------------------------------- #

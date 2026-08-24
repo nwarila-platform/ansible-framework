@@ -1,0 +1,129 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Lowest-precedence configuration for the openvpn_client role. The v3 loader merges the OS overlay
+# in vars/ over this map and publishes the result as 'openvpn_client_running'; tasks read only the
+# merged map, never these keys directly.
+#
+# WHAT DOES NOT BELONG HERE: the bucket the installer and the profile live in, the object names,
+# their digests, and the version pin. Those are site identity and site inventory -- a default for
+# them is not a default, it is one deployment's value wearing a default's clothes. They come from
+# the PLAYBOOK, are described in meta/main.yml, and are enforced by tasks/validate.yml.
+#
+# WHAT ALSO DOES NOT BELONG HERE: where the client installs itself, what its service is called and
+# which account that service runs as. Those are properties of the MSI rather than choices a site
+# makes, so they live in the platform overlay (vars/windows.yml) where the task can still read them
+# through one merged map -- and where a caller who repackaged the client can still override them.
+#
+# NOT OFFERED, deliberately: any way to run the client interactively, and any way to hand the guest
+# credentials for the bucket. The automatic service running config-auto with nobody signed in is
+# the whole shape of this role, and everything moves through the controller.
+#
+# =========================================================================================== #
+---
+openvpn_client_defaults:
+
+  #region ------ [ Installer: which client, from where ] -------------------------------------- #
+
+  # WHERE the pinned installer lives and WHAT it must hash to. All four are REQUIRED.
+  #
+  # 'path' is the object key and may carry the literal marker '<version>', which is replaced with
+  # 'version' before the key is rendered. The marker is supported in the FILE NAME as well as the
+  # directory, which is why the role renders the key once and derives the basename from the result.
+  #
+  # 'version' is the OpenVPN community version as the project writes it ('2.6.12'), NOT the
+  # four-part resource string. The role compares it against the binary's own version resource,
+  # which OpenVPN stamps as PACKAGE_VERSION plus a trailing '.0'; the role appends that '.0'
+  # itself, so declare the version exactly as the release is named.
+  #
+  # 'sha256' is verified ON THE GUEST, because the guest copy is the one that executes. A
+  # re-uploaded or truncated installer fails at the package module rather than half-installing.
+  installer:
+    bucket: ''
+    path: ''
+    sha256: ''
+    version: ''
+
+  #endregion --- [ Installer: which client, from where ] -------------------------------------- #
+
+  #region ------ [ Profile: which tunnel ] ---------------------------------------------------- #
+
+  # WHERE the connection profile lives and WHAT it must hash to. All three are REQUIRED.
+  #
+  # The profile carries a private key, so the role pulls it as a STRING through the CONTROLLER,
+  # verifies it against this digest BEFORE it is written, and places it under a locked descriptor.
+  # The guest is never given cloud credentials. The digest is proven again from the file itself in
+  # END, so a profile edited by hand on the guest fails the run rather than quietly routing a
+  # tunnel somewhere nobody declared.
+  #
+  # That is not the same as "the key never touches disk on the way": with pipelining off -- which
+  # is Ansible's default and what this chassis leaves in place -- the module payload carrying the
+  # content is staged in the target's temp directory before it executes. Enable pipelining for
+  # plays that run this role if that transit matters to you.
+  profile:
+    bucket: ''
+    object: ''
+    sha256: ''
+
+  # The name the profile is placed under, WITHOUT the '.ovpn' suffix, which the role appends. This
+  # is also the name the role owns: the automatic service runs every profile in its directory, so
+  # BEGIN refuses a host carrying any other '.ovpn' file rather than opening a tunnel this role did
+  # not declare. REQUIRED, and deliberately empty -- a defaulted profile name is a defaulted tunnel.
+  profile_name: ''
+
+  #endregion --- [ Profile: which tunnel ] ---------------------------------------------------- #
+
+  #region ------ [ Install behaviour ] -------------------------------------------------------- #
+
+  # How the install itself is run. 'staging_dir' is platform-shaped and lives in the overlay.
+  #
+  #   timeout_seconds  how long the installer is given before Ansible stops waiting. The MSI
+  #                    installs a driver, which is slower than a file copy and can prompt the
+  #                    platform's own driver machinery; ten minutes is generous for a hung
+  #                    installer to fail inside Ansible rather than hang the play forever.
+  install:
+    timeout_seconds: 600
+
+  #endregion --- [ Install behaviour ] -------------------------------------------------------- #
+
+  #region ------ [ Name resolution across the tunnel ] ---------------------------------------- #
+
+  # The realm whose names must resolve through the tunnel, and the servers that answer for it.
+  #
+  # A multi-homed host answers a name from whichever adapter's resolver replies first, and a cloud
+  # resolver replies NXDOMAIN for a private realm faster than a domain controller across a tunnel
+  # replies with an answer. The role pins the namespace to these servers in the Name Resolution
+  # Policy Table, which is adapter-independent -- the conditional forwarder a domain join needs.
+  #
+  # 'domain' null or empty means NO rule is written, and any rule this role previously wrote is
+  # REMOVED rather than stranded. That is the right default: a tunnel that carries no directory
+  # needs no resolver policy. Declare both together -- a domain with no servers resolves nothing,
+  # and validate.yml refuses it.
+  #
+  # Order is significant: it is the order Windows asks them in.
+  dns:
+    domain: null
+    servers: []
+
+  #endregion --- [ Name resolution across the tunnel ] ---------------------------------------- #
+
+  #region ------ [ Proof ] -------------------------------------------------------------------- #
+
+  # What the tunnel must actually REACH before the role calls the host converged, as a list of
+  # '{ host, port }'. A running service is not a working tunnel: the handshake can fail, the route
+  # can be missing, the far firewall can refuse -- and every local answer still looks correct.
+  # These are asked FROM THE GUEST, which is the only answer that means the tunnel works for the
+  # thing it exists for.
+  #
+  # Empty is the default and proves only the client, the profile, its permissions and the service.
+  # A deployment that joins a domain across this tunnel should declare its domain controllers here
+  # (389 or 636), because that is the reachability the next role depends on.
+  proofs: []
+
+  # How long each proof is given to come up. A tunnel is not up the instant the service starts --
+  # the handshake, the route push and the far side's ARP all take a moment -- so this is a wait,
+  # not a poll. Bounded so a tunnel that never comes up fails inside Ansible.
+  proof_timeout_seconds: 120
+
+  #endregion --- [ Proof ] -------------------------------------------------------------------- #

@@ -1,0 +1,15 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Internal role constants - NOT intended to be overridden by users.
+#
+# openvpn_client has no OS-agnostic internal constants: everything the role needs that is not
+# caller-facing is a property of the Windows package and therefore lives in the loader-merged
+# family overlay (vars/windows.yml), where a caller can still override it. This file exists for
+# role-skeleton parity and as the home for any future OS-agnostic constant.
+#
+# It is deliberately EMPTY of values. Ansible loads vars/main.yml automatically at a precedence
+# above the loader's merged configuration, so a value placed here would silently outrank the
+# 'openvpn_client:' override dict and could not be changed by a playbook.
+# =========================================================================================== #
+---

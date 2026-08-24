@@ -1,0 +1,185 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Validates load-bearing openvpn_client configuration after the v3 loader merge, BEFORE anything
+# touches the guest. The buckets, the object keys, the digests and the version pin are supplied by
+# the playbook rather than defaulted, so this is where a missing or malformed one is caught -- in a
+# second, rather than part-way through an install that leaves a staged MSI, a half-written profile
+# and a service pointed at nothing.
+#
+# meta/main.yml describes these inputs; this file is what enforces them.
+#
+# Every guard is scoped to state=present. The clean path removes only role-owned residue and needs
+# none of these inputs, so requiring a digest to run it would fail a host for a contract it is not
+# using.
+#
+# The merged configuration arrives as 'config', scoped to the include by the loader.
+#
+# =========================================================================================== #
+---
+- name: 'VALIDATE | Require A Windows Host'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      openvpn_client implements the present path for Windows only, and this host reports
+      '{{ ansible_facts.os_family | default('unknown') }}'. The role installs the OpenVPN community
+      MSI, holds a Windows service and writes a Name Resolution Policy Table rule -- none of which
+      has a meaning on another platform. Restrict the play to Windows hosts, or use the platform's
+      own client.
+    quiet: true
+    that:
+      - (ansible_facts.os_family | default('') | lower) == 'windows'
+
+- name: 'VALIDATE | Require The Installer Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to install: the installer contract is incomplete. The playbook must supply
+      installer.bucket and installer.path naming the pinned MSI object, installer.version as the
+      OpenVPN community version exactly as the release is named ('2.6.12', not a four-part
+      resource string), and installer.sha256 as a lowercase 64-character digest. The digest is not
+      decoration: it is verified on the guest, so a re-uploaded or truncated installer fails before
+      it executes rather than half-installing. See meta/main.yml for the full input contract.
+    quiet: true
+    that:
+      - (config.installer.bucket | default('', true) | string | trim) | length > 0
+      - (config.installer.path | default('', true) | string | trim) | length > 0
+      - (config.installer.version | default('', true) | string | trim)
+        is match('^[0-9]+([.][0-9]+){1,3}$')
+      - (config.installer.sha256 | default('', true) | string | trim)
+        is match('^[0-9a-f]{64}$')
+
+- name: 'VALIDATE | Require The Profile Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to place a profile: the profile contract is incomplete. The playbook must supply
+      profile.bucket and profile.object naming the connection profile, and profile.sha256 as a
+      lowercase 64-character digest. The profile carries a private key: the digest is what makes a
+      re-exported or replaced profile stop the run on the controller instead of reaching the guest
+      and failing later as a TLS error that names nothing.
+    quiet: true
+    that:
+      - (config.profile.bucket | default('', true) | string | trim) | length > 0
+      - (config.profile.object | default('', true) | string | trim) | length > 0
+      - (config.profile.sha256 | default('', true) | string | trim)
+        is match('^[0-9a-f]{64}$')
+
+- name: 'VALIDATE | Require A Profile Name That Is A File Name'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  # profile_name is joined to the profile directory to build a Windows path, and the same value
+  # decides which files BEGIN treats as this role's. A separator, a drive letter or a parent
+  # reference would place the profile somewhere the service never reads while the refusal still
+  # believed it owned the directory -- so the name is required to be a bare file name, and the
+  # '.ovpn' suffix is the role's to append rather than the caller's to supply.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to place a profile: openvpn_client.profile_name must be a bare file name WITHOUT the
+      '.ovpn' suffix, which the role appends -- 'homelab', not 'homelab.ovpn', not a path and not a
+      drive-qualified name. It names the one profile this role owns in
+      '{{ config.config_dir | default('the profile directory', true) }}', and the automatic service
+      runs every profile it finds there.
+    quiet: true
+    that:
+      - (config.profile_name | default('', true) | string | trim) | length > 0
+      - (config.profile_name | default('', true) | string | trim)
+        is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - not ((config.profile_name | default('', true) | string | trim | lower)
+        is search('[.]ovpn$'))
+      - not ((config.profile_name | default('', true) | string) is search('[.][.]'))
+
+- name: 'VALIDATE | Require A Coherent Name-Resolution Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  # Declared together or not at all: a namespace with no servers resolves nothing, and servers with
+  # no namespace have nothing to answer for. Null or empty means no rule is written and any rule
+  # this role previously wrote is removed, which is a supported configuration -- not an omission.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to write a resolver policy: openvpn_client.dns.domain and openvpn_client.dns.servers
+      must be declared together. dns.domain is the realm whose names must resolve through the
+      tunnel, as a DNS name; dns.servers is a non-empty LIST of the servers that answer for it, in
+      the order Windows should ask them. Leave dns.domain null to write no rule at all -- the role
+      then removes any rule it previously wrote.
+    quiet: true
+    that:
+      - config.dns.servers is not string
+      - config.dns.servers is sequence
+      - ((config.dns.domain | default('', true) | string | trim) | length == 0)
+        or ((config.dns.domain | default('', true) | string | trim)
+        is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'))
+      - ((config.dns.domain | default('', true) | string | trim) | length == 0)
+        or ((config.dns.servers | default([], true) | length) > 0)
+      # select('string') first, so a non-string entry is filtered out and caught by the length
+      # comparison rather than exploding trim() with a template error that names nothing.
+      - (config.dns.servers | default([], true) | select('string')
+        | map('trim') | select | list | length)
+        == (config.dns.servers | default([], true) | length)
+
+- name: 'VALIDATE | Require Usable Tunnel Proofs'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  # An empty list is valid and proves only the client, the profile, its permissions and the
+  # service. Anything present must be reachable-shaped, because END waits on each one from the
+  # guest and a malformed entry would fail there as a module error rather than here as a contract.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: openvpn_client.proofs must be a list of '{ host, port }' mappings -- each
+      one a host and TCP port the tunnel must actually reach, asked from the guest. Leave it empty
+      to prove only the client, the profile and the service. A deployment that joins a domain
+      across this tunnel should list its domain controllers here.
+    quiet: true
+    that:
+      - config.proofs is not string
+      - config.proofs is sequence
+      - (config.proofs | default([], true) | selectattr('host', 'defined') | list | length)
+        == (config.proofs | default([], true) | length)
+      - (config.proofs | default([], true) | selectattr('port', 'defined') | list | length)
+        == (config.proofs | default([], true) | length)
+      - (config.proofs | default([], true)
+        | map(attribute='port') | map('int') | select('gt', 0) | list | length)
+        == (config.proofs | default([], true) | length)
+      - (config.proofs | default([], true)
+        | map(attribute='port') | map('int') | select('le', 65535) | list | length)
+        == (config.proofs | default([], true) | length)
+
+- name: 'VALIDATE | Require Usable Bounds'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: install.timeout_seconds and proof_timeout_seconds bound how long the
+      installer and each tunnel proof are given before Ansible stops waiting. Both must be positive
+      whole numbers of seconds -- an unbounded wait is how a hung installer or a tunnel that never
+      comes up hangs the play instead of failing inside it.
+    quiet: true
+    that:
+      - (config.install.timeout_seconds | default(0, true) | int) > 0
+      - (config.proof_timeout_seconds | default(0, true) | int) > 0
+
+- name: 'VALIDATE | Require The Platform Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  # These come from the Windows overlay rather than the playbook, so they are normally present --
+  # but they are overridable, and every one of them is load-bearing: an empty binary path decides
+  # 'not installed' forever, an empty service name holds nothing on, and an empty descriptor would
+  # be enforced verbatim onto a file holding a private key.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: the platform contract is incomplete. binary_path, config_dir, service_name,
+      service_account, profile_sddl and install.staging_dir are supplied by the role's Windows
+      overlay and must be non-empty -- an override has emptied one of them. profile_sddl in
+      particular is applied verbatim to the file that holds the tunnel's private key.
+    quiet: true
+    that:
+      - (config.binary_path | default('', true) | string | trim) | length > 0
+      - (config.config_dir | default('', true) | string | trim) | length > 0
+      - (config.service_name | default('', true) | string | trim) | length > 0
+      - (config.service_account | default('', true) | string | trim) | length > 0
+      - (config.install.staging_dir | default('', true) | string | trim) | length > 0
+      - (config.profile_sddl | default('', true) | string | trim) is match('^O:.*D:')

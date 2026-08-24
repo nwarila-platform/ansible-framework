@@ -1,0 +1,42 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/clean_windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Cleanup path for the openvpn_client role on Windows.
+#
+# Unlike the roles whose clean is a no-op, this role DOES stage something on the guest: the MSI is
+# copied to a staging directory before it is installed. The present path removes it under its own
+# 'always', so a run that completes leaves nothing -- but a run killed between the copy and the
+# install does not reach that cleanup, and the installer is left on disk. That residue is what this
+# path removes, and it is all it removes.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO: uninstall the client, remove the connection profile, stop or
+# disable the automatic service, or drop the resolver policy. Every one of those tears down a
+# working tunnel, and on a host that reaches its domain controllers across that tunnel it also
+# takes out name resolution and the machine's path to the directory. That is a decommission a
+# person decides on, not something a converge does on its way past -- and the profile in particular
+# is key material whose removal should be deliberate and audited, not incidental.
+#
+# The staging directory is removed whether or not it exists, which is idempotent and reports a
+# change only when something was actually there.
+#
+# ============================================================================================= #
+---
+- name: 'CLEAN | Remove Any Staged Installer Left On The Guest'
+  ansible.windows.win_file:
+    access_time: 'preserve'
+    access_time_format: 'yyyy-MM-dd HH:mm:ss'
+    modification_time: 'preserve'
+    modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+    path: "{{ openvpn_client_running.install.staging_dir }}"
+    state: 'absent'
+
+# ----------------------------------------------------------------------------------------- #
+
+- name: 'INFO | What Clean Left Alone'
+  ansible.builtin.debug:
+    msg: >-
+      openvpn_client: removed any staged installer from
+      '{{ openvpn_client_running.install.staging_dir }}'. The client, the connection profile, the
+      automatic service and the resolver policy are left untouched -- removing them is a
+      decommission, not a clean.
+    verbosity: 0
