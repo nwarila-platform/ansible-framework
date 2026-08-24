@@ -182,6 +182,19 @@
 - name: 'VALIDATE | Require The Platform Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
 
+  vars:
+    # The path separator as a CHARACTER, not as an escape sequence. A backslash written into a
+    # Jinja string literal here does not survive as one -- '\\' stays two characters under this
+    # templating engine, so replace('\\', '/') silently matches nothing and every guard built on
+    # it passes whatever it was meant to catch. format(92) is the character itself, unambiguously.
+    __bs__: "{{ '%c' | format(92) }}"
+
+    # Normalised to lower case and FORWARD slashes before it is examined, so the tests below read
+    # plainly and need no escaping of their own.
+    __staging__: >-
+      {{ (config.install | default({}, true)).staging_dir | default('', true)
+         | string | trim | lower | replace(__bs__, '/') | regex_replace('/+$', '') }}
+
   # These come from the Windows overlay rather than the playbook, so they are normally present --
   # but they are overridable, and every one of them is load-bearing: an empty binary path decides
   # 'not installed' forever, an empty service name holds nothing on, and an empty descriptor would
@@ -200,9 +213,21 @@
       - (config.config_dir | default('', true) | string | trim) | length > 0
       - (config.service_name | default('', true) | string | trim) | length > 0
       - (config.service_account | default('', true) | string | trim) | length > 0
-      - (config.install | default({}, true)).staging_dir
-        | default('', true) | string | trim | length > 0
+      # NOT merely non-empty. This directory is deleted RECURSIVELY -- by the present path's own
+      # cleanup and again by clean_windows.yml -- so an override naming 'C:\Windows\Temp', or a
+      # drive root, would have this role remove someone else's data on its way past. Require a
+      # drive-qualified path at least two segments deep, which the role's own default satisfies
+      # and no system directory does.
+      - __staging__ | length > 0
+      - __staging__ is match('^[a-z]:/[^/]+/[^/]+')
+      - __staging__ not in [ 'c:/windows/temp', 'c:/windows/system32', 'c:/windows',
+                             'c:/users/public', 'c:/programdata', 'c:/program files' ]
       # The script's own ValidatePattern, restated: a descriptor this guard accepts and the script
       # then refuses would be a contract that disagrees with itself.
       - (config.profile_sddl | default('', true) | string | trim)
         is match('^D:P(AI)?([(][^()]+[)])+$')
+      # Shape is not enough. A well-formed descriptor granting Everyone, Authenticated Users or
+      # Builtin Users a read is exactly the exposure this descriptor exists to prevent, and the
+      # script would apply it without complaint. Refuse the permissive well-known SIDs by name.
+      - not ((config.profile_sddl | default('', true) | string | upper)
+        is search('[;](WD|AU|BU|IU|WR|AN)[)]'))

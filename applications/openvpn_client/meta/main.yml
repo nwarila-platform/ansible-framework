@@ -37,9 +37,16 @@
 # bucket. The role installs the automatic service, running config-auto with nobody signed in, and
 # everything moves through the controller.
 #
-# COLLECTIONS. 'ansible.windows' for the package, file, copy, service, reboot and PowerShell
-# modules; 'community.windows' for win_file_version, which reads the installed client's version
-# resource; 'amazon.aws' on the CONTROLLER to fetch the installer and the profile.
+# COLLECTIONS. min_ansible_version below is a CORE floor and cannot express these; nothing in this
+# repository pins collection versions, so they are stated here and must be checked by the consumer:
+#
+#   ansible.windows    >= 3.4.0   the win_file timestamp options the present path declares
+#   community.windows  >= 2.4.0   win_file_version, which reads the installed client's version
+#                                 resource -- the whole install decision rests on it
+#   amazon.aws         >= 5.0.0   s3_object's getstr mode and the modifiers the fetches pass
+#
+# 'ansible.windows' also supplies the package, file, copy, service, reboot and PowerShell modules;
+# 'amazon.aws' runs on the CONTROLLER only.
 #
 # SCRIPTS. The two PowerShell scripts this role executes -- Set-FileAcl.ps1 and
 # Set-DnsNamespaceForwarder.ps1 -- are MATERIALIZED into files/ from the consuming repository's
