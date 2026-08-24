@@ -16,13 +16,13 @@
 # ============================================================================================= #
 ---
 
-#region ------ [ Clean: Report There Is Nothing To Remove ] ----------------------------------- #
+#region ------ [ Process: Report There Is Nothing To Remove ] --------------------------------- #
 
-- name: 'CLEAN | Report There Is Nothing To Remove'
+- name: 'PROCESS | Report There Is Nothing To Remove'
   ansible.builtin.debug:
     msg: >-
       domain_member: the role stages nothing on the guest, so clean is a supported no-op. Domain
       membership itself is left untouched.
     verbosity: 0
 
-#endregion --- [ Clean: Report There Is Nothing To Remove ] ----------------------------------- #
+#endregion --- [ Process: Report There Is Nothing To Remove ] --------------------------------- #

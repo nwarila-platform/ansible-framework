@@ -293,8 +293,18 @@
 
       when: not ansible_check_mode
 
+      # 'rescuable' is the one documented default deliberately left unpinned: core added it in
+      # 2.21, above this role's declared 2.20 floor, so naming it would fail the very controllers
+      # meta/main.yml says are supported.
       ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
         name: 'redhat.rhel_system_roles.ad_integration'
+        public: false
+        rolespec_validate: true
+        tasks_from: 'main'
+        vars_from: 'main'
 
     #endregion --- [ Process: Hand The Contract To The System Role ] -------------------------- #
 

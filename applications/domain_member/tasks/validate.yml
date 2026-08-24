@@ -28,18 +28,19 @@
       object is verified against it before it is ever used as a credential. See meta/main.yml.
     quiet: true
     that:
-      - domain_member_running.realm | default('') is match('^[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$')
-      - domain_member_running.user | default('') | length > 0
-      - domain_member_running.password.bucket | default('') | length > 0
-      - domain_member_running.password.object | default('') | length > 0
+      - domain_member_running.realm | default('', true) | string | trim
+        is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+      - domain_member_running.user | default('', true) | string | trim | length > 0
+      - domain_member_running.password.bucket | default('', true) | string | trim | length > 0
+      - domain_member_running.password.object | default('', true) | string | trim | length > 0
       - domain_member_running.password.sha256 | default('') is match('^[0-9a-f]{64}$')
 
 - name: 'VALIDATE | Require A Usable Join And Posture Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
 
   vars:
-    __computer_ou__: "{{ domain_member_running.computer_ou | default('', true) }}"
-    __timesync__: "{{ domain_member_running.timesync_source | default('', true) }}"
+    __computer_ou__: "{{ domain_member_running.computer_ou | default('', true) | string | trim }}"
+    __timesync__: "{{ domain_member_running.timesync_source | default('', true) | string | trim }}"
 
   ansible.builtin.assert:
     fail_msg: >-
@@ -77,8 +78,10 @@
       - domain_member_running.sssd_custom_settings is not string
       - domain_member_running.sssd_custom_settings is sequence
       - domain_member_running.sssd_custom_settings | length > 0
-      - domain_member_running.sssd_custom_settings | rejectattr('key', 'defined') | list | length == 0
-      - domain_member_running.sssd_custom_settings | rejectattr('value', 'defined') | list | length == 0
+      - domain_member_running.sssd_custom_settings | rejectattr('key', 'defined')
+        | list | length == 0
+      - domain_member_running.sssd_custom_settings | rejectattr('value', 'defined')
+        | list | length == 0
 
 - name: 'VALIDATE | Require The Windows Security Posture'
   when:
@@ -87,8 +90,8 @@
 
   ansible.builtin.assert:
     fail_msg: >-
-      Refusing to join: the Windows overlay is incomplete. secure_channel must be a non-empty map of
-      registry value names to whole numbers — it is the Domain member policy family this role writes
+      Refusing to join: the Windows overlay is incomplete. secure_channel must be a non-empty map
+      of registry value names to whole numbers — the Domain member policy family this role writes
       to Netlogon — and workgroup_name must name somewhere for a forced rejoin to park the machine
       between leaving the realm and joining it again. The Kerberos encryption types are not
       validated because they are not configurable: the task writes the benchmark's value directly.
@@ -98,4 +101,4 @@
       - domain_member_running.secure_channel | length > 0
       - domain_member_running.secure_channel | dict2items | rejectattr('value', 'integer')
         | list | length == 0
-      - domain_member_running.workgroup_name | default('') | length > 0
+      - domain_member_running.workgroup_name | default('', true) | string | trim | length > 0
