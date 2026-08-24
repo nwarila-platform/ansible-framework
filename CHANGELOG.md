@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.5](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.4...v0.1.5) (2026-08-24)
+
+
+### Features
+
+* **domain_member:** add a cross-platform Active Directory domain-join role ([#69](https://github.com/nwarila-platform/ansible-framework/issues/69)) ([2c3723e](https://github.com/nwarila-platform/ansible-framework/commit/2c3723e27ff223fe0fad20d3a67d3d757977f6be))
+
+
+### Bug Fixes
+
+* **windows_disk_manager:** enforce declared drive letter on adopted disks ([#68](https://github.com/nwarila-platform/ansible-framework/issues/68)) ([3292be1](https://github.com/nwarila-platform/ansible-framework/commit/3292be1ea1dc4164aa0a6368909554a61d75700b))
+
+
+### CI/CD
+
+* **renovate:** replace Dependabot with Renovate ([#67](https://github.com/nwarila-platform/ansible-framework/issues/67)) ([d5069ba](https://github.com/nwarila-platform/ansible-framework/commit/d5069baf703c058ac7baf6fb3f62dcbb78be15dc))
+
+
+### Miscellaneous
+
+* **pre-commit:** realign the ansible-lint hook with the requirements-dev pins ([#65](https://github.com/nwarila-platform/ansible-framework/issues/65)) ([abcae37](https://github.com/nwarila-platform/ansible-framework/commit/abcae37f1166762679d50fa712d7bb389dcf13c4))
+
 ## [0.1.4](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.3...v0.1.4) (2026-08-21)
 
 
