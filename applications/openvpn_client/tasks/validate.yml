@@ -20,6 +20,22 @@
 #
 # =========================================================================================== #
 ---
+- name: 'VALIDATE | Require A Staging Directory Safe To Delete'
+
+  # NOT scoped to present: clean_windows.yml removes this path recursively too, so a guard that
+  # only runs for present leaves 'state=clean' with an override free to delete anything.
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to run: openvpn_client.install.staging_dir must be a drive-rooted Windows path with
+      at least one component past the root and no '..' in it. This role removes it RECURSIVELY —
+      during the present path's cleanup and again on clean — so a value naming a drive root, a
+      system directory, or a path that walks back out of itself deletes something that is not this
+      role's to delete.
+    quiet: true
+    that:
+      - openvpn_client_running.install.staging_dir | default('') is match('^[A-Za-z]:\\\\.')
+      - openvpn_client_running.install.staging_dir | default('') is not search('[.][.]')
+
 - name: 'VALIDATE | Require The Installer Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
 
@@ -80,6 +96,7 @@
       - __servers__ | select('eq', '') | list | length == 0
       - __domain__ | length == 0 or __domain__ is match('^[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$')
       - __domain__ | length == 0 or __servers__ | length > 0
+      - __servers__ | length == 0 or __domain__ | length > 0
 
 - name: 'VALIDATE | Require Usable Tunnel Proofs'
   when: (state | default('present') | string | lower | trim) == 'present'
@@ -112,25 +129,18 @@
   ansible.builtin.assert:
     fail_msg: >-
       Refusing to run: a value supplied by the role's Windows overlay is missing or malformed.
-      binary_path, config_dir and install.staging_dir must be absolute, drive-letter-rooted Windows
-      paths; service_name and service_account name the automatic service and the identity it runs
-      as. profile_sddl must not grant a permissive well-known account — Everyone, Authenticated
-      Users, BUILTIN\Users or Guests, by abbreviation or by literal SID — because it is applied
-      verbatim to the file holding the tunnel's private key, and END would then prove that
-      descriptor against itself and report a world-readable key as converged. Set-FileAcl.ps1
-      rejects a malformed descriptor on its own, so its shape is not restated here.
+      binary_path and config_dir must be absolute, drive-letter-rooted Windows paths. profile_sddl
+      must grant NOBODY but SYSTEM, Administrators and a service account: it is applied verbatim to
+      the file holding the tunnel's private key, and END proves the machine against that same
+      declared descriptor — so any other principal is a key exposed under a run that reports
+      converged. Set-FileAcl.ps1 rejects a malformed descriptor on its own, so its shape is not
+      restated here.
     quiet: true
     that:
       - openvpn_client_running.binary_path | default('') is match('^[A-Za-z]:\\\\')
       - openvpn_client_running.config_dir | default('') is match('^[A-Za-z]:\\\\')
-      # A separator and something past it: 'C:temp' is drive-RELATIVE and 'C:' is the root, and
-      # this path is removed recursively -- by the present path's cleanup and again by clean.
-      - openvpn_client_running.install.staging_dir | default('') is match('^[A-Za-z]:\\\\.')
       - openvpn_client_running.install.timeout_seconds | int > 0
       - openvpn_client_running.proof_timeout_seconds | int > 0
-      - openvpn_client_running.service_name | default('', true) | string | trim | length > 0
-      - openvpn_client_running.service_account | default('', true) | string | trim | length > 0
       - openvpn_client_running.profile_sddl | default('') | upper
-        is not search('[;](WD|AU|BU|IU|WR|AN)[)]')
-      - openvpn_client_running.profile_sddl | default('') | upper
-        is not search('[;](S-1-1-0|S-1-5-7|S-1-5-11|S-1-5-32-545|S-1-5-32-546)[)]')
+        | regex_findall('[;]([^;()]+)[)]')
+        | reject('match', '^(SY|BA|S-1-5-80-[0-9-]+)$') | list | length == 0
