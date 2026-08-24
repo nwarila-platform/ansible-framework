@@ -1,0 +1,473 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Joins a Windows host to the declared realm, and holds the security posture a domain member is
+# supposed to hold.
+#
+# This is the mirror of present_redhat.yml: the same contract, the same three stages, the same
+# refusals, the same end state. What differs is only that RedHat hands the work to a vendor system
+# role and Windows has none, so the steps that role performs are performed here instead --
+# the join, the encryption types, the machine account policy, the time source. Read the two files
+# side by side and the regions line up.
+#
+#   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
+#            already belongs to a different domain.
+#   PROCESS  fetches the join password through the controller, proves it against its digest,
+#            joins, and writes the posture.
+#   END      proves the result from the machine rather than from the join module's report.
+#
+# Membership is read through the facts module, whose windows_domain subset calls
+# DsRoleGetPrimaryDomainInformation (verified in ansible.windows setup.ps1) -- the machine's own
+# answer to "am I in a domain, and which one", from the API that owns that answer rather than
+# from a registry value or a parsed string. BEGIN and END read it the same way, so the decision
+# and the proof cannot disagree about what counts as joined.
+#
+# The join is not finished until the machine restarts: until then Windows still answers as a
+# workgroup member and the domain's groups are absent from the machine's token. The role restarts
+# when -- and only when -- the module reports that a restart is required, which is also what lets
+# END prove membership rather than intent.
+#
+# RC4 IS NOT A KNOB: the Kerberos encryption types this role writes exclude DES and RC4, and no
+# playbook setting can re-admit them. The value and the argument for it are in the Kerberos region
+# below, beside the write.
+#
+# The password is fetched by the CONTROLLER and handed to the join module as an argument, so the
+# guest is never given cloud credentials and no task here writes the value to a file. What
+# pipelining does and does not change about that is in the README.
+#
+# ============================================================================================= #
+---
+#region ------ [ Begin: Join This Windows Host To The Realm ] --------------------------------- #
+
+- name: 'BEGIN | Read The Machine And Decide One Action'
+  # Begin The 'Begin' Block
+  block:
+
+    #region ------ [ Begin: Read The Current Domain Membership ] ------------------------------ #
+    # Only the one subset is gathered, so a play that already ran a full gather pays for this once
+    # more rather than paying for everything again. No changed_when: a facts module reports no
+    # change because reading a machine changes nothing about it.
+
+    - name: 'BEGIN | Read The Current Domain Membership'
+      ansible.windows.setup:
+        gather_subset: [ '!all', '!min', 'windows_domain' ]
+        gather_timeout: 10
+
+    #endregion --- [ Begin: Read The Current Domain Membership ] ------------------------------ #
+
+    #region ------ [ Begin: Refuse A Host Joined To Another Domain ] -------------------------- #
+    # Skipped when a rejoin is forced, because that is exactly the operator saying "I know, leave
+    # it and join the other one". Unforced, this does NOT duplicate the join module's own refusal
+    # to switch domains, because that refusal is never reached: the join below is gated on a join
+    # being required, and a host already joined to something does not need one. Without this assert
+    # the join is simply skipped, the posture regions after it still write themselves onto a machine
+    # that belongs to another domain, and the run fails at END with a postcondition that reads like
+    # a broken join rather than a wrong declaration.
+    #
+    # Compared case-insensitively, because Windows reports the domain in whatever case the
+    # directory holds it and a case difference is the same domain.
+
+    - name: 'BEGIN | Refuse A Host Already Joined To Another Domain'
+      vars:
+        __current_domain__: "{{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}"
+        __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
+      when: not (domain_member_running.force_rejoin | bool)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' is already a member of '{{ __current_domain__ }}', but this
+          play declares '{{ __declared_realm__ }}'. Refusing to re-point the machine: the computer
+          object in '{{ __current_domain__ }}' would be abandoned along with every access granted
+          through its group memberships, and nothing in this role puts that back. Correct
+          domain_member.realm, or set domain_member.force_rejoin to leave deliberately -- but note
+          that the leave authenticates to '{{ __current_domain__ }}' with the account declared for
+          '{{ __declared_realm__ }}', so a move between unrelated domains needs an account both
+          will accept.
+        quiet: true
+        that:
+          - not (ansible_facts.windows_domain_member | default(false) | bool)
+            or __current_domain__ == __declared_realm__
+
+    #endregion --- [ Begin: Refuse A Host Joined To Another Domain ] -------------------------- #
+
+#endregion --- [ Begin: Join This Windows Host To The Realm ] --------------------------------- #
+
+
+#region ------ [ Process: Join This Windows Host To The Realm ] ------------------------------- #
+
+- name: 'PROCESS | Join The Realm And Hold The Member Posture'
+  vars:
+    __realm_to_join__: "{{ domain_member_running.realm | string | trim }}"
+    __currently_joined__: "{{ ansible_facts.windows_domain_member | default(false) | bool }}"
+    __join_required__: >-
+      {{ (not (__currently_joined__ | bool)) or (domain_member_running.force_rejoin | bool) }}
+    __timesync_declared__: >-
+      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
+
+  # Begin The 'Process' Block
+  block:
+
+    #region ------ [ Process: Fetch The Join Password ] --------------------------------------- #
+    # Byte-for-byte the task the RedHat path runs, deliberately: same object, same digest, same
+    # three modifiers, and the argument for each of them is written out once beside the RedHat
+    # copy in present_redhat.yml. Read it there. Changing one of these two tasks without the other
+    # is always a mistake.
+
+    - name: 'PROCESS | Fetch The Join Password'
+      become: false
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      no_log: true
+      register: '__domain_member_password__'
+
+      amazon.aws.s3_object:
+        bucket: "{{ domain_member_running.password.bucket }}"
+        ceph: false
+        debug_botocore_endpoint_logs: false
+        dualstack: false
+        encrypt: true
+        encryption_mode: 'AES256'
+        expiry: 600
+        ignore_nonexistent_bucket: true
+        mode: 'getstr'
+        object: "{{ domain_member_running.password.object }}"
+        overwrite: 'different'
+        permission: [ 'private' ]
+        prefix: ''
+        purge_tags: true
+        retries: 0
+        sig_v4: true
+        validate_bucket_name: true
+        validate_certs: true
+
+    #endregion --- [ Process: Fetch The Join Password ] --------------------------------------- #
+
+    #region ------ [ Process: Verify The Join Password Digest ] ------------------------------- #
+    # An object is trusted only once it matches the digest pinned in the playbook. Deliberately
+    # NOT no_log: assert reports the expression text and our message, never the value, so a
+    # mismatch stays diagnosable without exposing a secret.
+
+    - name: 'PROCESS | Verify The Join Password Digest'
+      ansible.builtin.assert:
+        fail_msg: >-
+          The join password object '{{ domain_member_running.password.object }}' does not match
+          the sha256 pinned in the playbook. Refusing to authenticate to the directory with an
+          unverified secret.
+        quiet: true
+        that:
+          - __domain_member_password__.contents | hash('sha256')
+            == domain_member_running.password.sha256
+
+    #endregion --- [ Process: Verify The Join Password Digest ] ------------------------------- #
+
+    #region ------ [ Process: Leave The Current Domain When A Rejoin Is Forced ] -------------- #
+    # The RedHat system role's forced rejoin is 'realm leave' followed by 'realm join'; this is
+    # the same operation in the form Windows takes it -- but not the same authentication. realm
+    # leave is a local operation; this one is not: the module requires a credential and unjoins
+    # WITH it, which is what disables the computer object in the directory rather than orphaning
+    # it. The credential it gets is the one declared for the realm being joined (verified in
+    # microsoft.ad 1.4.1 membership.ps1), so a rejoin within one domain is fine and a move
+    # between unrelated domains needs an account both accept. What the directory then does with
+    # the old computer object is Windows' business rather than this role's -- do not assume it is
+    # deleted.
+    #
+    # THE CONNECTION ACCOUNT MUST BE LOCAL. From here until the join below completes, the machine
+    # is not in the domain, so a domain account cannot authenticate to it and the play stops
+    # part-way through.
+
+    - name: 'PROCESS | Leave The Current Domain When A Rejoin Is Forced'
+      no_log: true
+      register: '__domain_member_left__'
+      when:
+        - domain_member_running.force_rejoin | bool
+        - __currently_joined__ | bool
+
+      microsoft.ad.membership:
+        domain_admin_password: "{{ __domain_member_password__.contents }}"
+        domain_admin_user: "{{ domain_member_running.user | string | trim }}"
+        reboot: false
+        state: 'workgroup'
+        workgroup_name: "{{ domain_member_running.workgroup_name }}"
+
+    #endregion --- [ Process: Leave The Current Domain When A Rejoin Is Forced ] -------------- #
+
+    #region ------ [ Process: Restart To Complete Leaving The Domain ] ------------------------ #
+    # Gated on the module's own answer, so a run where no leave happened restarts nothing.
+
+    - name: 'PROCESS | Restart To Complete Leaving The Domain'
+      when: __domain_member_left__.reboot_required | default(false) | bool
+
+      ansible.windows.win_reboot:
+        connect_timeout: 5
+        msg: 'Restart requested by Ansible to complete leaving the Active Directory domain'
+        post_reboot_delay: 0
+        pre_reboot_delay: 2
+        reboot_timeout: 600
+
+    #endregion --- [ Process: Restart To Complete Leaving The Domain ] ------------------------ #
+
+    #region ------ [ Process: Join The Declared Realm ] --------------------------------------- #
+    # The module owns the whole join -- the computer object and the secure channel -- so the role
+    # hands it the contract and nothing else. An OU the caller left null is omitted rather than
+    # passed empty: the module reads an absent domain_ou_path as "the directory's default computers
+    # container", which is exactly what null means here, while an empty string would be a value it
+    # would try to use.
+    #
+    # reboot is false and the restart is a task of its own, one region down. The module's own
+    # reboot would hide the restart inside a task named for joining, cannot be reported on
+    # separately, and gives the role no place to say why the machine went away. The module still
+    # answers whether one is required, which is what that task acts on. No reboot bound is passed
+    # to the module at all: the reboot it would bound is off, and the restart below carries its
+    # own. And no_log because the password is a task argument -- it costs the module's diffs at -v,
+    # but the registered result is still read below and END proves the outcome from the machine.
+
+    - name: 'PROCESS | Join The Declared Realm'
+      no_log: true
+      register: '__domain_member_join__'
+      when: __join_required__ | bool
+
+      microsoft.ad.membership:
+        dns_domain_name: "{{ __realm_to_join__ }}"
+        domain_admin_password: "{{ __domain_member_password__.contents }}"
+        domain_admin_user: "{{ domain_member_running.user | string | trim }}"
+        domain_ou_path: "{{ domain_member_running.computer_ou | default(omit, true) }}"
+        reboot: false
+        state: 'domain'
+
+    #endregion --- [ Process: Join The Declared Realm ] --------------------------------------- #
+
+    #region ------ [ Process: Restart To Complete The Join ] ---------------------------------- #
+    # Gated on the module's own answer rather than on whether it changed anything: a join always
+    # asks for a restart, and a converged host asks for none. A skipped join leaves no
+    # reboot_required at all, which defaults to false and skips this with it. Every option carries
+    # the module's documented default, stated so an upgrade cannot move what this role relies on,
+    # with two deliberate exceptions: msg is set because saying why the machine is going away is
+    # the whole point of having it; and boot_time_command is left alone because it is the module's
+    # own probe for "has the host returned" rather than a setting, so pinning it would freeze an
+    # implementation we want to inherit fixes to.
+
+    - name: 'PROCESS | Restart To Complete The Join'
+      when: __domain_member_join__.reboot_required | default(false) | bool
+
+      ansible.windows.win_reboot:
+        connect_timeout: 5
+        msg: 'Restart requested by Ansible to complete the Active Directory domain join'
+        post_reboot_delay: 0
+        pre_reboot_delay: 2
+        reboot_timeout: 600
+
+    #endregion --- [ Process: Restart To Complete The Join ] ---------------------------------- #
+
+    #region ------ [ Process: Hold The Domain Member Secure Channel ] ------------------------- #
+    # What ad_integration writes into sssd.conf for RedHat, Windows keeps in Netlogon's parameters.
+    # Ungated, like the system role's own posture steps: this is state the role owns on every
+    # converge, not an action that belongs to the join. A converged host reports no change. The
+    # registry PATH is owned here rather than offered as a setting, because where Windows keeps
+    # this policy is a property of Windows and not a choice a site makes; the VALUES come from the
+    # overlay, where a site can hold a different posture and see that it has.
+
+    - name: 'PROCESS | Hold The Domain Member Secure Channel'
+      loop: "{{ domain_member_running.secure_channel | dict2items }}"
+      loop_control:
+        label: "{{ __setting__.key }}"
+        loop_var: '__setting__'
+
+      ansible.windows.win_regedit:
+        data: "{{ __setting__.value }}"
+        delete_key: true
+        name: "{{ __setting__.key }}"
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Netlogon\Parameters'
+        state: 'present'
+        type: 'dword'
+
+    #endregion --- [ Process: Hold The Domain Member Secure Channel ] ------------------------- #
+
+    #region ------ [ Process: Hold The Kerberos Encryption Types ] ---------------------------- #
+    # One value, not a choice. The RedHat path refuses RC4 by leaving the crypto policy alone;
+    # Windows refuses it by writing the bitmask that excludes it. Neither is reachable from the
+    # contract, for the reason in the file header. The value is a LITERAL and not a merged-config
+    # key on purpose: anything reachable through the domain_member override dict is a way for a
+    # playbook to put the RC4 bit back, which is exactly what this role exists to prevent. It is
+    # 0x7ffffff8 -- AES128-CTS-HMAC-SHA1-96, AES256-CTS-HMAC-SHA1-96 and future encryption types,
+    # with DES and RC4 excluded -- quoted from DISA's Windows Server 2022 STIG, WN22-SO-000290
+    # (V-254473), which requires exactly REG_DWORD 0x7ffffff8 at this key. Written in hex, which
+    # YAML resolves to the same integer the decimal would (0x7ffffff8 == 2147483640), so writing
+    # it this way costs the module nothing and lets a reviewer compare the task against the
+    # benchmark text without converting anything. The obvious-looking 0x18 is NOT this control:
+    # it clears the future-encryption-types bits the benchmark requires.
+
+    - name: 'PROCESS | Hold The Kerberos Encryption Types'
+      ansible.windows.win_regedit:
+        data: 0x7ffffff8
+        delete_key: true
+        name: 'SupportedEncryptionTypes'
+        path: 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters'
+        state: 'present'
+        type: 'dword'
+
+    #endregion --- [ Process: Hold The Kerberos Encryption Types ] ---------------------------- #
+
+    #region ------ [ Process: Point The Clock At The Declared Source ] ------------------------ #
+    # One action, two tasks: naming a time source without switching the client out of domain-
+    # hierarchy mode changes nothing, and switching modes without naming a source leaves the
+    # service with nowhere to ask. Both write the same policy, so they belong to one region.
+    # Skipped entirely when no source is declared, which is why null is the default: a domain
+    # member syncs from the domain hierarchy unless told otherwise. Skipped means UNTOUCHED, not
+    # reverted -- a host this role previously pointed at a source keeps that source when the
+    # setting goes back to null, exactly as the RedHat path leaves chrony where it put it. Moving
+    # a host back to the hierarchy is a deliberate act, not the absence of one. The service reads
+    # these once at start, so both notify the restart rather than a condition a growing expression
+    # would have to test.
+
+    - name: 'PROCESS | Name The Declared Time Source'
+      notify: 'domain-member-timesync-restart'
+      when: __timesync_declared__ | bool
+
+      ansible.windows.win_regedit:
+        # The ,0x9 suffix is the per-peer flag byte W32Time expects: 0x1 SpecialInterval plus
+        # 0x8 Client. Without it the service takes the name and ignores the polling contract.
+        data: "{{ domain_member_running.timesync_source | string | trim }},0x9"
+        delete_key: true
+        name: 'NtpServer'
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+        state: 'present'
+        type: 'string'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Switch The Clock Off The Domain Hierarchy'
+      notify: 'domain-member-timesync-restart'
+      when: __timesync_declared__ | bool
+
+      ansible.windows.win_regedit:
+        data: 'NTP'
+        delete_key: true
+        name: 'Type'
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+        state: 'present'
+        type: 'string'
+
+    #endregion --- [ Process: Point The Clock At The Declared Source ] ------------------------ #
+
+#endregion --- [ Process: Join This Windows Host To The Realm ] ------------------------------- #
+
+
+#region ------ [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+# A converge that changed the time service's configuration and then failed before the handler
+# flushed would leave the service on its old source -- and the NEXT converge would write nothing,
+# because the values are already correct, so it would notify nothing and never restart either. The
+# service would stay stale for good, under a run that reports success. An 'always' runs even when
+# the block above failed, and a handler that already ran is not run again, so a successful converge
+# still restarts exactly once.
+
+  # Begin the 'Always' block
+  always:
+
+    - name: 'PROCESS | Apply Any Pending Restart Even After A Failure'
+      ansible.builtin.meta: 'flush_handlers'
+
+#endregion --- [ Always: Apply Any Pending Restart ] ------------------------------------------ #
+
+
+#region ------ [ End: Join This Windows Host To The Realm ] ----------------------------------- #
+
+- name: 'END | Prove The Result'
+  # Begin The 'End' Block
+  block:
+
+    #region ------ [ End: Re-Read The Domain Membership ] ------------------------------------- #
+    # Ungated, so a host that was already a member proves the same state as one this run joined.
+    # This is the same read BEGIN performed, against the same source, so the two cannot disagree
+    # about what counts as joined. It runs after the restart, which is the point: before it, the
+    # machine still answers as a workgroup member however well the join went.
+
+    - name: 'END | Re-Read The Current Domain Membership'
+      ansible.windows.setup:
+        gather_subset: [ '!all', '!min', 'windows_domain' ]
+        gather_timeout: 10
+
+    #endregion --- [ End: Re-Read The Domain Membership ] ------------------------------------- #
+
+    #region ------ [ End: Prove The Declared Membership ] ------------------------------------- #
+    # A join module's report is its own opinion; the domain-role API is the machine's. The two come
+    # apart in the case this proof exists to catch: a join that succeeded against the
+    # directory but whose restart never happened, which leaves a machine that is a domain member in
+    # the directory and a workgroup member to everyone who uses it.
+
+    - name: 'END | Prove The Machine Is A Member Of The Declared Realm'
+      vars:
+        __current_domain__: "{{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}"
+        __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          {% if ansible_check_mode %}
+          A domain join cannot be completed in check mode: the restart that finishes it does not
+          run under --check, so this host cannot be proven a member of '{{ __declared_realm__ }}'.
+          Run without --check to join.
+          {% else %}
+          '{{ inventory_hostname }}' is not a member of '{{ __declared_realm__ }}'. The machine
+          reports domain member={{ ansible_facts.windows_domain_member | default(false) }},
+          domain='{{ __current_domain__ }}'. A join that reported success and a machine that is not
+          a member means the restart completing it did not happen.
+          {% endif %}
+        quiet: true
+        that:
+          - ansible_facts.windows_domain_member | default(false) | bool
+          - __current_domain__ == __declared_realm__
+
+    #endregion --- [ End: Prove The Declared Membership ] ------------------------------------- #
+
+    #region ------ [ End: Prove The Machine Account Credential ] ------------------------------ #
+    # The mirror of the RedHat path's adcli testjoin, and the same argument for it: a machine that
+    # reports membership can still be unable to authenticate as itself -- a computer object deleted
+    # or reset in the directory leaves every local answer looking correct. Test-ComputerSecureChannel
+    # asks the domain controller using the machine's own credential, which is the only answer that
+    # means the membership actually works.
+    #
+    # No module exposes this, so it is the sanctioned escape hatch: one read-only cmdlet, no
+    # arguments interpolated into it, its boolean result read from structured output rather than
+    # parsed from text. changed_when is false because asking a question changes nothing, and the
+    # probe is allowed to fail so its result can be reported: a domain controller it cannot reach
+    # makes the cmdlet throw, and ignore_errors keeps that readable in the register instead of
+    # ending the run on a raw error. The assert beside it is what fails the run.
+    #
+    # check_mode is off for the same reason it is off on the RedHat mirror, and the consequence
+    # of leaving it on is worse than a missing answer (verified in ansible.windows 3.7.0
+    # win_powershell.ps1): win_powershell refuses to run a script that does not declare
+    # SupportsShouldProcess under --check, returning a message and NO output at all -- so a
+    # HEALTHY member host would fail this proof during a routine --check audit, with a message
+    # telling the operator to force a rejoin it does not need.
+
+    - name: 'END | Test The Machine Account Credential Against The Directory'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_secure_channel__'
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: 'Test-ComputerSecureChannel'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Machine Account Credential Works'
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' reports membership of '{{ domain_member_running.realm }}' but
+          could not prove it with its own machine account:
+          {{ __domain_member_secure_channel__.error | default([], true) | map(attribute='output')
+          | list | join('; ') | trim | default('the check returned false', true) }}.
+          A domain controller this host cannot reach fails the same way a broken credential does;
+          where the credential is the problem, domain_member.force_rejoin rebuilds it.
+        quiet: true
+        that:
+          - __domain_member_secure_channel__.output | default([], true) | first | default(false) | bool
+
+    #endregion --- [ End: Prove The Machine Account Credential ] ------------------------------ #
+
+#endregion --- [ End: Join This Windows Host To The Realm ] ----------------------------------- #

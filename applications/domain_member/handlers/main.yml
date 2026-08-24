@@ -1,0 +1,30 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/handlers/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# The Windows Time service reads its source and its mode once, at start. The tasks that declare a
+# time source write both and neither takes effect until the service is bounced, so each notifies
+# this handler rather than a result a growing condition would have to test.
+#
+# A handler runs once however many times it was notified: a converge that moves both values bounces
+# the service exactly once, and a converge that changes neither never bounces it.
+#
+# The topic is deliberately specific, because handler names and listen topics are play-global and
+# another role in the same play may have its own reason to touch this service.
+#
+# The RedHat path declares no handler here because the system role declares its own. It does not
+# FLUSH its own reliably, though -- it flushes early, before it writes the SSSD settings this role
+# supplies -- which is why present_redhat.yml carries an 'always' flush of its own. Note that
+# flushing is play-global: it runs every pending handler, not only this role's.
+#
+# =========================================================================================== #
+---
+- name: 'Restart the Windows Time service'
+  listen: 'domain-member-timesync-restart'
+
+  ansible.windows.win_service:
+    dependency_action: 'set'
+    desktop_interact: false
+    force_dependent_services: false
+    name: 'W32Time'
+    state: 'restarted'

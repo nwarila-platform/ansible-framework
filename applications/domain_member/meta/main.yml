@@ -1,0 +1,78 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Role metadata for domain_member. Description-only (style guide 8): NOT an enforcing argument
+# spec. The role's tasks/validate.yml enforces its merged-config guards.
+#
+# REQUIRED INPUTS -- supplied by the playbook, not defaulted here.
+#
+# These are site identity: which realm this machine belongs to, who is allowed to put it there,
+# and where that account's password lives. Defaulting them would ship one site's values as if they
+# were universally safe, so the playbook states them where a reader can see what is being joined.
+#
+#   domain_member.realm             DNS name of the realm to join.
+#   domain_member.user              Account permitted to create or reuse this machine's computer
+#                                   object.
+#   domain_member.password.bucket   S3 bucket holding that account's password.
+#   domain_member.password.object   Object key of the password. Fetched through the CONTROLLER as
+#                                   a string; the guest is never given cloud credentials, and the
+#                                   value is never written to a file by this role. See the README
+#                                   for what pipelining does and does not change about that.
+#   domain_member.password.sha256   Lowercase 64-character digest of that object, verified before
+#                                   the value is used as a credential.
+#
+# OPTIONAL: computer_ou (the OU a new computer object is created in), force_rejoin (leave and join
+# again), timesync_source (the clock's source).
+#
+# NOT OFFERED: any way to re-admit RC4. Both platforms exclude it unconditionally -- Windows by the
+# Kerberos encryption-types policy, RedHat by leaving the crypto policy alone rather than applying
+# the subpolicy that would enable it.
+#
+# COLLECTIONS. RedHat requires 'redhat.rhel_system_roles' for the ad_integration role that performs
+# the join, and that role's own dependencies -- 'ansible.posix' and 'community.general'. Windows
+# requires 'microsoft.ad' and 'ansible.windows'. Both paths require 'amazon.aws' on the CONTROLLER
+# to fetch the join password.
+# =========================================================================================== #
+---
+galaxy_info:
+
+  role_name: 'domain_member'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Active Directory domain membership for RedHat-family and Windows hosts through one contract.
+    Fetches the join password from S3 through the controller and verifies it against a pinned
+    digest, then joins: RedHat hands the whole contract to redhat.rhel_system_roles.ad_integration,
+    and Windows performs the same work against microsoft.ad and the registry. Refuses a host
+    already joined elsewhere unless a rejoin is forced, excludes DES and RC4 from Kerberos on both
+    platforms with no way to re-admit them, holds the machine-account and secure-channel posture,
+    and proves membership and the machine-account credential from the machine rather than from the
+    join tool's report.
+
+  license: 'MIT'
+  # 2.20 is the floor because the stat reads pass get_selinux_context, which core added in 2.20.
+  min_ansible_version: '2.20'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+        - '10'
+    - name: 'Windows'
+      versions:
+        - '2019'
+        - '2022'
+        - '2025'
+
+  galaxy_tags:
+    - 'activedirectory'
+    - 'domain'
+    - 'identity'
+    - 'realmd'
+    - 'sssd'
+    - 'windows'
+
+allow_duplicates: false
+
+dependencies: []

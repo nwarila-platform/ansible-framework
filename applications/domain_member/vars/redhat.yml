@@ -1,0 +1,49 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/redhat.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# RedHat-family overlay merged over domain_member_defaults by the v3 loader.
+#
+# The join itself belongs to redhat.rhel_system_roles.ad_integration, which owns the package set,
+# realmd.conf, the realm join, and the crypto-policy and timesync side effects. Nothing here
+# duplicates any of that. What is left is the two commands END invokes to prove the result, and
+# the SSSD settings that carry the security posture the system role does not express.
+#
+# =========================================================================================== #
+---
+#region ------ [ Proof commands ] ------------------------------------------------------------- #
+
+# Absolute paths, because a command is invoked by absolute path and never resolved through PATH.
+# These are the role's only guest-side command surface: one reports what the host is joined to,
+# the other proves the machine account credential still works against the directory.
+realm_binary: '/usr/sbin/realm'
+adcli_binary: '/usr/sbin/adcli'
+
+#endregion --- [ Proof commands ] ------------------------------------------------------------- #
+
+#region ------ [ Machine account posture ] ---------------------------------------------------- #
+
+# Written into the [domain/<realm>] section of sssd.conf by the system role. This is the RedHat
+# expression of the same machine-account policy the Windows overlay writes to Netlogon: the
+# credential this host authenticates with is rotated on a schedule rather than left to live
+# forever, and tickets are validated against the host's own keytab.
+#
+# Every value here is SSSD's own documented default, declared rather than inherited. A default
+# that moves in a later SSSD is a change to this host's security posture, and a posture that can
+# change without anyone editing this file is not a posture -- it is a coincidence.
+#
+#   ad_maximum_machine_account_password_age      days before the machine account password is
+#                                                renewed; 0 would disable renewal entirely.
+#   ad_machine_account_password_renewal_opts     'interval:initial_delay' in seconds for the
+#                                                renewal task.
+#   krb5_validate                                validate the TGT against the host keytab, which
+#                                                is what makes a spoofed KDC fail instead of pass.
+sssd_custom_settings:
+  - key: 'ad_maximum_machine_account_password_age'
+    value: '30'
+  - key: 'ad_machine_account_password_renewal_opts'
+    value: '86400:750'
+  - key: 'krb5_validate'
+    value: 'true'
+
+#endregion --- [ Machine account posture ] ---------------------------------------------------- #

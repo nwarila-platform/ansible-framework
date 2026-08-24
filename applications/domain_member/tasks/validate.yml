@@ -1,0 +1,106 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Validates load-bearing domain_member configuration after the v3 loader merge, on the CONTROLLER,
+# before anything touches the guest. The realm, the joining account and the object its password
+# lives in are supplied by the playbook rather than defaulted, so this is where a missing or
+# malformed one is caught -- in a second, rather than part-way through a join that leaves a
+# half-configured machine and an orphaned computer object behind.
+#
+# meta/main.yml describes these inputs; this file is what enforces them.
+#
+# Every guard is scoped to state=present. The clean path removes nothing and needs no inputs, so
+# requiring a realm to run it would fail a host for a contract it is not using.
+#
+# =========================================================================================== #
+---
+- name: 'VALIDATE | Require The Realm, The Account, And Where Its Password Lives'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to join: the identity contract is incomplete. The playbook must supply
+      domain_member.realm as the DNS name of the realm ('corp.example.com', not the NetBIOS short
+      name), domain_member.user as an account permitted to create or reuse this machine's computer
+      object, and password.bucket, password.object and password.sha256 naming the object that
+      holds that account's password. The digest must be a lowercase 64-character sha256, because
+      the object is verified against it before it is ever used as a credential.
+      See meta/main.yml for the full input contract.
+    quiet: true
+    that:
+      - (config.realm | default('', true) | string | trim) | length > 0
+      - (config.realm | default('', true) | string | trim)
+        is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+      - (config.user | default('', true) | string | trim) | length > 0
+      - (config.password.bucket | default('', true) | string | trim) | length > 0
+      - (config.password.object | default('', true) | string | trim) | length > 0
+      - (config.password.sha256 | default('', true) | string | trim)
+        is match('^[0-9a-f]{64}$')
+
+- name: 'VALIDATE | Require A Usable Join And Posture Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to join: the join contract is malformed. computer_ou, when declared, must be an
+      LDAP distinguished name such as 'OU=Servers,DC=corp,DC=example,DC=com' -- DN values
+      containing escaped commas are not supported; timesync_source,
+      when declared, must be a host name or address; and force_rejoin is a boolean, which a string
+      that merely looks like one is not. Leave either null or false to keep the platform's own
+      arrangement.
+    quiet: true
+    that:
+      - (config.computer_ou | default('', true) | string | trim) | length == 0
+        or (config.computer_ou | default('', true) | string | trim)
+        is match('^[A-Za-z]+=[^,]+([,] ?[A-Za-z]+=[^,]+)*$')
+      - (config.timesync_source | default('', true) | string | trim) | length == 0
+        or (config.timesync_source | default('', true) | string | trim)
+        is match('^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$')
+      - config.force_rejoin is boolean
+
+- name: 'VALIDATE | Require The RedHat Proof Commands And Machine Account Posture'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | lower) == 'redhat'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to join: the RedHat overlay is incomplete. realm_binary and adcli_binary must be
+      absolute paths, and not because a wrong one merely fails at exec -- it never reaches exec. A
+      path that does not resolve makes BEGIN's stat report absent, skips the realm read, and leaves
+      the refuse-if-joined-elsewhere guard looking at an empty list, so a host already joined
+      somewhere else sails past the one refusal this role exists to make. sssd_custom_settings must
+      be a list of key/value pairs, which is the shape the system role writes into sssd.conf;
+      emptying it silently drops the machine account posture this role exists to hold.
+    quiet: true
+    that:
+      - (config.realm_binary | default('', true) | string | trim) is match('^/')
+      - (config.adcli_binary | default('', true) | string | trim) is match('^/')
+      - config.sssd_custom_settings is not string
+      - config.sssd_custom_settings is sequence
+      - config.sssd_custom_settings | length > 0
+      - config.sssd_custom_settings | rejectattr('key', 'defined')
+        | list | length == 0
+      - config.sssd_custom_settings | rejectattr('value', 'defined')
+        | list | length == 0
+
+- name: 'VALIDATE | Require The Windows Security Posture'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | lower) == 'windows'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to join: the Windows overlay is incomplete. secure_channel must be a non-empty map
+      of registry value names to whole numbers -- it is the Domain member policy family this role
+      writes to Netlogon -- and workgroup_name must name somewhere for a forced rejoin to park the
+      machine between leaving the realm and joining it again. The Kerberos encryption types are not
+      validated because they are not configurable: the task writes the benchmark's value directly.
+    quiet: true
+    that:
+      - config.secure_channel is mapping
+      - config.secure_channel | length > 0
+      - config.secure_channel | dict2items
+        | rejectattr('value', 'integer') | list | length == 0
+      - (config.workgroup_name | default('', true) | string | trim) | length > 0

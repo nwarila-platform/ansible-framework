@@ -29,6 +29,7 @@
 
 # Role directories
 !/applications/
+!/applications/domain_member/
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
 !/applications/python3_pip/
@@ -36,6 +37,18 @@
 !/applications/wazuh_agent/
 !/applications/*/*.md
 !/applications/*/.gitkeep
+!/applications/domain_member/defaults/
+!/applications/domain_member/files/
+!/applications/domain_member/handlers/
+!/applications/domain_member/library/
+!/applications/domain_member/lookup_plugins/
+!/applications/domain_member/meta/
+!/applications/domain_member/module_utils/
+!/applications/domain_member/molecule/
+!/applications/domain_member/tasks/
+!/applications/domain_member/templates/
+!/applications/domain_member/tests/
+!/applications/domain_member/vars/
 !/applications/linux_disk_manager/defaults/
 !/applications/linux_disk_manager/files/
 !/applications/linux_disk_manager/handlers/

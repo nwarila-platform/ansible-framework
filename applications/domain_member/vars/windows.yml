@@ -1,0 +1,47 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/vars/windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Windows-family overlay merged over domain_member_defaults by the v3 loader.
+#
+# Windows has no system role to hand the contract to, so this overlay carries what
+# ad_integration expresses for RedHat: the security posture a domain member is supposed to hold,
+# in the form Windows stores it. The registry PATHS these values are written to are not here --
+# they are properties of Windows rather than choices a site makes, so the task owns them. The
+# VALUES are here, because a site can legitimately hold a different posture.
+#
+# =========================================================================================== #
+---
+#region ------ [ Secure channel and machine account ] ----------------------------------------- #
+
+# The 'Domain member' policy family, written to Netlogon's parameters. Every one of these is about
+# the membership itself rather than general hardening, which is why they live in this role: the
+# secure channel IS the domain membership's channel, and the machine account password IS the
+# credential the membership authenticates with.
+#
+# Keys are the registry value names verbatim, so there is no translation layer between what is
+# declared here and what Windows reads.
+#
+#   RequireSignOrSeal      refuse a secure channel that is neither signed nor sealed
+#   SealSecureChannel      encrypt secure channel traffic where the DC supports it
+#   SignSecureChannel      sign secure channel traffic where the DC supports it
+#   RequireStrongKey       refuse a session key weaker than a strong (Windows 2000+) key
+#   DisablePasswordChange  0 keeps machine account password rotation ON
+#   MaximumPasswordAge     days between rotations; the RedHat overlay declares the same 30
+secure_channel:
+  DisablePasswordChange: 0
+  MaximumPasswordAge: 30
+  RequireSignOrSeal: 1
+  RequireStrongKey: 1
+  SealSecureChannel: 1
+  SignSecureChannel: 1
+
+#endregion --- [ Secure channel and machine account ] ----------------------------------------- #
+
+#region ------ [ Forced rejoin ] -------------------------------------------------------------- #
+
+# Where a forced rejoin parks the machine between leaving the realm and joining it again. A host
+# has to be a member of something, and this is the name Windows itself defaults to.
+workgroup_name: 'WORKGROUP'
+
+#endregion --- [ Forced rejoin ] -------------------------------------------------------------- #
