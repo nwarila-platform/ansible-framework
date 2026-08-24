@@ -1,24 +1,28 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/clean_redhat.yml'
 # --- [ Description ] ------------------------------------------------------------------------ #
-# Supported no-op cleanup path for the domain_member role on RedHat-family hosts.
 #
-# The role stages nothing on the guest: the join is performed by the system role through the realm
-# client, the password is fetched by the controller and handed over as a variable, and nothing is
-# downloaded to the target. There is therefore nothing for a clean to remove, and this path says so
+# state=clean is a supported no-op. The role stages nothing on the guest: the join is performed by
+# the system role, the password is fetched by the controller and handed over as a variable, and
+# nothing is downloaded to the target. There is therefore nothing to remove, and this path says so
 # rather than inventing work.
 #
 # Leaving a realm is NOT what clean means here, and is deliberately not implemented under any
 # state: removing a machine from a realm abandons a directory object and every access granted
-# through it, which belongs to a decommission that a person decides on, not to a converge. An
-# operator who wants the membership rebuilt sets force_rejoin on the present path, where the leave
-# and the join happen together and the host is never left without one.
+# through it, which belongs to a decommission a person decides on, not to a converge. An operator
+# who wants the membership rebuilt sets force_rejoin on the present path, where the leave and the
+# join happen together and the host is never left without one.
 #
 # ============================================================================================= #
 ---
-- name: 'INFO | Nothing To Clean (no role-owned state on the guest)'
+
+#region ------ [ Process: Report There Is Nothing To Remove ] --------------------------------- #
+
+- name: 'PROCESS | Report There Is Nothing To Remove'
   ansible.builtin.debug:
     msg: >-
-      domain_member: the role stages nothing on the guest, so clean is a supported no-op.
-      Realm membership itself is left untouched.
+      domain_member: the role stages nothing on the guest, so clean is a supported no-op. Realm
+      membership itself is left untouched.
     verbosity: 0
+
+#endregion --- [ Process: Report There Is Nothing To Remove ] --------------------------------- #
