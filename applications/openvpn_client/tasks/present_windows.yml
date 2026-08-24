@@ -144,10 +144,12 @@
 
     - name: 'BEGIN | Refuse A Host Running Profiles This Role Did Not Declare'
       vars:
+        __declared_profile__: "{{ (openvpn_client_running.profile_name ~ '.ovpn') | lower }}"
+        __found_profiles__: >-
+          {{ __openvpn_client_profiles__.files | default([], true)
+             | map(attribute='filename') | map('lower') | list }}
         __undeclared_profiles__: >-
-          {{ __openvpn_client_profiles__.files | default([], true) | map(attribute='filename')
-             | map('lower') | reject('equalto', (openvpn_client_running.profile_name ~ '.ovpn') | lower)
-             | list }}
+          {{ __found_profiles__ | reject('equalto', __declared_profile__) | list }}
 
       ansible.builtin.assert:
         fail_msg: >-
@@ -284,8 +286,6 @@
     #endregion --- [ Process: Ensure The Guest Staging Directory Exists ] --------------------- #
 
     #region ------ [ Process: Copy The Installer To The Guest ] ------------------------------- #
-    # remote_src stays false because the source is the controller copy fetched above, and force
-    # stays true so a partial or stale staged file is replaced rather than trusted.
 
     - name: 'PROCESS | Copy The Installer To The Guest'
       register: '__openvpn_client_copied__'
@@ -297,6 +297,7 @@
         backup: false
         decrypt: true
         dest: "{{ __guest_installer__ }}"
+        # True so a partial or stale staged file is replaced rather than trusted.
         force: true
         local_follow: true
         remote_src: false
@@ -349,14 +350,11 @@
     #endregion --- [ Process: Install Silently From The Verified Copy ] ----------------------- #
 
     #region ------ [ Process: Reboot When The Installer Requires It ] ------------------------- #
-    # reboot_required is set by the module for return code 3010 and nothing else, so this acts
-    # on the installer's own request rather than on a guess. It is the only condition needed: a
-    # run that never installed leaves no reboot_required to be true. Every option carries the
-    # module's documented default, stated so an upgrade cannot move what this role relies on,
-    # with two deliberate exceptions: msg is set because saying why the machine is going away is
-    # the whole point of having it; and boot_time_command is left alone because it is the
-    # module's own probe for "has the host returned" rather than a setting, so pinning it would
-    # freeze an implementation we want to inherit fixes to.
+    # reboot_required is set by the module for return code 3010 and nothing else, so this acts on
+    # the installer's own request rather than on a guess. It is the only condition needed: a run
+    # that never installed leaves no reboot_required to be true. boot_time_command is the one
+    # documented default left unpinned -- it is the module's own probe for "has the host returned"
+    # rather than a setting, so pinning it would freeze an implementation we want fixes to.
 
     - name: 'PROCESS | Reboot When The Installer Requires It'
       when: __openvpn_client_installed__.reboot_required | default(false) | bool

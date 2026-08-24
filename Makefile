@@ -22,9 +22,10 @@
 # The last alternative covers MATERIALIZED role scripts. A role that executes a first-class
 # PowerShell script tracks only files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies
 # the reviewed source from scripts/ to files/<Name>.ps1 before the role runs. That copy is a build
-# artifact by convention -- no role's files/ directory ever tracks a .ps1 -- so it is deliberately
-# unallowlistable AND must not fail this guard on a checkout where the build step has run.
-GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|(applications|operating_systems)/[^/]+/files/[^/]+\.ps1$$)
+# artifact, so it is deliberately unallowlistable AND must not fail this guard on a checkout where
+# the build step has run. Scoped to the one role that has stubs, so an unreviewed .ps1 dropped into
+# any other role's files/ is still caught -- widen it per-role, never to a wildcard.
+GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/openvpn_client/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
 	applications/domain_member/tasks/main.yml \

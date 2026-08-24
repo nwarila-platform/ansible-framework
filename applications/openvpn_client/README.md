@@ -112,6 +112,7 @@ A dry run is honest about what it cannot know:
 | --- | --- |
 | `present` | Everything above. |
 | `clean` | Removes any staged installer left on the guest. Deliberately does **not** uninstall the client, remove the profile, stop the service or drop the resolver policy — that is a decommission a person decides on, not something a converge does on its way past. |
+| `absent` | **Not implemented.** The loader accepts the state and then fails with `OS task file not found`. Uninstalling tears down a working tunnel and, on a host that reaches its domain controllers across it, name resolution with it. |
 
 ## Collections
 

@@ -29,7 +29,10 @@
 # role's files/ directory is a build artifact and is never allowlisted anywhere.
 !/scripts/
 !/scripts/materialize-role-scripts.sh
-!/scripts/*.ps1
+!/scripts/Set-DnsNamespaceForwarder.ps1
+!/scripts/Set-DnsNamespaceForwarder.pester.ps1
+!/scripts/Set-FileAcl.ps1
+!/scripts/Set-FileAcl.pester.ps1
 
 # GitHub
 !/.github/
