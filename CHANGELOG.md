@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.6](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.5...v0.1.6) (2026-08-24)
+
+
+### Features
+
+* **openvpn_client:** assemble the audited Windows slice into a role ([#70](https://github.com/nwarila-platform/ansible-framework/issues/70)) ([2352c5c](https://github.com/nwarila-platform/ansible-framework/commit/2352c5c614e1f9b1ffd299705e8305ac7358c065))
+
+
+### Code Refactoring
+
+* **domain_member:** apply the house style the golden reference encodes ([#71](https://github.com/nwarila-platform/ansible-framework/issues/71)) ([38b27a6](https://github.com/nwarila-platform/ansible-framework/commit/38b27a602a0f7d2a9298058cbc99d33e2b2e572d))
+
 ## [0.1.5](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.4...v0.1.5) (2026-08-24)
 
 
