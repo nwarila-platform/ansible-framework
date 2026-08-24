@@ -47,8 +47,12 @@
     that:
       - (config.installer.bucket | default('', true) | string | trim) | length > 0
       - (config.installer.path | default('', true) | string | trim) | length > 0
+      # Two or three parts only. A FOUR-part version is the resource string this message forbids,
+      # and it would break the role permanently rather than loudly: the role appends its own '.0',
+      # so '2.6.12.0' becomes the pin '2.6.12.0.0' -- above the binary's own resource forever, so
+      # BEGIN reinstalls on every converge and END can never prove the result.
       - (config.installer.version | default('', true) | string | trim)
-        is match('^[0-9]+([.][0-9]+){1,3}$')
+        is match('^[0-9]+([.][0-9]+){1,2}$')
       - (config.installer.sha256 | default('', true) | string | trim)
         is match('^[0-9a-f]{64}$')
 
@@ -108,8 +112,14 @@
       then removes any rule it previously wrote.
     quiet: true
     that:
-      - config.dns.servers is not string
-      - config.dns.servers is sequence
+      # Shielded with default(), because attribute access on a null or scalar 'dns' RAISES rather
+      # than yielding Undefined -- an operator who wrote 'dns:' with nothing under it would get a
+      # template error naming NoneType instead of the message below. 'is not mapping' is separate
+      # from 'is sequence' because a dict satisfies 'sequence' and would otherwise be iterated as
+      # its keys.
+      - (config.dns | default({}, true)).servers is not string
+      - (config.dns | default({}, true)).servers is not mapping
+      - (config.dns | default({}, true)).servers is sequence
       - ((config.dns.domain | default('', true) | string | trim) | length == 0)
         or ((config.dns.domain | default('', true) | string | trim)
         is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$'))
@@ -135,9 +145,16 @@
       across this tunnel should list its domain controllers here.
     quiet: true
     that:
-      - config.proofs is not string
-      - config.proofs is sequence
+      # Shielded and mapping-checked for the same reasons the resolver contract above is.
+      - (config.proofs | default([], true)) is not string
+      - (config.proofs | default([], true)) is not mapping
+      - (config.proofs | default([], true)) is sequence
       - (config.proofs | default([], true) | selectattr('host', 'defined') | list | length)
+        == (config.proofs | default([], true) | length)
+      # A null or empty host passes 'defined' and then fails inside win_wait_for as a module error
+      # that names nothing about this contract.
+      - (config.proofs | default([], true) | map(attribute='host')
+        | select('string') | map('trim') | select | list | length)
         == (config.proofs | default([], true) | length)
       - (config.proofs | default([], true) | selectattr('port', 'defined') | list | length)
         == (config.proofs | default([], true) | length)
@@ -173,13 +190,19 @@
     fail_msg: >-
       Refusing to run: the platform contract is incomplete. binary_path, config_dir, service_name,
       service_account, profile_sddl and install.staging_dir are supplied by the role's Windows
-      overlay and must be non-empty -- an override has emptied one of them. profile_sddl in
-      particular is applied verbatim to the file that holds the tunnel's private key.
+      overlay and must be non-empty -- an override has emptied one of them. profile_sddl must be a
+      DACL-ONLY descriptor ('D:PAI(...)'): Set-FileAcl.ps1 reads and writes only the DACL section,
+      leaving owner, group and any SACL alone, and it rejects a descriptor carrying an 'O:'/'G:'
+      prefix before applying it. It is applied verbatim to the file holding the tunnel's private key.
     quiet: true
     that:
       - (config.binary_path | default('', true) | string | trim) | length > 0
       - (config.config_dir | default('', true) | string | trim) | length > 0
       - (config.service_name | default('', true) | string | trim) | length > 0
       - (config.service_account | default('', true) | string | trim) | length > 0
-      - (config.install.staging_dir | default('', true) | string | trim) | length > 0
-      - (config.profile_sddl | default('', true) | string | trim) is match('^O:.*D:')
+      - (config.install | default({}, true)).staging_dir
+        | default('', true) | string | trim | length > 0
+      # The script's own ValidatePattern, restated: a descriptor this guard accepts and the script
+      # then refuses would be a contract that disagrees with itself.
+      - (config.profile_sddl | default('', true) | string | trim)
+        is match('^D:P(AI)?([(][^()]+[)])+$')

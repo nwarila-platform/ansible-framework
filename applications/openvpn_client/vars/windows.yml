@@ -57,8 +57,13 @@ service_account: 'NT SERVICE\OpenVPNService'
 # hand-added grant would survive every converge. The role writes this descriptor and END proves
 # the machine still reads back the same one.
 #
+# A DACL ONLY -- no owner or group section. Set-FileAcl.ps1 reads and writes exactly
+# AccessControlSections::Access, so the owner, the group and any SACL are deliberately left alone,
+# and it compares what it wrote against what Windows reads back with a CASE-SENSITIVE test. A
+# descriptor carrying an 'O:'/'G:' prefix is rejected by the script's own parameter validation
+# before it is ever applied.
+#
 # Read it left to right:
-#   O:SY G:SY   owned by SYSTEM, primary group SYSTEM
 #   D:PAI       the DACL is Protected (inheritance from config-auto is SEVERED) and
 #               Auto-Inherited -- the form Windows normalises to, so a converged file compares
 #               equal rather than merely equivalent
@@ -77,6 +82,6 @@ service_account: 'NT SERVICE\OpenVPNService'
 # rather than resolved on the host because the descriptor must be comparable before it is applied.
 # Verify it on any host that carries the service with: sc.exe showsid OpenVPNService
 profile_sddl: >-
-  O:SYG:SYD:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-3750127322-3829920079-842246558-474445854-3948885660)
+  D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-3750127322-3829920079-842246558-474445854-3948885660)
 
 #endregion --- [ The profile's permissions ] -------------------------------------------------- #

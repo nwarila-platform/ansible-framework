@@ -21,12 +21,12 @@
 #
 # ============================================================================================= #
 ---
+# The timestamp options the present path states on its win_file tasks are deliberately absent here:
+# they are no-ops for state=absent, and they carry a collection floor (ansible.windows 3.4.0) that
+# nothing in this repository pins. Declaring them would buy nothing and would fail this path on an
+# older collection.
 - name: 'CLEAN | Remove Any Staged Installer Left On The Guest'
   ansible.windows.win_file:
-    access_time: 'preserve'
-    access_time_format: 'yyyy-MM-dd HH:mm:ss'
-    modification_time: 'preserve'
-    modification_time_format: 'yyyy-MM-dd HH:mm:ss'
     path: "{{ openvpn_client_running.install.staging_dir }}"
     state: 'absent'
 
