@@ -12,10 +12,20 @@
 # against microsoft.ad and the registry. A key that could only ever mean something on one platform
 # does not belong here -- it belongs in that platform's overlay, or nowhere.
 #
-# WHAT DOES NOT BELONG HERE: the realm, the account that joins it, and where its password lives.
-# Those are site identity, and a default for site identity is not a default -- it is one site's
-# value wearing a default's clothes. They come from the PLAYBOOK, are described in meta/main.yml,
-# and are enforced by tasks/validate.yml.
+# SITE IDENTITY BELONGS HERE, and that is what changed when this role moved to host_roles/. This
+# role is a WRAPPER: the join itself is redhat.rhel_system_roles.ad_integration on RedHat and
+# microsoft.ad.membership on Windows, and what this role adds is one organization's answer to
+# which realm, as whom, and with which secret. Those values are one site's, stated once, which is
+# what makes defaulting them honest here -- the same reason remote_client defaults the tunnel it
+# hands to openvpn_client. A generic mechanism must refuse them; a site wrapper is where they go.
+#
+# The earlier text here said the opposite, and was right while this role sat in applications/ as
+# a role a caller configured. It is kept in mind rather than kept: the namespace move is what
+# changed the answer, not a change of taste.
+#
+# WHAT STILL DOES NOT BELONG HERE: the bucket. It is account-scoped rather than site-scoped, the
+# deploying pipeline is the only thing that knows which account it is, and a wrong one fails as a
+# bucket that does not exist rather than as a credential that does not work.
 #
 # NOT OFFERED, deliberately: renaming the machine, and any way to re-admit RC4. A rename is a
 # separate change with its own consequences -- certificates, monitoring, DNS -- and nobody expects
@@ -29,14 +39,14 @@ domain_member_defaults:
 
   #region ------ [ Identity: what to join, and as whom ] -------------------------------------- #
 
-  # The realm this host joins, as its DNS name -- 'corp.example.com', not the NetBIOS short name.
-  # REQUIRED, and deliberately empty here.
-  realm: ''
+  # The realm this host joins, as its DNS name -- not the NetBIOS short name.
+  realm: 'tcn.trinitytechnicalservices.com'
 
-  # The account permitted to create or reuse this machine's computer object. REQUIRED, and
-  # deliberately empty rather than defaulted to Administrator, which is what the system role does:
-  # a default that is a real privileged account name is a default nobody notices they are using.
-  user: ''
+  # The account permitted to create or reuse this machine's computer object. A UPN, not a bare
+  # name: the join module hands it to the directory verbatim, and an unqualified name is not
+  # resolved against the realm from a host that is not yet in it. Delegated to join computers and
+  # nothing else -- it is denied creating an OU, which is how it should be.
+  user: 'svc-domainjoin@tcn.trinitytechnicalservices.com'
 
   # WHERE the join password lives, never the password itself. The role fetches the object through
   # the CONTROLLER, verifies it against the pinned digest, and hands the value to the join, so the
@@ -50,13 +60,16 @@ domain_member_defaults:
   # The digest is a hash of a live credential, committed to a repository: use a generated password,
   # not a memorable one.
   #
-  # All three are REQUIRED. The digest is not decoration: it is what makes a re-uploaded or
+  # The object and its digest are site identity and are defaulted; the bucket is not, and is
+  # REQUIRED from the caller. The digest is not decoration: it is what makes a re-uploaded or
   # truncated object fail loudly here instead of failing as a wrong password at the directory,
-  # where the error names neither the object nor the upload.
+  # where the error names neither the object nor the upload. Rotating the password means moving
+  # the object and this digest together, in one change.
   password:
+    # REQUIRED from the caller: account-scoped, and only the pipeline knows the account.
     bucket: ''
-    object: ''
-    sha256: ''
+    object: 'host_roles/domain_member/svc-domainjoin-password.txt'
+    sha256: '07493ed779c2962bff0b5e19cfa00b8cdb95defcf477f6b5bac36ddef55087ae'
 
   #endregion --- [ Identity: what to join, and as whom ] -------------------------------------- #
 
