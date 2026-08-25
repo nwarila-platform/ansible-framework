@@ -40,7 +40,6 @@
 
 # Role directories
 !/applications/
-!/applications/domain_member/
 !/applications/openvpn_client/
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
@@ -49,18 +48,6 @@
 !/applications/wazuh_agent/
 !/applications/*/*.md
 !/applications/*/.gitkeep
-!/applications/domain_member/defaults/
-!/applications/domain_member/files/
-!/applications/domain_member/handlers/
-!/applications/domain_member/library/
-!/applications/domain_member/lookup_plugins/
-!/applications/domain_member/meta/
-!/applications/domain_member/module_utils/
-!/applications/domain_member/molecule/
-!/applications/domain_member/tasks/
-!/applications/domain_member/templates/
-!/applications/domain_member/tests/
-!/applications/domain_member/vars/
 !/applications/openvpn_client/defaults/
 !/applications/openvpn_client/files/
 !/applications/openvpn_client/handlers/
@@ -163,6 +150,31 @@
 # allowlisted, so a stale or hand-edited copy can never be committed.
 !/applications/openvpn_client/files/Set-DnsNamespaceForwarder.ps1.stub
 !/applications/openvpn_client/files/Set-FileAcl.ps1.stub
+
+# --- [ host_roles: what a host IS, not what it runs ] ---
+!/host_roles/
+!/host_roles/domain_member/
+!/host_roles/remote_client/
+!/host_roles/*/*.md
+!/host_roles/*/.gitkeep
+!/host_roles/domain_member/
+!/host_roles/domain_member/defaults/
+!/host_roles/domain_member/files/
+!/host_roles/domain_member/handlers/
+!/host_roles/domain_member/library/
+!/host_roles/domain_member/lookup_plugins/
+!/host_roles/domain_member/meta/
+!/host_roles/domain_member/module_utils/
+!/host_roles/domain_member/molecule/
+!/host_roles/domain_member/tasks/
+!/host_roles/domain_member/templates/
+!/host_roles/domain_member/tests/
+!/host_roles/domain_member/vars/
+!/host_roles/remote_client/defaults/
+!/host_roles/remote_client/meta/
+!/host_roles/remote_client/tasks/
+!/host_roles/*/*/*.yml
+!/host_roles/*/*/.gitkeep
 
 !/operating_systems/
 !/operating_systems/RedHat_Rocky_10/

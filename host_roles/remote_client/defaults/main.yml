@@ -1,0 +1,77 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Lowest-precedence configuration for the remote_client role. The v3 loader merges the OS overlay
+# in vars/ over this map and publishes the result as 'remote_client_running'; tasks read only the
+# merged map, never these keys directly.
+#
+# THIS ROLE IS THE ONE PLACE SITE IDENTITY BELONGS. openvpn_client's own defaults refuse it, and
+# rightly: that role is a generic mechanism, and one deployment's bucket names and digests wearing
+# a default's clothes would ship as if they were universally safe. It offered a caller two homes
+# for those values -- the role's defaults, wrong, or the playbook, right -- and every playbook
+# reaching this network then restated the same nine values. This role is the third home. Its
+# values ARE one deployment's, declared once, which is what makes defaulting them honest here and
+# dishonest there.
+#
+# A consumer that wants this network states 'remote_client' and nothing else. Everything below is
+# still overridable through the role's override dict, because a proof bed on a second tunnel is a
+# configuration, not a fork.
+#
+# WHAT DOES NOT BELONG HERE: where the client installs itself, what its service is called, and the
+# guest-side paths it uses. Those are properties of the MSI, they live in openvpn_client's own
+# platform overlay, and this role passes nothing that would shadow them.
+#
+# =========================================================================================== #
+---
+
+remote_client_defaults:
+
+  #region ------ [ The client build ] --------------------------------------------------------- #
+  # The MSI is account-local, not vendor-hosted: the runner fetches it through the controller and
+  # the guest is never handed a credential. 'bucket' resolves against the deploying account, so
+  # the same value is correct in every account this framework deploys into.
+  #
+  # default('') is load-bearing. The loader templates this map EAGERLY, before validate.yml runs,
+  # and that task carries no_log -- so a bare '{{ aws_account_id }}' raises an undefined-variable
+  # error that is then censored, and the operator sees one blank failure on a task named
+  # 'Initialize running configuration'. Deferring the emptiness lets validate.yml say which
+  # variable is missing and who supplies it.
+  installer:
+    bucket: "{{ aws_account_id | default('') }}-apprepo"
+    path: 'OpenVPN.net/OpenVPN Community/<version>/OpenVPN_Community_amd64.msi'
+    version: '2.6.22'
+    sha256: '1e1bb9a712990d1b2b961de7e8df3384964e4fb6f6776a100840f0d9a82ed507'
+  #endregion --- [ The client build ] --------------------------------------------------------- #
+
+  #region ------ [ The tunnel ] --------------------------------------------------------------- #
+  # One profile serves every host this framework places on the network, so the digest below is the
+  # tunnel's identity: change the profile and this digest changes with it, loudly.
+  profile:
+    bucket: "{{ aws_account_id | default('') }}-ansible"
+    object: 'host_roles/remote_client/aws-ec2-test.ovpn'
+    sha256: 'b5dd2190d6d30eb8642f9d9c37ebd8bdeaabdb3afb39831c541eefc9082f058d'
+  profile_name: 'aws-ec2-test'
+
+  # NOT the role's own default of 'NT SERVICE\OpenVPNService'. The automatic service cannot
+  # configure the data-channel-offload adapter under the installer's virtual account -- netsh
+  # fails and the tunnel exits -- and SYSTEM completes it. Measured, not preferred.
+  service_account: 'NT AUTHORITY\SYSTEM'
+  #endregion --- [ The tunnel ] --------------------------------------------------------------- #
+
+  #region ------ [ What the tunnel is for ] --------------------------------------------------- #
+  # Pinning the realm to these resolvers is what makes a join across the tunnel deterministic: a
+  # multi-homed host answers a name from whichever adapter replies first, and a cloud resolver
+  # returns NXDOMAIN for a private realm faster than a controller answers across a tunnel.
+  dns:
+    domain: 'tcn.trinitytechnicalservices.com'
+    servers: [ '10.69.112.4', '10.69.112.5' ]
+
+  # The tunnel is not up because a service is running; it is up because these answer. LDAP on both
+  # controllers, so the proof is the same reachability the directory join will need.
+  proofs:
+    - host: '10.69.112.4'
+      port: 389
+    - host: '10.69.112.5'
+      port: 389
+  #endregion --- [ What the tunnel is for ] --------------------------------------------------- #

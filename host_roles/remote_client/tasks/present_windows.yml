@@ -1,0 +1,48 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Places this host on the private network by handing openvpn_client the site's own values.
+#
+# There is one task, and it is an include, because this role owns configuration rather than
+# convergence. Every guard, every mutation and every proof belongs to openvpn_client; duplicating
+# any of them here would create a second place to be wrong about the same tunnel.
+#
+# The values cross as include_role params (precedence 20), which outrank openvpn_client's own
+# defaults and its OS overlay while still losing to a caller's extra-vars. That ordering is the
+# point: this role decides for a consumer that states nothing, and gets out of the way of one that
+# states something.
+#
+# They are read from 'remote_client_running', NOT from 'config', even though the two hold the same
+# map here. 'config' is not a value: the loader binds it as the unrendered template
+# "{{ lookup('vars', role_name ~ '_running') }}", and include_role params are templated lazily.
+# Evaluated inside openvpn_client, 'role_name' is now openvpn_client, so 'config' silently
+# re-points at that role's own running config -- which at merge time is still empty. Every value
+# arrives blank and the role fails its own installer contract. Measured: a probe role reading
+# 'config' across the boundary reports the inner role's value, not the outer one.
+#
+# This is not a precedence problem and cannot be fixed by raising precedence -- include_role
+# params already outrank set_fact. The rule is simpler: 'config' is an alias bound to role_name,
+# so it must never be carried across a role boundary. A literal '<role>_running' has no such
+# binding, which is why openvpn_client and domain_member both read their own throughout.
+#
+# ============================================================================================= #
+---
+#region ------ [ Process: Reach The Private Network ] ----------------------------------------- #
+
+# The dict is named for the role it configures, not for this one: the loader reads a role's
+# override from a var named exactly after that role, so 'openvpn_client' is the contract.
+- name: 'PROCESS | Connect This Host To The Private Network'  # noqa: var-naming[no-role-prefix]
+
+  ansible.builtin.include_role:
+    name: 'openvpn_client'
+  vars:
+    openvpn_client:
+      installer: "{{ remote_client_running.installer }}"
+      profile: "{{ remote_client_running.profile }}"
+      profile_name: "{{ remote_client_running.profile_name }}"
+      service_account: "{{ remote_client_running.service_account }}"
+      dns: "{{ remote_client_running.dns }}"
+      proofs: "{{ remote_client_running.proofs }}"
+
+#endregion --- [ Process: Reach The Private Network ] ----------------------------------------- #

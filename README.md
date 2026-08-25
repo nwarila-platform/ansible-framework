@@ -16,6 +16,7 @@ The framework is organized into namespaces, each mapped as an Ansible `roles_pat
 | `applications/`      | Application-specific roles (e.g., `python3_pip`, `nginx`)     |
 | `operating_systems/` | Per-OS bootstrap and hardening roles                          |
 | `utilities/`         | Helper roles a play calls; they carry no lifecycle loader     |
+| `host_roles/`        | What a host IS, not what it runs                              |
 
 Roles are referenced directly by name — no path prefix required. Ansible resolves them via `roles_path`.
 
@@ -88,9 +89,17 @@ modified.
 
 ### Utilities
 
-| Role           | Description                                                        | Status |
-|----------------|--------------------------------------------------------------------|--------|
-| `os_bootstrap` | Detects the OS and includes that role's `bootstrap.yml` entry point | Stable |
+| Role             | Description                                                          | Status |
+|------------------|----------------------------------------------------------------------|--------|
+| `host_readiness` | Proves the transport answers before anything that assumes it runs     | Stable |
+| `os_bootstrap`   | Detects the OS and includes that role's `bootstrap.yml` entry point   | Stable |
+
+### Host Roles
+
+| Role            | Description                                                             | Status |
+|-----------------|-------------------------------------------------------------------------|--------|
+| `domain_member` | Joins a host to an Active Directory realm and proves its secure channel | Stable |
+| `remote_client` | Site policy for the private network, handed to `openvpn_client`         | Stable |
 
 ---
 

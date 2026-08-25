@@ -32,7 +32,7 @@ fail() {
     FAILED=1
 }
 
-mapfile -t stubs < <(find "${ROOT}/applications" "${ROOT}/operating_systems" "${ROOT}/utilities" -type f -name '*.ps1.stub' 2>/dev/null | sort)
+mapfile -t stubs < <(find "${ROOT}/applications" "${ROOT}/operating_systems" "${ROOT}/utilities" "${ROOT}/host_roles" -type f -name '*.ps1.stub' 2>/dev/null | sort)
 
 if [ "${#stubs[@]}" -eq 0 ]; then
     printf 'materialize-role-scripts: no stubs found; nothing to do\n'
