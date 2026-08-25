@@ -1,0 +1,27 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/checks_aws_windows.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# The AWS + Windows precondition: a host answers its transport well before EC2Launch has finished
+# provisioning it, and work done underneath sysprep is work done twice or not at all. A disk
+# partitioned mid-provision, a computer name set before the image resets it, a service configured
+# before the agent restarts it.
+#
+# 'raw', like everything else this role runs, and for the same reason: os_bootstrap has not run,
+# so the shell OpenSSH serves is still cmd and a module would be wrapped for the wrong one.
+#
+# Invoked through powershell.exe explicitly so the command parses on BOTH shells the host may
+# serve -- cmd on first boot, and PowerShell on every converge after os_bootstrap has flipped the
+# DefaultShell, including the one that follows an operating-system swap.
+#
+# ============================================================================================= #
+---
+
+- name: 'Host Readiness | Wait For EC2Launch Provisioning To Complete'
+  become: false
+  changed_when: false
+  check_mode: false
+
+  ansible.builtin.raw: >-
+    powershell -NoProfile -Command
+    "& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b"

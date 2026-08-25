@@ -2,10 +2,44 @@
 
 Waits until a host will answer, and nothing else.
 
-Call it before [`os_bootstrap`](../../operating_systems/os_bootstrap/README.md): this role proves
-the transport is usable, and that role then repairs it. A host that answers is ready as far as this
-role is concerned — any further precondition, such as a cloud image finishing its first-boot
-provisioning, is the caller's to state, because it is particular to where the host runs.
+Call it before [`os_bootstrap`](../os_bootstrap/README.md): this role proves the transport is
+usable, and that role then repairs it.
+
+A host that answers is *reachable*. On some platforms it is not yet *finished* — a cloud image can
+still be provisioning behind a working shell — so the role runs the precondition for the platform
+it is on and the OS it is running.
+
+Both halves are worked out without running a module, which is the constraint the whole role is
+built around:
+
+- **OS** comes from the same inventory hint `os_bootstrap` dispatches on, in the same order, so a
+  host answers to one story about what it is.
+- **Platform** is *detected*, over `raw`, by reading the SMBIOS system vendor — on Linux the very
+  file `ansible_facts.system_vendor` opens, on Windows the CIM property it maps to. The vendor
+  strings are the ones `windows_disk_manager` asserts against, so the two roles cannot disagree
+  about what a platform is called.
+
+A caller that would rather say than be asked can declare it, which also skips the probe:
+
+```yaml
+- role: 'host_readiness'
+  vars:
+    host_readiness_platform: 'aws'
+```
+
+Either way it selects `tasks/checks_<platform>_<os>.yml`. Ships today:
+
+| File | Waits for |
+|---|---|
+| `checks_aws_windows.yml` | EC2Launch to report provisioning complete |
+
+A vendor this framework has no name for, a host with no SMBIOS, a shell that answers oddly, or a
+pair that ships no file all resolve the same way: the probe runs, nothing else does. Most platforms
+have no precondition beyond answering, and saying so by omission is cheaper than a stub per pair.
+
+That fallback is deliberate but worth knowing: an undetected platform means its precondition is
+**skipped, not failed**. Declare the platform on any host where the precondition is load-bearing
+and you would rather not find out by silence.
 
 ## Usage
 
