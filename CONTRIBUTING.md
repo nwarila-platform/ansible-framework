@@ -55,6 +55,18 @@ Please open an issue using the bug report template and include:
 5. Add a `README.md` documenting variables, security highlights, and known gaps
 6. Add a `meta/main.yml` with Galaxy metadata
 
+## Adding a new utility role
+
+A utility role is a helper a play calls; it is not something a host has deployed to it. Steps 2-4 above therefore do not apply -- there is no `ENV` and no
+`present`/`absent`/`clean` state to dispatch on, and no per-OS task file to write.
+
+1. Create the role directory under `utilities/`
+2. Define its own entry contract: `tasks/main.yml` when the role is invoked bare, as
+   `os_bootstrap` is, or named task files a caller selects with `tasks_from` when the role
+   offers more than one operation
+3. Ship only the directories the role actually uses, and allowlist each by name in `.gitignore`
+4. Add a `README.md` stating the entry points and the contract each one holds
+
 ## Pull request guidelines
 
 - Keep each PR focused on a single change when you can

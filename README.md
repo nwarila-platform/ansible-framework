@@ -11,11 +11,11 @@ A professional, security-hardened Ansible automation framework for standardized,
 
 The framework is organized into namespaces, each mapped as an Ansible `roles_path` entry in `ansible.cfg`:
 
-| Namespace            | Purpose                                                    |
-|----------------------|------------------------------------------------------------|
-| `applications/`      | Application-specific roles (e.g., `python3_pip`, `nginx`)  |
-| `operating_systems/` | OS bootstrap and hardening roles                           |
-| `utilities/`         | Roles that prepare a host for the rest to run             |
+| Namespace            | Purpose                                                       |
+|----------------------|---------------------------------------------------------------|
+| `applications/`      | Application-specific roles (e.g., `python3_pip`, `nginx`)     |
+| `operating_systems/` | Per-OS bootstrap and hardening roles                          |
+| `utilities/`         | Helper roles a play calls; they carry no lifecycle loader     |
 
 Roles are referenced directly by name — no path prefix required. Ansible resolves them via `roles_path`.
 
@@ -85,6 +85,12 @@ modified.
 | `RedHat_Rocky_9`  | Rocky Linux 9 bootstrap                              | Planned     |
 | `RedHat_Rocky_8`  | RHEL / Rocky Linux 8 bootstrap                       | In Progress |
 | `Windows_Server_2025` | Windows Server 2025 bootstrap                  | In Progress |
+
+### Utilities
+
+| Role           | Description                                                        | Status |
+|----------------|--------------------------------------------------------------------|--------|
+| `os_bootstrap` | Detects the OS and includes that role's `bootstrap.yml` entry point | Stable |
 
 ---
 

@@ -45,6 +45,7 @@ body:
         - Role loader (tasks/main.yml)
         - Application role (applications/)
         - Operating system role (operating_systems/)
+        - Utility role (utilities/)
         - CI/CD pipeline
         - Pre-commit hooks
         - Developer tooling

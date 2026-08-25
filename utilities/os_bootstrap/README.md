@@ -1,8 +1,11 @@
 # OS bootstrap dispatcher
 
-`os_bootstrap` selects and runs the bootstrap role for each host. Because the role is under
-`operating_systems/`, it resolves through the framework's existing
-`roles_path = applications:operating_systems`.
+`os_bootstrap` selects and runs the bootstrap role for each host. It does one thing: detect the
+operating system, then include the applicable role's `tasks/bootstrap.yml` entry point. It
+converges nothing itself, which is why it lives under `utilities/` rather than
+`operating_systems/`: it is a helper a play calls, not something a host has deployed to it, and
+this one's `tasks/main.yml` is the dispatcher rather than the shared loader. It resolves by bare
+name through `roles_path = applications:operating_systems:utilities`.
 
 ## Usage
 
@@ -56,15 +59,21 @@ strict RHEL/Rocky 8 assertion rejects it.
 
 ## Failure contract
 
-Dispatch never skips an unknown or incomplete route. Failure messages report the detected OS,
-the signal used, and the bootstrap roles actually found in this framework. The dispatcher
-checks every mapped role for a shipped `tasks/bootstrap.yml` entry point and checks the selected
-mapping before including it. A failed or empty fallback fact gather is converted to the same loud
-detection failure.
+Dispatch never skips an unknown route. Failure messages report the detected OS and the signal
+used, and a failed or empty fallback fact gather is converted to the same loud detection failure.
+
+The dispatcher owns detection and routing, and nothing else. It does not check that the mapped
+role exists or ships an entry point, because a map naming a role this framework does not have is
+a framework defect and `include_role` already fails the play on it. The two failures read
+differently: an absent role is reported by name against every path searched, while a role that
+exists without `tasks/bootstrap.yml` reports only `Could not find specified file in role:
+tasks/bootstrap` and names neither the role nor the detected OS -- the role is recoverable from
+the preceding `Resolve Bootstrap Role` task, which prints it under `-v`.
 
 ## Adding an OS
 
-Ship the new role under `operating_systems/<role>/` with a named
-`tasks/bootstrap.yml` entry point and its own strict OS support assertion. Then extend
+Ship the new role under `operating_systems/<role>/` — an OS role converges a host, so it stays
+in that namespace — with a named `tasks/bootstrap.yml` entry point and its own strict OS support
+assertion. Then extend
 `os_bootstrap_role_map` in `vars/main.yml`. Add the new paths to the repository-rooted
 `.gitignore` allowlist and run the repository checks.

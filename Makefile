@@ -71,7 +71,7 @@ yamllint:
 	yamllint --config-file .yamllint.yml .
 
 ansible-lint:
-	@files=$$(git ls-files --cached --others --exclude-standard -- applications operating_systems \
+	@files=$$(git ls-files --cached --others --exclude-standard -- applications operating_systems utilities \
 	  | grep -E '\.ya?ml$$' | sort \
 	  | while IFS= read -r file; do [ -f "$$file" ] && printf '%s\n' "$$file"; done); \
 	if [ -z "$$files" ]; then \
