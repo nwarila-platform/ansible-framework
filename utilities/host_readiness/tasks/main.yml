@@ -1,0 +1,89 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/main.yml'                                       | Version 1.0.0 #
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Waits until a host will answer, and nothing more. Called EXPLICITLY by the deploying playbook
+# before os_bootstrap, which repairs the transport this file proves is reachable.
+#
+# NOTHING HERE RUNS A MODULE ON THE TARGET, and that is the whole constraint. This is the step
+# before a host is known good: on Windows the shell wrapping a module needs is not the one OpenSSH
+# serves until os_bootstrap changes it, so a module run here is a coin flip. The probe is 'raw',
+# handed to the shell as written rather than wrapped. It is also why
+# ansible.builtin.wait_for_connection is unused: that action decides success by executing the ping
+# module.
+#
+# NOTHING HERE KNOWS THE PLATFORM OR THE TRANSPORT. The probe is a command every shell this suite
+# meets understands, it is carried by whatever connection the inventory selected, and no cloud,
+# image or first-boot marker is consulted -- a host that answers is ready, and any further
+# precondition belongs to the caller that has one. In particular there is no controller-side port
+# check: a plain TCP connect cannot speak for a connection that reaches its target through a proxy
+# command or a tunnel, so the only honest test is the connection itself.
+#
+# --- [ How To Call It ] ---------------------------------------------------------------------- #
+#   - name: 'Wait for every target to answer'
+#     hosts: 'all'
+#     gather_facts: false
+#     tasks:
+#       - name: 'Wait for this host'
+#         ansible.builtin.include_role:
+#           name: 'host_readiness'
+#
+#   * gather_facts MUST be false, for the reason above: gathering IS a module run.
+#   * Bounds are raised as PLAY variables; they are defaults so that a play can outrank them.
+#
+# ============================================================================================= #
+---
+
+#region ------ [ Reach: Answer Over The Transport ] ------------------------------------------- #
+# A host that is still booting refuses the session, and a credential installed by first-boot
+# provisioning arrives later still, so the probe has to be repeated until it takes.
+#
+# It is repeated with a LOOP rather than until/retries, because a refused session raises out of the
+# attempt loop instead of returning a result: until/retries never runs a second time, and the wait
+# would end after one refusal (measured against ansible-core 2.21.2). A loop item that cannot
+# connect is caught, so the next item runs; 'break_when' stops the moment one answers, and
+# 'ignore_unreachable' keeps the host in the play so the assertion below can speak.
+#
+# Errors are ignored per item for the same reason -- a shell that answers before it is fully up can
+# return non-zero -- and the assertion, not the loop, is what decides the outcome.
+#
+# 'become' is off because proving a transport answers needs no privilege, and because a raw command
+# cannot be escalated on every shell this suite meets: the powershell plugin refuses become
+# outright, so inheriting it from the play would fail the probe on exactly the hosts it exists for.
+
+- name: 'Host Readiness | Run One Command Over The Connection'
+  become: false
+  changed_when: false
+  check_mode: false
+  ignore_errors: true
+  ignore_unreachable: true
+  loop: "{{ range(0, host_readiness_attempts | int) | list }}"
+  loop_control:
+    break_when:
+      - __host_readiness_probe__ is not unreachable
+      - __host_readiness_probe__ is not failed
+    label: "attempt {{ item | int + 1 }} of {{ host_readiness_attempts | int }}"
+    pause: "{{ host_readiness_pause_seconds | int }}"
+  register: '__host_readiness_probe__'
+
+  ansible.builtin.raw: 'echo ready'
+
+# The LAST attempt is the verdict. The registered result reports unreachable if ANY attempt was,
+# which is the normal course of waiting for a host, so asking it directly would fail every wait
+# that ever had to wait.
+
+- name: 'Host Readiness | Require That The Transport Answered'
+  vars:
+    __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' never answered over its transport after
+      {{ __host_readiness_probe__.results | length }} attempt(s):
+      {{ __host_readiness_last__.msg | default('no message') }}
+    quiet: true
+    that:
+      - __host_readiness_last__ is not unreachable
+      - __host_readiness_last__ is not failed
+
+#endregion --- [ Reach: Answer Over The Transport ] ------------------------------------------- #

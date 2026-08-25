@@ -133,6 +133,14 @@
 !/applications/wazuh_agent/tasks/
 !/applications/wazuh_agent/templates/
 !/applications/wazuh_agent/vars/
+
+# A helper the PLAY uses, owning no host state of its own.
+!/utilities/
+!/utilities/host_readiness/
+!/utilities/host_readiness/defaults/
+!/utilities/host_readiness/tasks/
+!/utilities/*/*.md
+!/utilities/*/*/*.yml
 !/applications/*/*/*.yml
 !/applications/*/*/*.j2
 !/applications/*/*/.gitkeep

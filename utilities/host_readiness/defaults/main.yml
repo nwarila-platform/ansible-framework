@@ -1,0 +1,14 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Bounds, not behaviour: how long the role may wait, never what it waits for. They live here
+# rather than in vars/ so a play can raise them for a slow first boot -- role vars outrank play
+# vars, defaults do not.
+#
+# The two multiply: the wait runs for at most attempts x (pause + however long a refused
+# connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which covers
+# a Windows first boot.
+# ============================================================================================= #
+---
+host_readiness_attempts: 60
+host_readiness_pause_seconds: 15

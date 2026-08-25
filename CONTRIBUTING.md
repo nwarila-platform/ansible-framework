@@ -48,7 +48,7 @@ Please open an issue using the bug report template and include:
 
 ## Adding a new role
 
-1. Create the role directory under `applications/` or `operating_systems/`
+1. Create the role directory under `applications/`, `operating_systems/` or `utilities/`
 2. Copy the shared `tasks/main.yml` loader from an existing role
 3. Create the most-specific OS task file (e.g., `tasks/redhat_rocky_10.yml`)
 4. Populate `defaults/main.yml` with namespaced defaults (`<rolename>_defaults`)
