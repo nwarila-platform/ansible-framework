@@ -40,7 +40,6 @@
 
 # Role directories
 !/applications/
-!/applications/domain_member/
 !/applications/openvpn_client/
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
@@ -49,18 +48,6 @@
 !/applications/wazuh_agent/
 !/applications/*/*.md
 !/applications/*/.gitkeep
-!/applications/domain_member/defaults/
-!/applications/domain_member/files/
-!/applications/domain_member/handlers/
-!/applications/domain_member/library/
-!/applications/domain_member/lookup_plugins/
-!/applications/domain_member/meta/
-!/applications/domain_member/module_utils/
-!/applications/domain_member/molecule/
-!/applications/domain_member/tasks/
-!/applications/domain_member/templates/
-!/applications/domain_member/tests/
-!/applications/domain_member/vars/
 !/applications/openvpn_client/defaults/
 !/applications/openvpn_client/files/
 !/applications/openvpn_client/handlers/
@@ -133,6 +120,24 @@
 !/applications/wazuh_agent/tasks/
 !/applications/wazuh_agent/templates/
 !/applications/wazuh_agent/vars/
+
+# A role the host HAS: a state it exists in, not software it carries.
+!/roles/
+!/roles/domain_member/
+!/roles/*/*.md
+!/roles/*/.gitkeep
+!/roles/domain_member/defaults/
+!/roles/domain_member/files/
+!/roles/domain_member/handlers/
+!/roles/domain_member/library/
+!/roles/domain_member/lookup_plugins/
+!/roles/domain_member/meta/
+!/roles/domain_member/module_utils/
+!/roles/domain_member/molecule/
+!/roles/domain_member/tasks/
+!/roles/domain_member/templates/
+!/roles/domain_member/tests/
+!/roles/domain_member/vars/
 !/applications/*/*/*.yml
 !/applications/*/*/*.j2
 !/applications/*/*/.gitkeep

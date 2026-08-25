@@ -28,12 +28,12 @@
 GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/openvpn_client/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
-	applications/domain_member/tasks/main.yml \
 	applications/linux_disk_manager/tasks/main.yml \
 	applications/openvpn_client/tasks/main.yml \
 	applications/python3_pip/tasks/main.yml \
 	applications/wazuh_agent/tasks/main.yml \
-	applications/windows_disk_manager/tasks/main.yml
+	applications/windows_disk_manager/tasks/main.yml \
+	roles/domain_member/tasks/main.yml
 
 # ---------------------------------------------------------------------------
 # Help

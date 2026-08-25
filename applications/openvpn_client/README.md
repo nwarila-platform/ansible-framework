@@ -6,7 +6,7 @@ under its own account, points a realm's DNS at the domain controllers across the
 the result from the machine rather than from the installer's report.
 
 This role exists to make a host reach a private network *before* the roles that depend on that
-network run — most directly [`domain_member`](../domain_member/README.md), which cannot join a
+network run — most directly [`domain_member`](../../roles/domain_member/README.md), which cannot join a
 realm it cannot resolve or reach.
 
 ## What it does
