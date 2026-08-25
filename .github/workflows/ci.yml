@@ -118,6 +118,13 @@ jobs:
       - name: Install ansible-lint
         run: pip install --no-cache-dir -r requirements-dev.txt
 
+      # Without the collections installed, ansible-lint cannot resolve the FQCN
+      # modules the roles call and silently grades a weaker tree than it appears
+      # to. Installing from the pins means CI lints the same versions the roles
+      # pin their module options against.
+      - name: Install pinned collections
+        run: make collections
+
       - name: Run ansible-lint
         run: make ansible-lint
 

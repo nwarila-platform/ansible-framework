@@ -3,6 +3,7 @@
 # =============================================================================
 # Usage:
 #   make install      Install all dev dependencies
+#   make collections  Install the pinned runtime collections
 #   make lint         Run yamllint + ansible-lint + allowlist guard
 #   make pre-commit   Run full pre-commit suite against all files
 #   make allowlist-check
@@ -15,7 +16,7 @@
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help install lint yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check pre-commit clean
+.PHONY: help install collections lint yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check pre-commit clean
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
@@ -42,6 +43,7 @@ LOADER_PATHS := \
 help:
 	@echo ""
 	@echo "  make install       Install dev dependencies from requirements-dev.txt"
+	@echo "  make collections   Install pinned runtime collections from requirements.yml"
 	@echo "  make lint          Run yamllint, ansible-lint, and the allowlist guard"
 	@echo "  make yamllint      Run yamllint only"
 	@echo "  make ansible-lint  Run ansible-lint only"
@@ -60,8 +62,19 @@ help:
 # ---------------------------------------------------------------------------
 install:
 	pip install -r requirements-dev.txt
+	$(MAKE) collections
 	pre-commit install
 	pre-commit install --hook-type commit-msg
+
+# ---------------------------------------------------------------------------
+# Collections
+# ---------------------------------------------------------------------------
+# Roles pin every documented module option; requirements.yml pins the version
+# those options were read from. Installing anything else silently re-opens the
+# drift the option pins exist to close, so --force keeps an already-installed
+# floating copy from winning.
+collections:
+	ansible-galaxy collection install --force -r requirements.yml
 
 # ---------------------------------------------------------------------------
 # Lint
