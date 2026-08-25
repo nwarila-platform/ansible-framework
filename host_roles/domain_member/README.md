@@ -1,9 +1,12 @@
 # `domain_member` role
 
-Joins a host to an Active Directory realm. **One contract, two platforms.** The caller declares the
-realm, the account permitted to place the machine in it, where that account's password lives, and
-three optional knobs. Every key means the same thing and produces the same end state on both
-platforms.
+Joins a host to an Active Directory realm. **One contract, two platforms.** Every key means the
+same thing and produces the same end state on both.
+
+This role WRAPS the platform's join mechanism -- `ad_integration` on RedHat,
+`microsoft.ad.membership` on Windows -- and adds this organization's answer to which realm, as
+whom, and with which secret. Those are defaulted, so a caller declares two things: the bucket, and
+the OU it wants its computer object in.
 
 The RedHat path hands that contract to `redhat.rhel_system_roles.ad_integration` — the vendor's own
 implementation of the join, shipped in the RHEL mirror, which is the only source an offline
@@ -20,12 +23,12 @@ dict. Tasks read the merged result as `domain_member_running`.
 
 | Key | Required | Default | Purpose |
 |---|---|---|---|
-| `realm` | Yes | `''` | DNS name of the realm, e.g. `corp.example.com`. Not the NetBIOS short name. |
-| `user` | Yes | `''` | Account permitted to create or reuse this machine's computer object. |
-| `password.bucket` | Yes | `''` | S3 bucket holding that account's password. |
-| `password.object` | Yes | `''` | Object key of the password. |
-| `password.sha256` | Yes | `''` | Lowercase 64-character digest, verified before the value is used. |
-| `computer_ou` | No | `null` | LDAP DN of the OU a **new** computer object is created in. |
+| `password.bucket` | Yes | `''` | S3 bucket holding the join account's password. Account-scoped, so only the deploying pipeline knows it. |
+| `realm` | No | site | DNS name of the realm. Not the NetBIOS short name. |
+| `user` | No | site | Account permitted to create or reuse this machine's computer object. |
+| `password.object` | No | site | Object key of the password. |
+| `password.sha256` | No | site | Lowercase 64-character digest, verified before the value is used. |
+| `computer_ou` | No | `null` | LDAP DN of the OU a **new** computer object is created in. Null files it in the directory's default computers container, where OU-linked policy does not reach it. |
 | `force_rejoin` | No | `false` | Leave the current realm and join again from scratch. |
 | `timesync_source` | No | `null` | Host or address to synchronise the clock with. |
 
@@ -62,14 +65,12 @@ and break it. A Windows play therefore needs an explicit `localhost` inventory h
     - role: 'domain_member'
       vars:
         domain_member:
-          realm: 'corp.example.com'
-          user: 'svc-join@corp.example.com'
           password:
             bucket: '123456789012-ansible'
-            object: 'secrets/ad/svc-join'
-            sha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08'
           computer_ou: 'OU=Servers,OU=Prod,DC=corp,DC=example,DC=com'
-          timesync_source: 'dc01.corp.example.com'
+
+# A second realm is a configuration, not a fork -- override realm, user and the password
+# coordinates together to join somewhere else.
 ```
 
 ## How one contract becomes two implementations

@@ -5,7 +5,7 @@ operating system, then include the applicable role's `tasks/bootstrap.yml` entry
 converges nothing itself, which is why it lives under `utilities/` rather than
 `operating_systems/`: it is a helper a play calls, not something a host has deployed to it, and
 this one's `tasks/main.yml` is the dispatcher rather than the shared loader. It resolves by bare
-name through `roles_path = applications:operating_systems:utilities`.
+name through `roles_path = applications:operating_systems:utilities:host_roles`.
 
 ## Usage
 

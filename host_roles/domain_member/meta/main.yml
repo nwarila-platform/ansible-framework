@@ -8,14 +8,20 @@
 # microsoft.ad.membership on Windows -- and adds one organization's answer to which realm, as
 # whom, and with which secret. Those are defaulted, because they are this site's and stated once.
 #
-# REQUIRED INPUTS -- two, both supplied by the caller.
+# REQUIRED INPUT -- one, supplied by the caller.
 #
 #   domain_member.password.bucket   S3 bucket holding the join account's password. Account-scoped
 #                                   rather than site-scoped: only the deploying pipeline knows
 #                                   which account it is running in.
-#   domain_member.computer_ou       The OU this machine's computer object is created in. The
-#                                   caller's, because what a host is filed as is the caller's
-#                                   business, not the site's.
+#
+# EXPECTED but not enforced -- validate.yml accepts its absence, and should:
+#
+#   domain_member.computer_ou       The OU this machine's computer object is created in. What a
+#                                   host is filed as is the caller's business, not the site's, so
+#                                   there is no default worth having. Omitting it is legal and
+#                                   files the object in the directory's default computers
+#                                   container, where OU-linked policy does not reach it -- which
+#                                   is a choice, not an error, and so is not guarded.
 #
 # DEFAULTED, and overridable -- a second realm is a configuration, not a fork:
 #

@@ -395,8 +395,8 @@
             __windows_bootstrap_joined__: >-
               {{ ((__windows_bootstrap_identity__.stdout | trim).split('|') | last | lower) == 'true' }}
             __windows_bootstrap_declared__: >-
-              {{ windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | upper }}
-          when: (windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | length) > 0
+              {{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
 
           ansible.builtin.assert:
             fail_msg: >-
@@ -411,10 +411,10 @@
                 or __windows_bootstrap_current__ == __windows_bootstrap_declared__
 
         - name: 'MAIN | Setting The Computer Name'
-          when: (windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | length) > 0
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
           register: '__windows_bootstrap_hostname__'
           ansible.windows.win_hostname:
-            name: "{{ windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim }}"
+            name: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim }}"
 
         - name: 'MAIN | Restarting To Apply The Computer Name'
           when: __windows_bootstrap_hostname__.reboot_required | default(false) | bool
@@ -428,15 +428,15 @@
         # Proven from the machine, not from facts: the bootstrap gathers none it does not need,
         # and the name that matters is the one the host answers with after the restart.
         - name: 'MAIN | Reading The Computer Name Back'
-          when: (windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | length) > 0
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
           register: '__windows_bootstrap_hostname_now__'
           changed_when: false
           ansible.windows.win_shell: '$env:COMPUTERNAME'
 
         - name: 'MAIN | Verifying The Computer Name'
-          when: (windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | length) > 0
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
           vars:
-            __declared__: "{{ windows_bootstrap_hostname | default(inventory_hostname, true) | string | trim | upper }}"
+            __declared__: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}"
             __actual__: "{{ __windows_bootstrap_hostname_now__.stdout | default('') | trim | upper }}"
           ansible.builtin.assert:
             that: [ __actual__ == __declared__ ]

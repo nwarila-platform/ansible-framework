@@ -18,6 +18,13 @@
 
     # Keep an unreachable host active only until the registered transport result can be converted
     # to an ordinary localhost failure. That failure enters rescue and always, which scrub state.
+    #
+    # Escalation is INHERITED here, deliberately, and this is the one task in the role that writes
+    # to a path the caller chose. It carried root implicitly while the chassis escalated by
+    # default; it no longer does, so a caller whose destination is root-owned declares 'become' on
+    # the play or the include. Neither 'true' nor 'false' belongs on the task: hard-coding true
+    # escalates a download to /var/tmp that never needed it, and hard-coding false would override
+    # the caller who does need it.
     - name: 'S3 FETCH | Download The POSIX Artifact'
       when: (s3_artifact_delivery_platform | lower) == 'posix'
       changed_when: false

@@ -19,12 +19,11 @@
 # connection itself.
 #
 # A host that answers is REACHABLE. On some platforms it is not yet FINISHED, and that is the one
-# thing this role learned to know: 'host_readiness_platform' selects a precondition file for the
-# declared platform and the detected OS. It stays module-free -- the platform is declared rather
-# than asked, and the OS comes from the inventory hint os_bootstrap dispatches on, because asking
-# the host either half would mean running the module this role exists to precede. A platform that
-# declares nothing, or a pair that ships no file, runs the probe and stops, which is what this
-# role did before it could do anything else.
+# thing this role learned to know: it runs the precondition for the platform it is on and the OS
+# it is running. Both stay module-free -- the OS comes from the inventory hint os_bootstrap
+# dispatches on, and the platform is read over raw from the SMBIOS system vendor, or declared by
+# a caller who would rather say than be asked. A vendor with no name here, or a pair that ships no
+# file, runs the probe and stops, which is what this role did before it could do anything else.
 #
 # --- [ How To Call It ] ---------------------------------------------------------------------- #
 #   - name: 'Wait for every target to answer'
@@ -100,9 +99,8 @@
 # still be provisioning behind a working shell -- and the wait for that is particular to the
 # platform and the operating system, not to the transport.
 #
-# Both halves are resolved WITHOUT touching the host, because nothing here may run a module. The
-# platform is declared by the caller, and the OS comes from the same inventory hint os_bootstrap
-# dispatches on, in the same order, so a host answers to one story about what it is.
+# Neither half runs a module, because nothing here may. The OS comes from the inventory hint, and
+# the platform from a raw read of the SMBIOS vendor unless the caller declared one.
 #
 # first_found with skip: a pair that ships no file has no precondition, which is the common case.
 
@@ -112,9 +110,16 @@
 
 - name: 'Host Readiness | Resolve The Operating System From The Inventory'
   ansible.builtin.set_fact:
+    # 'platform' is the inventory's OS hint -- the same variable os_bootstrap reads, confusingly
+    # named, and not this role's to rename. Only the two values os_bootstrap acts on are honoured;
+    # anything else falls through instead of becoming an OS name in its own right. Without that,
+    # an inventory setting platform to a cloud name would ask for checks_aws_aws.yml and skip in
+    # silence.
     __host_readiness_os__: >-
-      {%- if (platform | default('') | string | trim | length) > 0 -%}
-        {{ platform | string | lower | trim }}
+      {%- if (platform | default('') | string | lower | trim) == 'windows' -%}
+        windows
+      {%- elif (platform | default('') | string | lower | trim) == 'linux' -%}
+        linux
       {%- elif (ansible_shell_type | default('') | string | lower | trim) == 'powershell' -%}
         windows
       {%- elif (ansible_connection | default('') | string | lower | trim) in ['winrm', 'psrp'] -%}
@@ -152,6 +157,26 @@
 
 # The same vendor strings windows_disk_manager asserts against, so the two roles cannot disagree
 # about what a platform is called.
+
+# A probe that ERRORED is not a vendor that mapped to nothing. The second is ordinary -- most
+# platforms have no precondition and say so by omission. The first means the question was never
+# answered, and answering it wrong silently is how a disk gets partitioned underneath sysprep.
+# So the failure is named here, while the empty answer stays quiet.
+
+- name: 'Host Readiness | Require That The Platform Probe Answered'
+  when:
+    - (host_readiness_platform | default('') | string | trim | length) == 0
+    - __host_readiness_vendor__ is defined
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' answered its transport but its platform could not be read:
+      {{ __host_readiness_vendor__.msg | default(__host_readiness_vendor__.stderr | default('no message')) }}.
+      A platform that cannot be read cannot have its preconditions run, and this role will not
+      pretend it has none. Declare host_readiness_platform for this host, or fix the probe.
+    quiet: true
+    that:
+      - __host_readiness_vendor__ is not failed
+      - __host_readiness_vendor__ is not unreachable
 
 - name: 'Host Readiness | Resolve The Effective Platform'
   vars:

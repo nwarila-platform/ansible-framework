@@ -13,9 +13,10 @@
 host_readiness_attempts: 60
 host_readiness_pause_seconds: 15
 
-# The infrastructure platform this host runs on, DECLARED rather than detected: detecting it would
-# mean asking the host, and asking the host means running a module or a network call at the one
-# moment neither is safe. Empty means the transport probe is the whole role, which is what it was.
+# The infrastructure platform this host runs on. Empty means DETECT it -- the role reads the SMBIOS
+# system vendor over raw, which is not a module and not a network call, so it is safe at the one
+# moment neither of those would be. Declaring it here skips that probe and is the right choice
+# wherever the precondition is load-bearing, because an undetected platform skips it silently.
 #
 # A non-empty value selects tasks/checks_<platform>_<os>.yml, where <os> comes from the same
 # inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most platforms

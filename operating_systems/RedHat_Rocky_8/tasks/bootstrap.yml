@@ -21,7 +21,7 @@
 #           tasks_from: 'bootstrap'
 #
 #   * 'operating_systems' must be on roles_path. The framework's own ansible.cfg declares
-#     'roles_path = applications:operating_systems:utilities'; a consuming product whose ansible.cfg
+#     'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product whose ansible.cfg
 #     overwrites it during composition must re-add the entry, or use the path form
 #     'name: "{{ playbook_dir }}/../operating_systems/RedHat_Rocky_8"'.
 #   * HOST SELECTION IS THE CALLER'S JOB. The product play this was promoted from selected
