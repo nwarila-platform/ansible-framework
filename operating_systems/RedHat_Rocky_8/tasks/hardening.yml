@@ -48,7 +48,10 @@
 
 #region ------ [ Script ] ------------------------------------------------------------------- #
 
+# Every task below writes to a root-owned file, so the whole stage escalates. Stated here rather
+# than inherited from a configuration default, so that reading this file tells you it runs as root.
 - name: 'INFO | Entering Hardening'
+  become: true
   block:
 
   #region ------ [ Initialization ] ---------------------------------------------------------- #
