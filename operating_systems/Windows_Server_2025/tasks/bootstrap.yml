@@ -303,14 +303,12 @@
   #     * an execution-policy relaxation — ansible already passes '-ExecutionPolicy Unrestricted'
   #       on every command it wraps, so Set-ExecutionPolicy is a no-op; and in the only case
   #       that would matter (a machine GPO) MachinePolicy outranks it anyway.
-  #     * hostname + hosts-file normalisation — THE INTERESTING REJECTION. win_hostname only
-  #       QUEUES a rename that needs a REBOOT, which would drop the very session the rest of the
-  #       run depends on; nothing in the suite depends on the Windows hostname (the agent name
-  #       comes from inventory_hostname, the manager address from the manager's private IP); and
-  #       the Windows analogue of /etc/hosts lives in C:\Windows\System32\drivers\etc, which is
-  #       EXACTLY the directory the deploy's Windows FIM proof watches in realtime. A bootstrap
-  #       that wrote a hosts entry would inject spurious file-integrity alerts into the very
-  #       evidence the run exists to produce, and the cumulative ledger would carry them forever.
+  #     * hosts-file normalisation — the Windows analogue of /etc/hosts lives in
+  #       C:\Windows\System32\drivers\etc, EXACTLY the directory a deploy's Windows FIM proof may
+  #       watch in realtime; a bootstrap that wrote an entry there would inject spurious
+  #       file-integrity alerts into the very evidence such a run exists to produce.
+  #       (The computer NAME is no longer in this list: a host that joins a directory carries its
+  #       name into the computer object, so it must be set here, before any join — see MAIN.)
   #
   #   NOT INCLUDED, deliberately, but worth knowing: an assert that the ssh transfer method is
   #   not pinned to 'scp'. scp shells out through DefaultShell and breaks once it is PowerShell
@@ -363,6 +361,89 @@
             quiet: true
 
       #endregion --- [ MAIN: Verifying The Session Token Is Elevated ] ----------------------- #
+
+        #region ------ [ MAIN: Setting The Computer Name ] --------------------------------------- #
+        # The host's own name. A host that later joins a directory carries this name into its
+        # computer object, and a rename AFTER a join needs directory credentials the bootstrap does
+        # not have -- so it happens here, first. win_hostname only queues the change; the restart
+        # applies it, and the name is read back from the machine afterwards, so nothing downstream
+        # runs on a half-renamed host.
+        #
+        # It defaults to 'inventory_hostname': an inventory that names its hosts after the machines
+        # already carries the answer, and passing it again would be a second copy of one value. A
+        # consumer whose inventory names hosts by something that is not a computer name -- an
+        # address, an instance id -- sets 'windows_bootstrap_hostname' to '' to leave the name
+        # alone. Declare it as a PLAY variable, never as 'vars:' on the include (call contract above).
+
+        # A rename is only possible while the host stands alone. Once it has joined a directory its
+        # name lives in the computer object, and changing it needs directory credentials this
+        # bootstrap does not hold -- Windows answers 'Access is denied'. That is an ORDERING fault,
+        # not a runtime one, so it is named here rather than left to surface as a permission error.
+
+        - name: 'MAIN | Reading The Current Name And Directory Membership'
+          changed_when: false
+          register: '__windows_bootstrap_identity__'
+
+          ansible.windows.win_shell: |
+            $system = Get-CimInstance -ClassName 'Win32_ComputerSystem'
+            Write-Output ($system.Name + '|' + $system.PartOfDomain)
+
+        - name: 'MAIN | Requiring The Name To Be Set Before Any Directory Join'
+          vars:
+            __windows_bootstrap_current__: >-
+              {{ (__windows_bootstrap_identity__.stdout | trim).split('|') | first | upper }}
+            __windows_bootstrap_joined__: >-
+              {{ ((__windows_bootstrap_identity__.stdout | trim).split('|') | last | lower) == 'true' }}
+            __windows_bootstrap_declared__: >-
+              {{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              '{{ __windows_bootstrap_current__ }}' has already joined a directory, so it cannot be
+              renamed to '{{ __windows_bootstrap_declared__ }}' from here -- that rename needs
+              directory credentials this bootstrap does not hold. The name must be set BEFORE the
+              join: run this bootstrap ahead of the role that joins, or rename the computer object
+              in the directory and let the host follow it.
+            quiet: true
+            that:
+              - not (__windows_bootstrap_joined__ | bool)
+                or __windows_bootstrap_current__ == __windows_bootstrap_declared__
+
+        - name: 'MAIN | Setting The Computer Name'
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+          register: '__windows_bootstrap_hostname__'
+          ansible.windows.win_hostname:
+            name: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim }}"
+
+        - name: 'MAIN | Restarting To Apply The Computer Name'
+          when: __windows_bootstrap_hostname__.reboot_required | default(false) | bool
+          ansible.windows.win_reboot:
+            connect_timeout: 5
+            msg: 'Restart requested by Ansible to apply the computer name'
+            post_reboot_delay: 0
+            pre_reboot_delay: 2
+            reboot_timeout: 600
+
+        # Proven from the machine, not from facts: the bootstrap gathers none it does not need,
+        # and the name that matters is the one the host answers with after the restart.
+        - name: 'MAIN | Reading The Computer Name Back'
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+          register: '__windows_bootstrap_hostname_now__'
+          changed_when: false
+          ansible.windows.win_shell: '$env:COMPUTERNAME'
+
+        - name: 'MAIN | Verifying The Computer Name'
+          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+          vars:
+            __declared__: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}"
+            __actual__: "{{ __windows_bootstrap_hostname_now__.stdout | default('') | trim | upper }}"
+          ansible.builtin.assert:
+            that: [ __actual__ == __declared__ ]
+            fail_msg: >-
+              The computer name is '{{ __actual__ }}' but the playbook declared '{{ __declared__ }}'.
+            quiet: true
+        #endregion --- [ MAIN: Setting The Computer Name ] --------------------------------------- #
 
   #endregion --- [ Main ] -------------------------------------------------------------------- #
 

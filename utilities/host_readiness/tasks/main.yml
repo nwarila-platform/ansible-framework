@@ -1,0 +1,217 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/main.yml'                                       | Version 1.0.0 #
+# --- [ Description ] ------------------------------------------------------------------------ #
+#
+# Waits until a host will answer, and nothing more. Called EXPLICITLY by the deploying playbook
+# before os_bootstrap, which repairs the transport this file proves is reachable.
+#
+# NOTHING HERE RUNS A MODULE ON THE TARGET, and that is the whole constraint. This is the step
+# before a host is known good: on Windows the shell wrapping a module needs is not the one OpenSSH
+# serves until os_bootstrap changes it, so a module run here is a coin flip. The probe is 'raw',
+# handed to the shell as written rather than wrapped. It is also why
+# ansible.builtin.wait_for_connection is unused: that action decides success by executing the ping
+# module.
+#
+# THE PROBE KNOWS NOTHING ABOUT THE PLATFORM OR THE TRANSPORT. It is a command every shell this
+# suite meets understands, carried by whatever connection the inventory selected. In particular
+# there is no controller-side port check: a plain TCP connect cannot speak for a connection that
+# reaches its target through a proxy command or a tunnel, so the only honest test is the
+# connection itself.
+#
+# A host that answers is REACHABLE. On some platforms it is not yet FINISHED, and that is the one
+# thing this role learned to know: it runs the precondition for the platform it is on and the OS
+# it is running. Both stay module-free -- the OS comes from the inventory hint os_bootstrap
+# dispatches on, and the platform is read over raw from the SMBIOS system vendor, or declared by
+# a caller who would rather say than be asked. A vendor with no name here, or a pair that ships no
+# file, runs the probe and stops, which is what this role did before it could do anything else.
+#
+# --- [ How To Call It ] ---------------------------------------------------------------------- #
+#   - name: 'Wait for every target to answer'
+#     hosts: 'all'
+#     gather_facts: false
+#     tasks:
+#       - name: 'Wait for this host'
+#         ansible.builtin.include_role:
+#           name: 'host_readiness'
+#
+#   * gather_facts MUST be false, for the reason above: gathering IS a module run.
+#   * Bounds are raised as PLAY variables; they are defaults so that a play can outrank them.
+#
+# ============================================================================================= #
+---
+
+#region ------ [ Reach: Answer Over The Transport ] ------------------------------------------- #
+# A host that is still booting refuses the session, and a credential installed by first-boot
+# provisioning arrives later still, so the probe has to be repeated until it takes.
+#
+# It is repeated with a LOOP rather than until/retries, because a refused session raises out of the
+# attempt loop instead of returning a result: until/retries never runs a second time, and the wait
+# would end after one refusal (measured against ansible-core 2.21.2). A loop item that cannot
+# connect is caught, so the next item runs; 'break_when' stops the moment one answers, and
+# 'ignore_unreachable' keeps the host in the play so the assertion below can speak.
+#
+# Errors are ignored per item for the same reason -- a shell that answers before it is fully up can
+# return non-zero -- and the assertion, not the loop, is what decides the outcome.
+#
+# 'become' is off because proving a transport answers needs no privilege, and because a raw command
+# cannot be escalated on every shell this suite meets: the powershell plugin refuses become
+# outright, so inheriting it from the play would fail the probe on exactly the hosts it exists for.
+
+- name: 'Host Readiness | Run One Command Over The Connection'
+  become: false
+  changed_when: false
+  check_mode: false
+  ignore_errors: true
+  ignore_unreachable: true
+  loop: "{{ range(0, host_readiness_attempts | int) | list }}"
+  loop_control:
+    break_when:
+      - __host_readiness_probe__ is not unreachable
+      - __host_readiness_probe__ is not failed
+    label: "attempt {{ item | int + 1 }} of {{ host_readiness_attempts | int }}"
+    pause: "{{ host_readiness_pause_seconds | int }}"
+  register: '__host_readiness_probe__'
+
+  ansible.builtin.raw: 'echo ready'
+
+# The LAST attempt is the verdict. The registered result reports unreachable if ANY attempt was,
+# which is the normal course of waiting for a host, so asking it directly would fail every wait
+# that ever had to wait.
+
+- name: 'Host Readiness | Require That The Transport Answered'
+  vars:
+    __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' never answered over its transport after
+      {{ __host_readiness_probe__.results | length }} attempt(s):
+      {{ __host_readiness_last__.msg | default('no message') }}
+    quiet: true
+    that:
+      - __host_readiness_last__ is not unreachable
+      - __host_readiness_last__ is not failed
+
+#endregion --- [ Reach: Answer Over The Transport ] ------------------------------------------- #
+
+#region ------ [ Reach: Platform Preconditions ] ---------------------------------------------- #
+# A host that answers is reachable. On some platforms it is not yet FINISHED -- a cloud image can
+# still be provisioning behind a working shell -- and the wait for that is particular to the
+# platform and the operating system, not to the transport.
+#
+# Neither half runs a module, because nothing here may. The OS comes from the inventory hint, and
+# the platform from a raw read of the SMBIOS vendor unless the caller declared one.
+#
+# first_found with skip: a pair that ships no file has no precondition, which is the common case.
+
+# The OS comes from the same inventory hint os_bootstrap dispatches on, in the same order, so a
+# host answers to one story about what it is. It decides which vendor probe to run below, and
+# which half of the precondition file name to ask for.
+
+- name: 'Host Readiness | Resolve The Operating System From The Inventory'
+  ansible.builtin.set_fact:
+    # 'platform' is the inventory's OS hint -- the same variable os_bootstrap reads, confusingly
+    # named, and not this role's to rename. Only the two values os_bootstrap acts on are honoured;
+    # anything else falls through instead of becoming an OS name in its own right. Without that,
+    # an inventory setting platform to a cloud name would ask for checks_aws_aws.yml and skip in
+    # silence.
+    __host_readiness_os__: >-
+      {%- if (platform | default('') | string | lower | trim) == 'windows' -%}
+        windows
+      {%- elif (platform | default('') | string | lower | trim) == 'linux' -%}
+        linux
+      {%- elif (ansible_shell_type | default('') | string | lower | trim) == 'powershell' -%}
+        windows
+      {%- elif (ansible_connection | default('') | string | lower | trim) in ['winrm', 'psrp'] -%}
+        windows
+      {%- else -%}
+        linux
+      {%- endif -%}
+
+# DETECTED, not asked of a module. This reads the same SMBIOS system vendor that
+# ansible_facts.system_vendor reports -- on Linux the very file the fact plugin opens, on Windows
+# the CIM property it maps to -- but over 'raw', which is the only thing this role may run.
+#
+# It is skipped entirely when the caller declares a platform: an explicit statement outranks a
+# guess, and a declared platform costs no round trip.
+#
+# Failure here is not an error. A host with no SMBIOS, a shell that answers oddly, a vendor this
+# framework has no name for -- all resolve to "no platform", which means "no precondition beyond
+# answering", which is what most platforms are.
+
+- name: 'Host Readiness | Detect The Infrastructure Platform'
+  when: (host_readiness_platform | default('') | string | trim | length) == 0
+  become: false
+  changed_when: false
+  check_mode: false
+  ignore_errors: true
+  ignore_unreachable: true
+  register: '__host_readiness_vendor__'
+
+  ansible.builtin.raw: >-
+    {{
+      'powershell -NoProfile -Command "(Get-CimInstance -ClassName Win32_ComputerSystem).Manufacturer"'
+      if __host_readiness_os__ == 'windows'
+      else 'cat /sys/devices/virtual/dmi/id/sys_vendor'
+    }}
+
+# The same vendor strings windows_disk_manager asserts against, so the two roles cannot disagree
+# about what a platform is called.
+
+# A probe that ERRORED is not a vendor that mapped to nothing. The second is ordinary -- most
+# platforms have no precondition and say so by omission. The first means the question was never
+# answered, and answering it wrong silently is how a disk gets partitioned underneath sysprep.
+# So the failure is named here, while the empty answer stays quiet.
+
+- name: 'Host Readiness | Require That The Platform Probe Answered'
+  when:
+    - (host_readiness_platform | default('') | string | trim | length) == 0
+    - __host_readiness_vendor__ is defined
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' answered its transport but its platform could not be read:
+      {{ __host_readiness_vendor__.msg | default(__host_readiness_vendor__.stderr | default('no message')) }}.
+      A platform that cannot be read cannot have its preconditions run, and this role will not
+      pretend it has none. Declare host_readiness_platform for this host, or fix the probe.
+    quiet: true
+    that:
+      - __host_readiness_vendor__ is not failed
+      - __host_readiness_vendor__ is not unreachable
+
+- name: 'Host Readiness | Resolve The Effective Platform'
+  vars:
+    __host_readiness_vendor_map__:
+      'amazon ec2': 'aws'
+      'vmware, inc.': 'vmware'
+    __host_readiness_detected__: >-
+      {{ (__host_readiness_vendor__.stdout | default('') | string | trim | lower)
+         if (__host_readiness_vendor__ is defined and __host_readiness_vendor__ is not skipped
+             and __host_readiness_vendor__ is not failed
+             and __host_readiness_vendor__ is not unreachable)
+         else '' }}
+  ansible.builtin.set_fact:
+    __host_readiness_platform__: >-
+      {{ (host_readiness_platform | string | lower | trim)
+         if (host_readiness_platform | default('') | string | trim | length) > 0
+         else __host_readiness_vendor_map__.get(__host_readiness_detected__, '') }}
+
+- name: 'Host Readiness | Run The Platform Precondition'
+  when: (__host_readiness_platform__ | default('') | string | trim | length) > 0
+
+  # A LOOP over first_found, not a bare lookup: 'skip' yields an empty list when the pair ships no
+  # file, and a loop over nothing runs nothing. A bare lookup would yield an empty string, and
+  # include_tasks on an empty path is an error rather than the no-op that is meant.
+  loop: >-
+    {{
+      query('ansible.builtin.first_found', {
+        'files': [ 'checks_' ~ __host_readiness_platform__ ~ '_' ~ __host_readiness_os__ ~ '.yml' ],
+        'paths': [ role_path ~ '/tasks' ],
+        'skip': true
+      })
+    }}
+  loop_control:
+    label: "{{ item | basename }}"
+
+  ansible.builtin.include_tasks: "{{ item }}"
+
+#endregion --- [ Reach: Platform Preconditions ] ---------------------------------------------- #

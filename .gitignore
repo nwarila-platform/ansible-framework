@@ -40,7 +40,6 @@
 
 # Role directories
 !/applications/
-!/applications/domain_member/
 !/applications/openvpn_client/
 !/applications/linux_disk_manager/
 !/applications/windows_disk_manager/
@@ -49,18 +48,6 @@
 !/applications/wazuh_agent/
 !/applications/*/*.md
 !/applications/*/.gitkeep
-!/applications/domain_member/defaults/
-!/applications/domain_member/files/
-!/applications/domain_member/handlers/
-!/applications/domain_member/library/
-!/applications/domain_member/lookup_plugins/
-!/applications/domain_member/meta/
-!/applications/domain_member/module_utils/
-!/applications/domain_member/molecule/
-!/applications/domain_member/tasks/
-!/applications/domain_member/templates/
-!/applications/domain_member/tests/
-!/applications/domain_member/vars/
 !/applications/openvpn_client/defaults/
 !/applications/openvpn_client/files/
 !/applications/openvpn_client/handlers/
@@ -133,6 +120,14 @@
 !/applications/wazuh_agent/tasks/
 !/applications/wazuh_agent/templates/
 !/applications/wazuh_agent/vars/
+
+# A helper the PLAY uses, owning no host state of its own.
+!/utilities/
+!/utilities/host_readiness/
+!/utilities/host_readiness/defaults/
+!/utilities/host_readiness/tasks/
+!/utilities/*/*.md
+!/utilities/*/*/*.yml
 !/applications/*/*/*.yml
 !/applications/*/*/*.j2
 !/applications/*/*/.gitkeep
@@ -156,12 +151,36 @@
 !/applications/openvpn_client/files/Set-DnsNamespaceForwarder.ps1.stub
 !/applications/openvpn_client/files/Set-FileAcl.ps1.stub
 
+# --- [ host_roles: what a host IS, not what it runs ] ---
+!/host_roles/
+!/host_roles/domain_member/
+!/host_roles/remote_client/
+!/host_roles/*/*.md
+!/host_roles/*/.gitkeep
+!/host_roles/domain_member/
+!/host_roles/domain_member/defaults/
+!/host_roles/domain_member/files/
+!/host_roles/domain_member/handlers/
+!/host_roles/domain_member/library/
+!/host_roles/domain_member/lookup_plugins/
+!/host_roles/domain_member/meta/
+!/host_roles/domain_member/module_utils/
+!/host_roles/domain_member/molecule/
+!/host_roles/domain_member/tasks/
+!/host_roles/domain_member/templates/
+!/host_roles/domain_member/tests/
+!/host_roles/domain_member/vars/
+!/host_roles/remote_client/defaults/
+!/host_roles/remote_client/meta/
+!/host_roles/remote_client/tasks/
+!/host_roles/*/*/*.yml
+!/host_roles/*/*/.gitkeep
+
 !/operating_systems/
 !/operating_systems/RedHat_Rocky_10/
 !/operating_systems/RedHat_Rocky_8/
 !/operating_systems/RedHat_Rocky_9/
 !/operating_systems/Windows_Server_2025/
-!/operating_systems/os_bootstrap/
 !/operating_systems/*/.gitkeep
 !/operating_systems/RedHat_Rocky_10/defaults/
 !/operating_systems/RedHat_Rocky_10/files/
@@ -199,10 +218,16 @@
 !/operating_systems/Windows_Server_2025/templates/
 !/operating_systems/Windows_Server_2025/tests/
 !/operating_systems/Windows_Server_2025/vars/
-!/operating_systems/os_bootstrap/**
 !/operating_systems/*/*/*.yml
 !/operating_systems/*/*/.gitkeep
 !/operating_systems/*/tests/inventory
+
+!/utilities/
+!/utilities/os_bootstrap/
+!/utilities/*/*.md
+!/utilities/os_bootstrap/tasks/
+!/utilities/os_bootstrap/vars/
+!/utilities/*/*/*.yml
 
 # Ansible runtime artifacts
 *.retry

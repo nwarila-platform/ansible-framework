@@ -1,0 +1,20 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/clean_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# This role owns no state of its own -- it holds values and hands them to openvpn_client -- so
+# there is nothing here to clean. The entry point exists because the loader resolves 'clean' to a
+# task file and would otherwise fail resolution, and it says so rather than pretending to work.
+#
+# Removing the client itself is openvpn_client's own clean path; a consumer that wants it calls
+# that role directly, because tearing a host off its network is not something this role should do
+# as a side effect of tidying caches.
+#
+# ============================================================================================= #
+---
+
+- name: 'INFO | Nothing To Clean (remote_client owns no state)'
+  ansible.builtin.debug:
+    msg: >-
+      remote_client holds configuration only; state=clean is a supported no-op. To remove the
+      client, call openvpn_client with state=clean.

@@ -1,0 +1,49 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Role metadata for remote_client. Description-only (style guide 8): NOT an enforcing argument
+# spec. The role's tasks/validate.yml enforces its one merged-config guard, and openvpn_client's
+# own validate.yml enforces every shape this role hands it.
+#
+# REQUIRED INPUTS -- one, supplied by the pipeline rather than defaulted.
+#
+#   aws_account_id   The deploying account's twelve-digit id. Both bucket names template from it,
+#                    so the same defaults are correct in every account this framework deploys
+#                    into. Everything else this role needs, it already knows.
+#
+# =========================================================================================== #
+---
+galaxy_info:
+
+  role_name: 'remote_client'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Site policy for reaching the private network. Holds this organization's tunnel identity -- the
+    pinned client build, the connection profile and its digest, the service account the tunnel
+    actually works under, the resolvers the realm must be pinned to, and the reachability that
+    proves the tunnel carries traffic -- and hands them to openvpn_client, which owns every guard,
+    mutation and proof. A host that belongs on this network states this role and nothing else.
+    Every value remains overridable, because a proof bed on a second tunnel is a configuration
+    rather than a fork.
+
+  license: 'MIT'
+  min_ansible_version: '2.16'
+
+  platforms:
+    - name: 'Windows'
+      versions:
+        - '2022'
+        - '2025'
+
+  galaxy_tags:
+    - 'networking'
+    - 'openvpn'
+    - 'site'
+
+# Empty by design. The dependency on openvpn_client is a RUNTIME include, not a role
+# dependency: declaring it here would run that role before this one and hand it no values.
+dependencies: []
+
+# One tunnel per host. A second invocation would re-declare the same profile.
+allow_duplicates: false

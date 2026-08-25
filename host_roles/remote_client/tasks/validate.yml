@@ -1,0 +1,32 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Validates the merged running config on the CONTROLLER, before anything touches the guest.
+#
+# There is one guard, deliberately. openvpn_client's own validate.yml already enforces every
+# shape this role passes it -- bucket names, object keys, digests, the version grammar, the DNS
+# pair, the proof list -- and asserting them again here would create a second place to be wrong
+# about the same contract, which is the duplication this role exists to end.
+#
+# What openvpn_client cannot check is the one thing this role introduces: its bucket names are
+# templated from 'aws_account_id', so an undefined or empty account id resolves to a bucket
+# literally named '-apprepo'. That fails inside an S3 call, minutes later, as a bucket-not-found
+# on a name no operator ever wrote. Catching it here costs a second and names the real cause.
+#
+# =========================================================================================== #
+---
+
+- name: 'VALIDATE | Require The Deploying Account Id'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - aws_account_id is defined
+      - (aws_account_id | default('') | string | trim) is match('^[0-9]{12}$')
+    fail_msg: >-
+      remote_client templates its bucket names from 'aws_account_id', which must be the deploying
+      account's twelve-digit id. It was
+      {{ 'not defined' if aws_account_id is undefined
+         else ("'" ~ (aws_account_id | string | trim) ~ "'") }}.
+      Pass it as an extra-var from the pipeline that knows which account this is deploying into.
+    quiet: true

@@ -4,16 +4,30 @@
 # Role metadata for domain_member. Description-only (style guide 8): NOT an enforcing argument
 # spec. The role's tasks/validate.yml enforces its merged-config guards.
 #
-# REQUIRED INPUTS -- supplied by the playbook, not defaulted here.
+# This role WRAPS the platform's domain-join mechanism -- ad_integration on RedHat,
+# microsoft.ad.membership on Windows -- and adds one organization's answer to which realm, as
+# whom, and with which secret. Those are defaulted, because they are this site's and stated once.
 #
-# These are site identity: which realm this machine belongs to, who is allowed to put it there,
-# and where that account's password lives. Defaulting them would ship one site's values as if they
-# were universally safe, so the playbook states them where a reader can see what is being joined.
+# REQUIRED INPUT -- one, supplied by the caller.
+#
+#   domain_member.password.bucket   S3 bucket holding the join account's password. Account-scoped
+#                                   rather than site-scoped: only the deploying pipeline knows
+#                                   which account it is running in.
+#
+# EXPECTED but not enforced -- validate.yml accepts its absence, and should:
+#
+#   domain_member.computer_ou       The OU this machine's computer object is created in. What a
+#                                   host is filed as is the caller's business, not the site's, so
+#                                   there is no default worth having. Omitting it is legal and
+#                                   files the object in the directory's default computers
+#                                   container, where OU-linked policy does not reach it -- which
+#                                   is a choice, not an error, and so is not guarded.
+#
+# DEFAULTED, and overridable -- a second realm is a configuration, not a fork:
 #
 #   domain_member.realm             DNS name of the realm to join.
 #   domain_member.user              Account permitted to create or reuse this machine's computer
 #                                   object.
-#   domain_member.password.bucket   S3 bucket holding that account's password.
 #   domain_member.password.object   Object key of the password. Fetched through the CONTROLLER as
 #                                   a string; the guest is never given cloud credentials, and the
 #                                   value is never written to a file by this role. See the README
@@ -21,8 +35,7 @@
 #   domain_member.password.sha256   Lowercase 64-character digest of that object, verified before
 #                                   the value is used as a credential.
 #
-# OPTIONAL: computer_ou (the OU a new computer object is created in), force_rejoin (leave and join
-# again), timesync_source (the clock's source).
+# OPTIONAL: force_rejoin (leave and join again), timesync_source (the clock's source).
 #
 # NOT OFFERED: any way to re-admit RC4. Both platforms exclude it unconditionally -- Windows by the
 # Kerberos encryption-types policy, RedHat by leaving the crypto policy alone rather than applying

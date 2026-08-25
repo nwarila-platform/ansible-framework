@@ -28,12 +28,13 @@
 GUARD_EXCLUDE := ^(_handoff/|\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/openvpn_client/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
-	applications/domain_member/tasks/main.yml \
 	applications/linux_disk_manager/tasks/main.yml \
 	applications/openvpn_client/tasks/main.yml \
 	applications/python3_pip/tasks/main.yml \
 	applications/wazuh_agent/tasks/main.yml \
-	applications/windows_disk_manager/tasks/main.yml
+	applications/windows_disk_manager/tasks/main.yml \
+	host_roles/domain_member/tasks/main.yml \
+	host_roles/remote_client/tasks/main.yml
 
 # ---------------------------------------------------------------------------
 # Help
@@ -71,7 +72,7 @@ yamllint:
 	yamllint --config-file .yamllint.yml .
 
 ansible-lint:
-	@files=$$(git ls-files --cached --others --exclude-standard -- applications operating_systems \
+	@files=$$(git ls-files --cached --others --exclude-standard -- applications operating_systems utilities host_roles \
 	  | grep -E '\.ya?ml$$' | sort \
 	  | while IFS= read -r file; do [ -f "$$file" ] && printf '%s\n' "$$file"; done); \
 	if [ -z "$$files" ]; then \

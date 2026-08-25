@@ -5,28 +5,6 @@
     __os_bootstrap_detected_os__: ''
     __os_bootstrap_detection_signal__: ''
     __os_bootstrap_target_role__: ''
-    __os_bootstrap_available_roles__: []
-
-- name: 'OS Bootstrap | Record Shipped Bootstrap Roles'
-  loop: >-
-    {{
-      os_bootstrap_role_map | default({}) | dict2items
-      | map(attribute='value') | unique | sort | list
-    }}
-  loop_control:
-    loop_var: '__os_bootstrap_candidate_role__'
-  when: >-
-    query(
-      'ansible.builtin.fileglob',
-      (role_path | default('') | dirname) ~ '/' ~
-      (__os_bootstrap_candidate_role__ | default('')) ~ '/tasks/bootstrap.yml'
-    ) | length == 1
-  ansible.builtin.set_fact:
-    __os_bootstrap_available_roles__: >-
-      {{
-        (__os_bootstrap_available_roles__ | default([]))
-        + [__os_bootstrap_candidate_role__ | default('')]
-      }}
 
 - name: 'OS Bootstrap | Detect From Existing OS Family Fact'
   when: (ansible_facts.os_family | default('') | string | trim | length) > 0
@@ -85,9 +63,7 @@
         fail_msg: >-
           OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
           '{{ __os_bootstrap_detection_signal__ | default('') }}'. The fallback fact gather
-          did not return ansible_facts.os_family. Available bootstrap roles:
-          {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
-          default('<none>', true) }}.
+          did not return ansible_facts.os_family.
         quiet: true
 
     - name: 'OS Bootstrap | Record Fallback OS Family'
@@ -102,9 +78,6 @@
           OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
           '{{ __os_bootstrap_detection_signal__ | default('') }}'. Detail:
           {{ ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
-          Available bootstrap roles:
-          {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
-          default('<none>', true) }}.
 
 - name: 'OS Bootstrap | Resolve Bootstrap Role'
   ansible.builtin.set_fact:
@@ -123,24 +96,13 @@
       OS bootstrap dispatch failed. Detected OS: '{{ __os_bootstrap_detected_os__ |
       default('<none>', true) }}'. Detection signal:
       '{{ __os_bootstrap_detection_signal__ | default('<none>', true) }}'. No bootstrap role is
-      mapped for that OS. Available bootstrap roles:
-      {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
-      default('<none>', true) }}.
+      mapped for that OS.
 
-- name: 'OS Bootstrap | Fail When Mapped Role Is Not Shipped'
-  when: >-
-    (__os_bootstrap_target_role__ | default('')) not in
-    (__os_bootstrap_available_roles__ | default([]))
-  ansible.builtin.fail:
-    msg: >-
-      OS bootstrap dispatch failed. Detected OS: '{{ __os_bootstrap_detected_os__ |
-      default('<none>', true) }}'. Detection signal:
-      '{{ __os_bootstrap_detection_signal__ | default('<none>', true) }}'. It resolved to
-      '{{ __os_bootstrap_target_role__ | default('<none>', true) }}', but that role does not
-      ship a tasks/bootstrap.yml entry point in this framework. Available bootstrap roles:
-      {{ (__os_bootstrap_available_roles__ | default([]) | join(', ')) |
-      default('<none>', true) }}.
-
+# Unguarded on purpose. A mapped role that does not exist, or ships no bootstrap.yml, is a
+# framework defect in a two-entry map, and include_role fails the play on either. Re-adding a
+# check would buy only a better message for the second case -- it names the missing file but not
+# the role -- at the cost of deciding where the role lives, which is the search ansible has
+# already done and this role has no business repeating.
 - name: 'OS Bootstrap | Run Selected Bootstrap Role'
   ansible.builtin.include_role:
     name: "{{ __os_bootstrap_target_role__ | default('') }}"

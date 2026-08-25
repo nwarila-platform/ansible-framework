@@ -1,0 +1,24 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
+# --- [ Description ] ------------------------------------------------------------------------ #
+# Bounds, not behaviour: how long the role may wait, never what it waits for. They live here
+# rather than in vars/ so a play can raise them for a slow first boot -- role vars outrank play
+# vars, defaults do not.
+#
+# The two multiply: the wait runs for at most attempts x (pause + however long a refused
+# connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which covers
+# a Windows first boot.
+# ============================================================================================= #
+---
+host_readiness_attempts: 60
+host_readiness_pause_seconds: 15
+
+# The infrastructure platform this host runs on. Empty means DETECT it -- the role reads the SMBIOS
+# system vendor over raw, which is not a module and not a network call, so it is safe at the one
+# moment neither of those would be. Declaring it here skips that probe and is the right choice
+# wherever the precondition is load-bearing, because an undetected platform skips it silently.
+#
+# A non-empty value selects tasks/checks_<platform>_<os>.yml, where <os> comes from the same
+# inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most platforms
+# have no precondition beyond answering, and saying so by omission is cheaper than a stub per pair.
+host_readiness_platform: ''

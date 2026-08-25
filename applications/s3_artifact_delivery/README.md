@@ -58,6 +58,8 @@ Optional inputs:
 | `s3_artifact_delivery_transfer_timeout_seconds` | `60` | Per-transfer socket inactivity timeout. |
 | `s3_artifact_delivery_posix_mode` | `'0600'` | Mode applied by `get_url` on POSIX targets. |
 
+On POSIX targets the download inherits escalation rather than declaring it. It ran as root while the chassis escalated by default; it no longer does. A destination the connection user cannot write needs `become` on the calling play or include.
+
 The controller's ambient identity must be allowed to assume the reader role. The controller Python
 used by `ansible-playbook` must provide `boto3` and `botocore`, and the controller must have the
 `amazon.aws` collection. Windows transfers also require `ansible.windows`. Targets need outbound
