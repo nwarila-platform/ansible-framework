@@ -4,6 +4,8 @@
 # Usage:
 #   make install      Install all dev dependencies
 #   make collections  Install the pinned runtime collections
+#   make materialize-check
+#                     Verify every PowerShell stub resolves and no copy is stale
 #   make lint         Run yamllint + ansible-lint + allowlist guard
 #   make pre-commit   Run full pre-commit suite against all files
 #   make allowlist-check
@@ -16,7 +18,7 @@
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help install collections lint yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check pre-commit clean
+.PHONY: help install collections lint yamllint ansible-lint allowlist-check materialize-check loader-identity-check loader-defaults-convention-check pre-commit clean
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
@@ -44,6 +46,8 @@ help:
 	@echo ""
 	@echo "  make install       Install dev dependencies from requirements-dev.txt"
 	@echo "  make collections   Install pinned runtime collections from requirements.yml"
+	@echo "  make materialize-check"
+	@echo "                     Verify every PowerShell stub resolves and no copy is stale"
 	@echo "  make lint          Run yamllint, ansible-lint, and the allowlist guard"
 	@echo "  make yamllint      Run yamllint only"
 	@echo "  make ansible-lint  Run ansible-lint only"
@@ -79,7 +83,7 @@ collections:
 # ---------------------------------------------------------------------------
 # Lint
 # ---------------------------------------------------------------------------
-lint: yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check
+lint: yamllint ansible-lint allowlist-check loader-identity-check loader-defaults-convention-check materialize-check
 
 yamllint:
 	yamllint --config-file .yamllint.yml .
@@ -163,6 +167,22 @@ loader-defaults-convention-check:
 	  printf 'loader-defaults-convention-check: OK — every loader role defaults file defines its namespaced key\n'; \
 	fi; \
 	exit $$status
+
+# ---------------------------------------------------------------------------
+# PowerShell stub materialization
+# ---------------------------------------------------------------------------
+# A role that executes a first-class PowerShell script tracks only
+# files/<Name>.ps1.stub; the script itself is reviewed and pair-tested once
+# under scripts/. --check writes nothing. It proves every stub names exactly one
+# source under scripts/ (no '..', no symlink escape), that the source exists and
+# carries a sibling .pester.ps1 spec, and that no already-materialized copy has
+# drifted from its source -- the stale copy being what would actually execute.
+#
+# An absent copy is NOT an error: that is the normal state of a source checkout.
+# The consumer materializes for real inside its pinned checkout, so a stub this
+# repository never validates breaks downstream, in someone else's deploy.
+materialize-check:
+	@scripts/materialize-role-scripts.sh --check
 
 # ---------------------------------------------------------------------------
 # Pre-Commit

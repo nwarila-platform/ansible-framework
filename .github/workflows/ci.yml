@@ -11,6 +11,7 @@
 #   - allowlist-check
 #   - ansible-lint
 #   - loader-identity-check
+#   - materialize-check
 # =============================================================================
 
 name: CI
@@ -95,6 +96,27 @@ jobs:
 
       - name: Check loader role defaults naming convention
         run: make loader-defaults-convention-check
+
+  # ---------------------------------------------------------------------------
+  # PowerShell Stub Materialization
+  # ---------------------------------------------------------------------------
+  # The consuming repository runs this materializer for real inside its pinned
+  # framework checkout, so a stub that never resolves here fails there instead —
+  # in a deploy pipeline, at a pinned SHA. This gates it at the source.
+  # ---------------------------------------------------------------------------
+  materialize-check:
+    name: PowerShell Stub Materialization
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check PowerShell stubs resolve and no copy is stale
+        run: make materialize-check
 
   # ---------------------------------------------------------------------------
   # Ansible Lint
