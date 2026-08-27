@@ -381,7 +381,8 @@
       when: (config.disks | length) > 0
       ansible.windows.win_shell: |
         $ErrorActionPreference = 'Stop'
-        $ids = $env:DISK_IDS -split ';' | Where-Object { $_ }
+        # A single pipeline result unwraps to a scalar string, whose index is a character.
+        $ids = @($env:DISK_IDS -split ';' | Where-Object { $_ })
         $letters = $env:DISK_LETTERS -split ';'
         $items = @()
         for ($i = 0; $i -lt $ids.Count; $i++) {
