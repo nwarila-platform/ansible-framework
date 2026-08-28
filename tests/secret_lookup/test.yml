@@ -1,0 +1,19 @@
+---
+# SPDX-FileCopyrightText: 2026 Nicholas Warila
+# SPDX-License-Identifier: MIT
+- name: 'Verify The Repository-Level Secret Lookup'
+  hosts: 'secret_lookup'
+  gather_facts: false
+  vars:
+    __secret_lookup_value__: >-
+      {{ lookup('secret',
+                's3://fixture-bucket/applications/fixture/credential.txt',
+                'c59d0a778c5388a14dc85354717e9ffde6689472c45375e4cc10cf3b93304285') }}
+
+  tasks:
+    - name: 'Require The Stored Value To Remain Untrimmed'
+      no_log: true
+      ansible.builtin.assert:
+        that:
+          - __secret_lookup_value__ == "fixture-secret\n"
+        quiet: true

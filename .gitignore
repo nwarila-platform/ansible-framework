@@ -23,6 +23,22 @@
 !/release-please-config.json
 !/requirements-dev.txt
 
+# Repository-level lookup plugins
+!/lookup_plugins/
+!/lookup_plugins/secret.py
+
+# Framework-level tests and isolated controller fixtures
+!/tests/
+!/tests/secret_lookup/
+!/tests/secret_lookup/test.yml
+!/tests/secret_lookup/inventory
+!/tests/secret_lookup/test_secret.py
+!/tests/secret_lookup/fixtures/
+!/tests/secret_lookup/fixtures/boto3.py
+!/tests/secret_lookup/fixtures/botocore/
+!/tests/secret_lookup/fixtures/botocore/__init__.py
+!/tests/secret_lookup/fixtures/botocore/exceptions.py
+
 # First-class PowerShell scripts and their Pester specs. A role that executes one tracks only
 # files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies the source below into the role
 # before it runs. The source and its spec are reviewed once, here -- the materialized copy in a
