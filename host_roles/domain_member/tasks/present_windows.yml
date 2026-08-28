@@ -91,6 +91,35 @@
 
     #endregion --- [ Begin: Refuse A Host Joined To Another Domain ] -------------------------- #
 
+    #region ------ [ Begin: Test The Machine Account Credential ] ----------------------------- #
+    # Membership and a working machine account are different facts, and this role has always
+    # decided on the first while proving the second. A host can report membership and still hold a
+    # secret the directory no longer accepts -- observed 2026-08-27 on a replacement operating
+    # system that joined against a computer object its predecessor had left behind: PartOfDomain
+    # true, the realm resolving, both controllers reachable, and Test-ComputerSecureChannel false.
+    # Nothing repaired it, because the join is gated on membership and membership was already
+    # true, so every converge skipped the join and then failed the proof. Reading the channel HERE
+    # is what lets PROCESS act on it.
+    #
+    # Only when already joined: an unjoined host has no channel to test, and the join below is
+    # what gives it one. ignore_errors because the cmdlet raises rather than returning false when
+    # the secret is rejected, and a raise is an answer.
+
+    - name: 'BEGIN | Test The Machine Account Credential Against The Directory'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_channel__'
+      when: ansible_facts.windows_domain_member | default(false) | bool
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: 'Test-ComputerSecureChannel'
+
+    #endregion --- [ Begin: Test The Machine Account Credential ] ----------------------------- #
+
 #endregion --- [ Begin: Join This Windows Host To The Realm ] --------------------------------- #
 
 
@@ -100,8 +129,16 @@
   vars:
     __realm_to_join__: "{{ domain_member_running.realm | string | trim }}"
     __currently_joined__: "{{ ansible_facts.windows_domain_member | default(false) | bool }}"
+    # A host that is joined but whose machine account the directory rejects is not a member in
+    # any sense this role can use, so it is rejoined exactly as an unjoined one is. Skipped when
+    # the probe did not run, which is the unjoined case the first clause already covers.
+    __credential_broken__: >-
+      {{ (__currently_joined__ | bool)
+         and not (__domain_member_channel__.output | default([], true) | first
+                  | default(false) | bool) }}
     __join_required__: >-
-      {{ (not (__currently_joined__ | bool)) or (domain_member_running.force_rejoin | bool) }}
+      {{ (not (__currently_joined__ | bool)) or (__credential_broken__ | bool)
+         or (domain_member_running.force_rejoin | bool) }}
     __timesync_declared__: >-
       {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
 
@@ -181,7 +218,7 @@
       no_log: true
       register: '__domain_member_left__'
       when:
-        - domain_member_running.force_rejoin | bool
+        - domain_member_running.force_rejoin | bool or __credential_broken__ | bool
         - __currently_joined__ | bool
 
       microsoft.ad.membership:
