@@ -11,6 +11,7 @@
 #   - allowlist-check
 #   - ansible-lint
 #   - loader-identity-check
+#   - materialize-check
 # =============================================================================
 
 name: CI
@@ -97,6 +98,27 @@ jobs:
         run: make loader-defaults-convention-check
 
   # ---------------------------------------------------------------------------
+  # PowerShell Stub Materialization
+  # ---------------------------------------------------------------------------
+  # The consuming repository runs this materializer for real inside its pinned
+  # framework checkout, so a stub that never resolves here fails there instead —
+  # in a deploy pipeline, at a pinned SHA. This gates it at the source.
+  # ---------------------------------------------------------------------------
+  materialize-check:
+    name: PowerShell Stub Materialization
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check PowerShell stubs resolve and no copy is stale
+        run: make materialize-check
+
+  # ---------------------------------------------------------------------------
   # Ansible Lint
   # ---------------------------------------------------------------------------
   ansible-lint:
@@ -117,6 +139,13 @@ jobs:
 
       - name: Install ansible-lint
         run: pip install --no-cache-dir -r requirements-dev.txt
+
+      # Without the collections installed, ansible-lint cannot resolve the FQCN
+      # modules the roles call and silently grades a weaker tree than it appears
+      # to. Installing from the pins means CI lints the same versions the roles
+      # pin their module options against.
+      - name: Install pinned collections
+        run: make collections
 
       - name: Run ansible-lint
         run: make ansible-lint

@@ -1,0 +1,68 @@
+---
+# =============================================================================
+# Runtime Collection Dependencies
+# =============================================================================
+# Every collection whose modules this framework's roles call, pinned to an
+# exact version. Roles pin every documented module option so a vendor cannot
+# move behaviour inside a version (style guide 4f); this file closes the other
+# half of that promise by fixing which version is installed at all.
+#
+# This matters downstream: consuming repositories pin the framework by full
+# commit SHA, so an unpinned collection set would leave those pins reproducible
+# in name only.
+#
+# Install via: make collections
+# Or directly:  ansible-galaxy collection install -r requirements.yml
+#
+# Upgrading a pin is a deliberate, tested change -- never a drive-by edit.
+# Diff the new version's documented defaults against the old one first:
+#   ansible-doc -j <module> | jq '..|.options?|objects|map_values(.default)'
+# =============================================================================
+
+collections:
+
+  # ---------------------------------------------------------------------------
+  # Matched to the consuming repository's pins
+  # ---------------------------------------------------------------------------
+  # pdq-deploy-inventory lints the composed application against these exact
+  # versions in its requirements-quality.yml. The framework must agree with the
+  # consumer that executes it, so these four are kept in lockstep with that file.
+  # ---------------------------------------------------------------------------
+
+  # s3_object, sts_assume_role, ec2_vol_info.
+  - name: 'amazon.aws'
+    version: '11.4.0'
+
+  # win_copy, win_file, win_service, win_package, win_powershell, win_stat, setup.
+  - name: 'ansible.windows'
+    version: '3.7.0'
+
+  # win_acl and the wider Windows management surface.
+  - name: 'community.windows'
+    version: '3.3.0'
+
+  # domain_member performs its Windows domain join through this collection.
+  - name: 'microsoft.ad'
+    version: '1.12.0'
+
+  # ---------------------------------------------------------------------------
+  # Framework-only dependencies
+  # ---------------------------------------------------------------------------
+  # The consumer does not install these because its composition is Windows-only.
+  # Both are pinned to the versions the Linux roles were authored and proven
+  # against, so this file records the tested state rather than asserting an
+  # untested upgrade.
+  #
+  # community.general is deliberately NOT advanced to 13.x here: 'parted' gained
+  # a new defaulted option (unit_preserve_case) after 7.5.9, which is exactly the
+  # silent-default class this file exists to prevent. Moving to it belongs in its
+  # own PR that pins the new option in linux_disk_manager's four parted calls.
+  # ---------------------------------------------------------------------------
+
+  # parted and filesystem, used by linux_disk_manager.
+  - name: 'community.general'
+    version: '7.5.9'
+
+  # mount, used by linux_disk_manager.
+  - name: 'ansible.posix'
+    version: '1.6.2'
