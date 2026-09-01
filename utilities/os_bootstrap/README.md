@@ -77,3 +77,25 @@ in that namespace — with a named `tasks/bootstrap.yml` entry point and its own
 assertion. Then extend
 `os_bootstrap_role_map` in `vars/main.yml`. Add the new paths to the repository-rooted
 `.gitignore` allowlist and run the repository checks.
+
+### A second release of a family already in the map
+
+Detection yields an OS FAMILY, and on Windows it resolves before facts are available, so the map
+holds one role per family and cannot tell two releases apart. Adding `Windows_Server_2022`
+beside `Windows_Server_2025` therefore does NOT mean editing the map: pointing `Windows` at
+either one routes every Windows host to it and fails the other release's support assertion.
+
+Name the role in the INVENTORY instead. `os_bootstrap_role`, when set on a host, wins over the
+map:
+
+```yaml
+compose:
+  os_bootstrap_role: >-
+    (aws_ec2_tags.Function | default('', true) == 'workstation')
+    | ternary('Windows_Server_2022', '')
+```
+
+A host variable is the only override that arrives before detection runs and does not become a
+role parameter — callers of this role are told to pass it none, because a role parameter
+outranks the connection scoping the pre-flip stage depends on. An empty value falls through to
+the map, so hosts that say nothing keep the default.

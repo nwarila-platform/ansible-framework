@@ -1,7 +1,7 @@
 # =========================================================================================== #
 # File: '{{ role_path }}/tasks/bootstrap.yml'                                  | Version 1.0.0 #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2025     #
+# MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2022     #
 # host. Called EXPLICITLY by the deploying playbook — never by a loader.                       #
 #                                                                                             #
 # THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The v2.2.0 loader retained     #
@@ -9,22 +9,22 @@
 # escalates with become=sudo, stages with ansible.builtin.tempfile and labels with SELinux,     #
 # and derives its dispatch name from ansible_distribution — which on Windows is                #
 # Win32_OperatingSystem.Caption, yielding the space-containing string                          #
-# 'microsoft windows server 2025 datacenter_10'. See tasks/main.yml for the guard that stands  #
+# 'microsoft windows server 2022 datacenter_10'. See tasks/main.yml for the guard that stands  #
 # in its place.                                                                                #
 #                                                                                             #
 # --- [ How To Call It ] --------------------------------------------------------------------- #
-#   - name: 'Bootstrap | Windows Server 2025 minimum requirements'
+#   - name: 'Bootstrap | Windows Server 2022 minimum requirements'
 #     hosts: 'wazuh_agents_windows'
 #     gather_facts: false
 #     tasks:
-#       - name: 'Bootstrap | Windows Server 2025'
+#       - name: 'Bootstrap | Windows Server 2022'
 #         ansible.builtin.include_role:
-#           name: 'Windows_Server_2025'
+#           name: 'Windows_Server_2022'
 #           tasks_from: 'bootstrap'
 #
 #   * 'operating_systems' must be on roles_path (the framework's ansible.cfg declares it; a
 #     consuming product whose ansible.cfg overwrites that must re-add it), or use the path form
-#     'name: "{{ playbook_dir }}/../operating_systems/Windows_Server_2025"'.
+#     'name: "{{ playbook_dir }}/../operating_systems/Windows_Server_2022"'.
 #   * EXACTLY ONE invocation, BEFORE every other play against the Windows group. The omission
 #     bug already shipped once: a deployment path reached the agent stage without this having
 #     run, and the first file push died on a cmd-ism ("Parameter format not correct").
@@ -250,14 +250,15 @@
 
         # BUILD NUMBER, not major version: EVERY Windows since 10 reports major version 10, so
         # the Linux reference's '(major_version | int) == 8' shape asserts nothing at all here.
-        # Windows Server 2025 is NT 10.0 BUILD 26100 (Server 2022 is 20348, Server 2019 is
-        # 17763). And the build ALONE is not enough either — Windows 11 24H2 is also build
-        # 26100 — so os_product_type separates client from server, and it comes
+        # Windows Server 2022 is NT 10.0 BUILD 20348 (Server 2025 is 26100, Server 2019 is
+        # 17763). No client release shares 20348, unlike 26100 which Windows 11 24H2 also
+        # carries — but the product type is asserted regardless, so this role states what it
+        # supports rather than relying on a build number happening to be unambiguous. It comes
         # from a native ProductType call that needs no elevated token. Both 'server' and
-        # 'domain_controller' are accepted: a domain controller IS a server, and
-        # ProductType reports it separately only to name the role it holds.
+        # 'domain_controller' are accepted: a domain controller IS a server, and ProductType
+        # reports it separately only to name the role it holds.
         # distribution_version is [Environment]::OSVersion.Version.ToString(), e.g.
-        # '10.0.26100.0'; element 2 is the build. 'distribution' and installation type are
+        # '10.0.20348.0'; element 2 is the build. 'distribution' and installation type are
         # printed for the operator only, never asserted on.
         - name: 'INIT | Perform OS Check'
           vars:
@@ -269,10 +270,10 @@
             that:
               - (ansible_facts.os_family | default('') | string) == 'Windows'
               - (ansible_facts.os_product_type | default('') | string) in ['server', 'domain_controller']
-              - (__os_build__ | int) == 26100
+              - (__os_build__ | int) == 20348
             fail_msg: >-
-              The role 'Windows_Server_2025' is intended for Windows Server 2025
-              (NT 10.0 build 26100) hosts only. Detected:
+              The role 'Windows_Server_2022' is intended for Windows Server 2022
+              (NT 10.0 build 20348) hosts only. Detected:
               {{ ansible_facts.distribution | default('<unreported: needs an elevated token>', true) }}
               version {{ ansible_facts.distribution_version | default('<unknown>', true) }},
               family {{ ansible_facts.os_family | default('<unknown>', true) }},

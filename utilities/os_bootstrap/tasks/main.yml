@@ -79,14 +79,27 @@
           '{{ __os_bootstrap_detection_signal__ | default('') }}'. Detail:
           {{ ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
 
+# An inventory may name the role itself. Detection resolves an OS FAMILY, and on Windows it does
+# so before facts exist, so the map cannot tell two releases of one family apart -- yet the
+# inventory already knows which image it launched. A host variable is the only override that
+# arrives early enough to matter and does not become a role parameter, which this role's callers
+# are told never to pass.
 - name: 'OS Bootstrap | Resolve Bootstrap Role'
   ansible.builtin.set_fact:
     __os_bootstrap_target_role__: >-
       {{
+        (os_bootstrap_role | default('', true) | string | trim)
+        or
         (os_bootstrap_role_map | default({})).get(
           __os_bootstrap_detected_os__ | default(''),
           ''
         )
+      }}
+    __os_bootstrap_detection_signal__: >-
+      {{
+        (os_bootstrap_role | default('', true) | string | trim)
+        | ternary('inventory hostvar os_bootstrap_role',
+                  __os_bootstrap_detection_signal__ | default(''))
       }}
 
 - name: 'OS Bootstrap | Fail When OS Has No Route'
