@@ -77,3 +77,23 @@ in that namespace — with a named `tasks/bootstrap.yml` entry point and its own
 assertion. Then extend
 `os_bootstrap_role_map` in `vars/main.yml`. Add the new paths to the repository-rooted
 `.gitignore` allowlist and run the repository checks.
+
+### A second release of a family already in the map
+
+Detection yields an OS FAMILY, and on Windows it resolves before facts are available, so the map
+holds one role per family and cannot tell two releases apart. Adding `Windows_Server_2022`
+beside `Windows_Server_2025` therefore does NOT mean editing the map: pointing `Windows` at
+either one routes every Windows host to it and fails the other release's support assertion.
+
+A consumer running both selects per play, because `os_bootstrap_role_map` passed as a role
+parameter outranks this utility's `vars/main.yml`:
+
+```yaml
+- role: 'os_bootstrap'
+  vars:
+    os_bootstrap_role_map:
+      Windows: 'Windows_Server_2022'
+```
+
+The map's default stays on the release most consumers run; a play that knows it is addressing
+the other one says so.
