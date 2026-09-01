@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.7](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.6...v0.1.7) (2026-09-01)
+
+
+### Features
+
+* four namespaces, two site-policy roles, and a readiness role that knows its platform ([#77](https://github.com/nwarila-platform/ansible-framework/issues/77)) ([363c5b4](https://github.com/nwarila-platform/ansible-framework/commit/363c5b4cd7555bb0a80ba8cbe6f7c72418d267b4))
+* **operating_systems:** bootstrap Windows Server 2022 ([#83](https://github.com/nwarila-platform/ansible-framework/issues/83)) ([a372c4a](https://github.com/nwarila-platform/ansible-framework/commit/a372c4a3ee003251d1f541dfce2677c30223f646))
+* read deployment secrets through one URL-addressed lookup ([#81](https://github.com/nwarila-platform/ansible-framework/issues/81)) ([c584528](https://github.com/nwarila-platform/ansible-framework/commit/c58452887a2aff87c1214b3402e401ea562af059))
+
+
+### Bug Fixes
+
+* **domain_member:** decide on the machine account, not only the membership ([#82](https://github.com/nwarila-platform/ansible-framework/issues/82)) ([076eb02](https://github.com/nwarila-platform/ansible-framework/commit/076eb020c26bd860c6a947288b28687a90eb3eec))
+* **windows_disk_manager:** let a host with one declared disk find it ([#80](https://github.com/nwarila-platform/ansible-framework/issues/80)) ([7568f6d](https://github.com/nwarila-platform/ansible-framework/commit/7568f6d69fcedb1385f4a4d85646a5409c96bbc8))
+
 ## [0.1.6](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.5...v0.1.6) (2026-08-24)
 
 
