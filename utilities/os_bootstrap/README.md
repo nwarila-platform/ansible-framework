@@ -85,15 +85,17 @@ holds one role per family and cannot tell two releases apart. Adding `Windows_Se
 beside `Windows_Server_2025` therefore does NOT mean editing the map: pointing `Windows` at
 either one routes every Windows host to it and fails the other release's support assertion.
 
-A consumer running both selects per play, because `os_bootstrap_role_map` passed as a role
-parameter outranks this utility's `vars/main.yml`:
+Name the role in the INVENTORY instead. `os_bootstrap_role`, when set on a host, wins over the
+map:
 
 ```yaml
-- role: 'os_bootstrap'
-  vars:
-    os_bootstrap_role_map:
-      Windows: 'Windows_Server_2022'
+compose:
+  os_bootstrap_role: >-
+    (aws_ec2_tags.Function | default('', true) == 'workstation')
+    | ternary('Windows_Server_2022', '')
 ```
 
-The map's default stays on the release most consumers run; a play that knows it is addressing
-the other one says so.
+A host variable is the only override that arrives before detection runs and does not become a
+role parameter — callers of this role are told to pass it none, because a role parameter
+outranks the connection scoping the pre-flip stage depends on. An empty value falls through to
+the map, so hosts that say nothing keep the default.
