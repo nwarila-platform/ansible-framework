@@ -78,15 +78,19 @@
 
   vars:
     __domain__: "{{ openvpn_client_running.dns.domain | default('', true) }}"
+    __register_address__: >-
+      {{ openvpn_client_running.dns.register_address | default('', true) | string | trim }}
     __servers__: "{{ openvpn_client_running.dns.servers | default([], true) }}"
 
   ansible.builtin.assert:
     fail_msg: >-
-      Refusing to write a resolver policy: openvpn_client.dns.domain and openvpn_client.dns.servers
-      must be declared together. dns.domain is the realm whose names must resolve through the
-      tunnel, as a DNS name; dns.servers is a non-empty list of the server addresses that answer
-      for it, in the order Windows should ask them. Leave dns.domain null to write no rule at all —
-      the role then removes any rule it previously wrote.
+      Refusing to configure name resolution: openvpn_client.dns.domain and
+      openvpn_client.dns.servers must be declared together. dns.domain is the realm whose names
+      must resolve through the tunnel, as a DNS name; dns.servers is a non-empty list of the server
+      addresses that answer for it, in the order Windows should ask them. dns.register_address is
+      optional, but when declared it must be a literal IPv4 address and requires dns.domain: it
+      identifies the one adapter whose dynamic registration must be sent to those servers. Leave
+      dns.domain null to write no rule at all — the role then removes any rule it previously wrote.
     quiet: true
     that:
       - __servers__ is not string
@@ -95,6 +99,13 @@
       - __servers__ | reject('string') | list | length == 0
       - __servers__ | select('eq', '') | list | length == 0
       - __domain__ | length == 0 or __domain__ is match('^[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$')
+      - >-
+        __register_address__ | length == 0 or
+        __register_address__ is match(
+          '^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}' ~
+          '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$'
+        )
+      - __register_address__ | length == 0 or __domain__ | length > 0
       - __domain__ | length == 0 or __servers__ | length > 0
       - __servers__ | length == 0 or __domain__ | length > 0
 

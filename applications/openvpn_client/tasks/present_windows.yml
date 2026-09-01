@@ -4,17 +4,20 @@
 #
 # Installs the OpenVPN community client at the pinned version, places the pinned connection
 # profile where the automatic service runs it, holds that service on and running as its own
-# account, points the realm's DNS at the domain controllers, and proves the tunnel delivers what
-# the playbook declared.
+# account, pins the realm's namespace to the domain controllers, optionally assigns those servers
+# to the adapter identified for dynamic DNS registration, and proves the tunnel delivers what the
+# playbook declared.
 #
 # BEGIN reads the machine and decides ONE action -- install, upgrade, or none -- and refuses a
 # host whose automatic service would run profiles this role did not declare. PROCESS acts on that
 # decision, and END proves the result and cleans up. Every PROCESS task that belongs to the
 # install carries the decision individually rather than the stage carrying it once, so a run
 # always lists the same steps in the same order: a converged host reads as a column of skips,
-# not a stage that vanished. The profile, its permissions, the service and the DNS rule are
-# state the role owns on every converge, not part of the install decision, so they are not
-# gated on it -- with the check-mode exception below.
+# not a stage that vanished. The profile, its permissions, the service, the DNS rule and any
+# declared adapter DNS are state the role owns on every converge, not part of the install decision,
+# so they are not gated on it -- with the check-mode exception below. Adapter DNS deliberately
+# persists after the registration address is undeclared or clean runs; reverting that site state
+# is an explicit operator action, not a safe inference for this role.
 #
 # END is deliberately ungated, so a converged host proves the same state as a freshly built one.
 #
@@ -197,6 +200,22 @@
     # gates cannot drift apart and run both rules, or neither.
     __dns_declared__: >-
       {{ (openvpn_client_running.dns.domain | default('', true) | string | trim | length) > 0 }}
+    __dns_register_address__: >-
+      {{ openvpn_client_running.dns.register_address | default('', true) | string | trim }}
+    # setup collapses a one-element ipv4 array to a mapping. Normalise both representations before
+    # matching, but retain each whole interface because its connection_name is the module identity.
+    __dns_registration_interfaces__: >-
+      {%- set matches = [] -%}
+      {%- for interface in __openvpn_client_interfaces__.ansible_facts.ansible_interfaces
+                             | default([]) -%}
+        {%- set ipv4 = interface.ipv4 | default([], true) -%}
+        {%- set ipv4_values = [ipv4] if ipv4 is mapping else ipv4 -%}
+        {%- set addresses = ipv4_values | map(attribute='address') | list -%}
+        {%- if __dns_register_address__ in addresses -%}
+          {%- set _ = matches.append(interface) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ matches }}
 
   # Begin The 'Process' Block
   block:
@@ -617,6 +636,65 @@
       ansible.builtin.meta: 'flush_handlers'
 
     #endregion --- [ Process: Apply Any Pending Restart ] ------------------------------------- #
+
+    #region ------ [ Process: Point Dynamic DNS Registration At The Realm ] ------------------- #
+    # Windows registers a cluster name through the DNS configured on the adapter that owns its
+    # dependent address (RP-2). A cloud recursive-only resolver does not implement UPDATE and
+    # returns NOTIMP/9004 (RP-1/RP-4), so the declared realm servers belong on that adapter too.
+    #
+    # The declared address is positive adapter identity: setup binds every unicast address and
+    # connection_name to one fact object. Gateway presence changes with tunnel routes, while driver
+    # descriptions identify implementations rather than the physical ENI and can acquire ordinals.
+    #
+    # This mutation is intentionally asymmetric. Removing register_address or running clean leaves
+    # working adapter DNS in place; an operator can revert a previously selected DHCP adapter with
+    # win_dns_client dns_servers: []. suffix_search_list is omitted because it is global state and
+    # omission preserves it.
+    #
+    # The profile deliberately excludes block-outside-dns (RP-15): its WFP permit is keyed to the
+    # VPN local-interface LUID, so it would block DNS sourced on this ENI even when the route exits
+    # through the VPN. The adapter and NRPT contain only the declared DCs, closing that leak class
+    # by construction.
+
+    - name: 'PROCESS | Read Interfaces For The DNS Registration Adapter'
+      register: '__openvpn_client_interfaces__'
+      when:
+        - __dns_declared__ | bool
+        - __dns_register_address__ | length > 0
+
+      ansible.windows.setup:
+        gather_subset: [ '!all', '!min', 'interfaces' ]
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require One Adapter To Hold The DNS Registration Address'
+      when:
+        - __dns_declared__ | bool
+        - __dns_register_address__ | length > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to assign DNS servers for dynamic registration: dns.register_address
+          '{{ __dns_register_address__ }}' matched {{ __dns_registration_interfaces__ | length }}
+          interfaces. Zero matches means the declaration and machine disagree; more than one means
+          the address does not uniquely identify an adapter. Exactly one interface must hold it.
+        quiet: true
+        that:
+          - __dns_registration_interfaces__ | length == 1
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Point The Registration Adapter At The Domain Controllers'
+      when:
+        - __dns_declared__ | bool
+        - __dns_register_address__ | length > 0
+
+      ansible.windows.win_dns_client:
+        adapter_names:
+          - "{{ __dns_registration_interfaces__[0].connection_name }}"
+        dns_servers: "{{ openvpn_client_running.dns.servers }}"
+
+    #endregion --- [ Process: Point Dynamic DNS Registration At The Realm ] ------------------- #
 
 #endregion --- [ Process: Install The OpenVPN Client on Windows ] ----------------------------- #
 

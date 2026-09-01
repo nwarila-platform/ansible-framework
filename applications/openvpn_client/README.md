@@ -2,8 +2,9 @@
 
 Installs the OpenVPN community client on Windows at a pinned version, places one pinned connection
 profile where the automatic service runs it at boot with nobody signed in, holds that service on
-under its own account, points a realm's DNS at the domain controllers across the tunnel, and proves
-the result from the machine rather than from the installer's report.
+under its own account, pins a realm's namespace to the domain controllers across the tunnel,
+optionally assigns those servers to one registration adapter, and proves the result from the
+machine rather than from the installer's report.
 
 This role exists to make a host reach a private network *before* the roles that depend on that
 network run — most directly [`domain_member`](../../host_roles/domain_member/README.md), which cannot join a
@@ -14,7 +15,7 @@ realm it cannot resolve or reach.
 | Stage | What happens |
 | --- | --- |
 | BEGIN | Reads the installed client's version from the binary's own version resource, and refuses a host carrying any `.ovpn` profile this role did not declare. |
-| PROCESS | Fetches the installer and the profile through the **controller**, verifies both against pinned digests, installs silently, writes the profile under a locked descriptor, holds the service on, and pins the realm's namespace to the declared servers. |
+| PROCESS | Fetches the installer and the profile through the **controller**, verifies both against pinned digests, installs silently, writes the profile under a locked descriptor, holds the service on, pins the realm's namespace to the declared servers, and optionally assigns those servers to the declared-address adapter. |
 | END | Proves the client version, the profile's digest, the profile's exact permissions, the service's state/start mode/account, and that the tunnel actually reaches what the playbook declared. |
 
 One action is decided in BEGIN — install, upgrade, or none — and a converged host reads as a column
@@ -42,6 +43,7 @@ openvpn_client:
 openvpn_client:
   dns:                                    # declared together, or not at all
     domain: 'corp.example.com'            # null => no rule written, and any rule this role wrote is removed
+    register_address: '10.0.20.15'        # optional literal IPv4 identifying exactly one adapter
     servers: [ '10.0.76.10', '10.0.76.11' ]   # order is the order Windows asks them in
   proofs:                                 # asked FROM THE GUEST; empty proves only the service and profile
     - { host: '10.0.76.10', port: 389 }
@@ -49,6 +51,24 @@ openvpn_client:
   install:
     timeout_seconds: 600
 ```
+
+## DNS namespace pinning and adapter registration
+
+`dns.domain` and `dns.servers` are a pair. When declared, the role holds one owned NRPT rule for
+the realm and its children, pointing only to those servers in the declared order. When `domain` is
+null or empty, the role removes any NRPT rule it wrote.
+
+`dns.register_address` is independent and optional, but it requires `domain`. It must be a literal
+IPv4 address held by exactly one collected interface. The role uses that positive identity to find
+the interface's connection name and assign `dns.servers` to that adapter; it does not infer a
+physical adapter from a default gateway or driver description. An empty value skips adapter DNS
+management, which lets the generic role support callers without a registration requirement.
+
+Adapter DNS is intentionally persistent. Removing `register_address`, changing it to another
+adapter, removing `domain`, or running `clean` does not reset an adapter previously configured by
+this contract. During migration or decommission, explicitly apply `win_dns_client` with
+`dns_servers: []` to the old DHCP adapter before removing or changing the declaration. On a static
+adapter an empty server list disables DNS lookup, so that reset is only the DHCP-adapter procedure.
 
 ## Before you run it: materialize the scripts
 
@@ -111,7 +131,7 @@ A dry run is honest about what it cannot know:
 | State | Behaviour |
 | --- | --- |
 | `present` | Everything above. |
-| `clean` | Removes any staged installer left on the guest. Deliberately does **not** uninstall the client, remove the profile, stop the service or drop the resolver policy — that is a decommission a person decides on, not something a converge does on its way past. |
+| `clean` | Removes any staged installer left on the guest. Deliberately does **not** uninstall the client, remove the profile, stop the service, drop the resolver policy or reset adapter DNS — that is a decommission a person decides on, not something a converge does on its way past. |
 | `absent` | **Not implemented.** The loader accepts the state and then fails with `OS task file not found`. Uninstalling tears down a working tunnel and, on a host that reaches its domain controllers across it, name resolution with it. |
 
 ## Collections

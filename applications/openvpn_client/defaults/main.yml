@@ -89,7 +89,9 @@ openvpn_client_defaults:
 
   #region ------ [ Name resolution across the tunnel ] ---------------------------------------- #
 
-  # The realm whose names must resolve through the tunnel, and the servers that answer for it.
+  # The realm whose names must resolve through the tunnel, the servers that answer for it, and
+  # optionally one address identifying the adapter that must send dynamic DNS registration to
+  # those servers.
   #
   # A multi-homed host answers a name from whichever adapter's resolver replies first, and a cloud
   # resolver replies NXDOMAIN for a private realm faster than a domain controller across a tunnel
@@ -101,9 +103,17 @@ openvpn_client_defaults:
   # needs no resolver policy. Declare both together -- a domain with no servers resolves nothing,
   # and validate.yml refuses it.
   #
+  # 'register_address' is optional. When declared, it must be a literal IPv4 address held by
+  # exactly one adapter; the role assigns 'servers' to that adapter so Windows sends its dynamic
+  # registration where the realm answers. It requires 'domain', but null does NOT undo an adapter
+  # setting written by an earlier converge: adapter DNS is persistent site state, and an automatic
+  # reset could replace a still-working tunnel dependency with unusable DNS. Revert explicitly
+  # with dns_servers: [] on the previously selected DHCP adapter before removing the declaration.
+  #
   # Order is significant: it is the order Windows asks them in.
   dns:
     domain: null
+    register_address: null
     servers: []
 
   #endregion --- [ Name resolution across the tunnel ] ---------------------------------------- #

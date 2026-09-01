@@ -50,7 +50,7 @@ role's defaults, and nothing else.
 | `installer` | Which client build, from the account-local mirror, at a pinned digest |
 | `profile` / `profile_name` | Which tunnel. The digest is the tunnel's identity |
 | `service_account` | `NT AUTHORITY\SYSTEM`, not the role's own default — see below |
-| `dns` | The resolvers the realm must be pinned to for a join to be deterministic |
+| `dns` | The realm's resolvers and the host address that identifies their registration adapter |
 | `proofs` | LDAP on both controllers: the tunnel is up when these answer |
 
 Two of those are measurements rather than preferences, and both are recorded where they are set:
@@ -60,7 +60,17 @@ Two of those are measurements rather than preferences, and both are recorded whe
   — `netsh` fails and the tunnel exits — and SYSTEM completes it.
 - **`dns`** is not convenience. A multi-homed host answers a name from whichever adapter replies
   first, and a cloud resolver returns NXDOMAIN for a private realm faster than a controller answers
-  across a tunnel. Without the pin, a directory join fails obscurely and intermittently.
+  across a tunnel. The NRPT pin makes realm lookups deterministic; `register_address` selects the
+  one adapter that holds the host's private address and assigns the same two controllers there, so
+  Windows dynamic registration does not go to the cloud resolver's unsupported UPDATE path.
+
+The pinned v2 profile is a no-rotation reissue of the same tunnel: `profile_name` remains
+`aws-ec2-test`. Its hostname remote remains primary, but `resolv-retry 60` replaces the infinite
+retry so an unresolvable hostname can exhaust and reach the following IP remote. That IP is a
+best-effort bootstrap path when DNS is unavailable, not a replacement endpoint. The profile omits
+`block-outside-dns` because its Windows local-interface filter would block DNS sourced on the
+physical adapter even when the route's next hop is the VPN; the adapter and NRPT instead contain
+only the two domain controllers.
 
 ## What it does not own
 
@@ -94,4 +104,6 @@ installer contract. Loud rather than silent, but it is a replacement, not a refi
 
 `present` places the host on the network. `clean` is a supported no-op: this role owns no state of
 its own. Removing the client is `openvpn_client`'s own clean path, called directly — tearing a
-host off its network is not a side effect of tidying caches.
+host off its network is not a side effect of tidying caches. Neither path automatically resets the
+adapter DNS written for registration; that persistent site state must be reverted explicitly on
+the previously selected adapter during a migration or decommission.

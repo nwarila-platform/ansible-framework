@@ -30,8 +30,11 @@
 #                                      automatic service's directory is refused.
 #
 # OPTIONAL: dns.domain and dns.servers (the realm pinned to named servers in the Name Resolution
-# Policy Table -- declared together or not at all), proofs (hosts and ports the tunnel must
-# actually reach, asked from the guest), proof_timeout_seconds, install.timeout_seconds.
+# Policy Table -- declared together or not at all); dns.register_address (a literal IPv4 address
+# identifying the one adapter that receives those servers for dynamic registration; the setting
+# persists and is not automatically reverted after the declaration is removed or clean runs);
+# proofs (hosts and ports the tunnel must actually reach, asked from the guest),
+# proof_timeout_seconds, install.timeout_seconds.
 #
 # NOT OFFERED: any way to run the client interactively or hand the guest credentials for the
 # bucket. The role installs the automatic service, running config-auto with nobody signed in, and
@@ -65,11 +68,12 @@ galaxy_info:
     controller and verified against a pinned digest on the guest. Places one pinned connection
     profile where the automatic service runs it at boot with nobody signed in, enforces that
     profile's permissions wholesale so the private key admits only SYSTEM, Administrators and the
-    service's own virtual account, holds the service on and running as that account, and pins the
-    realm's names to the domain controllers through the Name Resolution Policy Table. Refuses a
-    host carrying profiles the role did not declare, and proves the client, the profile, its
-    permissions, the service and the tunnel's actual reachability from the machine rather than from
-    the installer's report.
+    service's own virtual account, holds the service on and running as that account, pins the
+    realm's names to the domain controllers through the Name Resolution Policy Table, and can
+    assign those servers to one declared-address adapter for dynamic registration. Refuses a host
+    carrying profiles the role did not declare, and proves the client, the profile, its permissions,
+    the service and the tunnel's actual reachability from the machine rather than from the
+    installer's report.
 
   license: 'MIT'
   min_ansible_version: '2.16'
