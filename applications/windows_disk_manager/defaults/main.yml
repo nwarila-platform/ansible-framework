@@ -9,10 +9,9 @@
 #
 # WHAT THIS ROLE IS
 #   The Windows sibling of linux_disk_manager. It trusts each declared literal disk identity,
-#   resolves the attached disk, applies an idempotent online/writable fixup, classifies its
-#   observed contents, and provisions an NTFS volume only from a recognized blank or unformatted
-#   state. A matching NTFS label is skipped for idempotency; a foreign classification refuses
-#   provisioning for the entire declaration set.
+#   resolves the attached disk, and prepares it for its consumer. Non-clustered disks are made
+#   online/writable and provisioned only from recognized blank or unformatted states. Once
+#   Failover Clustering owns a disk, preparation is complete and the role leaves it unchanged.
 #
 # =========================================================================================== #
 windows_disk_manager_defaults:
@@ -52,7 +51,7 @@ windows_disk_manager_defaults:
   #
   # Literal unique_id values are trusted configuration; a resolved function becomes one at
   # run time. A resolved disk is provisioned only when positively classified as RAW/blank or
-  # GPT/unformatted, skipped when an NTFS volume has the declared label case-insensitively, and
-  # refused when its observed contents do not match one of those recognized states.
+  # GPT/unformatted, skipped when an NTFS volume has the declared label case-insensitively,
+  # treated as converged when cluster-owned, and otherwise refused as foreign.
   disks: []
   #endregion --- [ Managed disks ] -------------------------------------------------------------- #
