@@ -39,7 +39,7 @@ remote_client_defaults:
   # variable is missing and who supplies it.
   installer:
     bucket: "{{ aws_account_id | default('') }}-apprepo"
-    path: 'OpenVPN.net/OpenVPN Community/<version>/OpenVPN_Community_amd64.msi'
+    path: 'OpenVPN.net/OpenVPN Community/<version>/OpenVPNnet_OpenVPN-Community_<version>_x64.msi'
     version: '2.6.22'
     sha256: '1e1bb9a712990d1b2b961de7e8df3384964e4fb6f6776a100840f0d9a82ed507'
   #endregion --- [ The client build ] --------------------------------------------------------- #
