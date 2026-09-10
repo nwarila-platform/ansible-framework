@@ -115,3 +115,41 @@
       - domain_member_running.secure_channel | dict2items | rejectattr('value', 'integer')
         | list | length == 0
       - domain_member_running.workgroup_name | default('', true) | string | trim | length > 0
+
+- name: 'VALIDATE | Require The Address This Host Will Publish'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | lower) == 'windows'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to join: domain_member.registration_address is empty. A member publishes its own
+      name in the realm's DNS, and which of this host's addresses it should publish is the
+      deployment's to state — it is the address the deployment manages the host by, and no
+      heuristic gets it right on both a cloud-only member and one that reaches the realm across a
+      tunnel. Declare it as an IPv4 address, normally the host's primary private address from the
+      inventory. Leaving it unset is refused rather than tolerated, because a converge that left
+      registration as it found it would report success while the name stayed wrong.
+    quiet: true
+    that:
+      - domain_member_running.registration_address | default('', true) | string | trim | length > 0
+      - domain_member_running.registration_address | string | trim
+        is match('^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$')
+
+# The RedHat path does not implement name publication yet. The invariant applies there too --
+# sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which is
+# the tunnel on a split-network member and therefore the exact defect. Stated here so the contract
+# is honestly asymmetric rather than silently so: a RedHat caller that declares the key is told it
+# does nothing, instead of believing it did.
+- name: 'VALIDATE | Report That RedHat Does Not Publish A Declared Address Yet'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - (ansible_facts.os_family | lower) != 'windows'
+    - domain_member_running.registration_address | default('', true) | string | trim | length > 0
+
+  ansible.builtin.debug:
+    msg: >-
+      domain_member.registration_address is declared but this platform does not implement it. The
+      host will publish whatever its resolver configuration leads it to publish. Remove the key, or
+      accept that it has no effect here until the RedHat implementation lands.
+    verbosity: 0

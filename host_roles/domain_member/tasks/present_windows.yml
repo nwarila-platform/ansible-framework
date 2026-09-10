@@ -388,38 +388,54 @@
 
     #endregion --- [ Process: Point The Clock At The Declared Source ] ------------------------ #
 
-    #region ------ [ Process: Register Only The Address The Realm Can Reach ] ------------------ #
-    # A member publishes its own A record, and Windows offers every adapter carrying the primary
-    # suffix as a candidate. On a host with one network that is the right answer and this task
-    # changes nothing. On a host that reaches the realm across a second network it is not: the
-    # other adapter's address is routable only on its own side, so registering it publishes an
-    # address the realm cannot open a connection to -- worse than publishing none, because the
-    # name then resolves and fails instead of failing to resolve.
+    #region ------ [ Process: Publish Only The Declared Address ] ------------------------------ #
+    # A member publishes its own A record, and Windows publishes the addresses of every interface
+    # whose registration flag is set. Which interface that should be is not something a host can
+    # work out: the address the deployment manages the host by is the deployment's to state, and
+    # every heuristic tried in its place inverts between a cloud-only member and one that reaches
+    # the realm across a tunnel. So the declaration decides, and this task fails rather than guess
+    # when the declared address is not on exactly one interface.
     #
-    # The adapter that reaches the realm is the one the realm's own DHCP or VPN named with the
-    # realm as its connection suffix, so that is the test. Registration is not merely enabled on
-    # it: it is turned OFF everywhere else, because the wrong record is the failure being fixed.
+    # Registration is turned OFF everywhere else, not merely on where it belongs, because the wrong
+    # record is the failure being fixed -- and a host that publishes two addresses is worse than
+    # one that publishes the wrong one, since a resolver hands out each in turn.
+    #
+    # Addresses the platform excludes from registration stay excluded: a cluster IP resource is
+    # brought online with SkipAsSource, and Windows does not publish those. That is what lets an
+    # interface-wide flag satisfy a per-record contract on a cluster node.
 
-    - name: 'PROCESS | Register Only The Adapter That Reaches The Realm'
+    - name: 'PROCESS | Publish Only The Declared Address'
       ansible.windows.win_powershell:
         depth: 2
         error_action: 'stop'
         parameters:
-          Realm: "{{ __realm_to_join__ }}"
+          Address: "{{ domain_member_running.registration_address }}"
         remote_src: false
         script: |
           [CmdletBinding(SupportsShouldProcess)]
-          Param([System.String]$Realm)
+          Param([System.String]$Address)
           $Ansible.Changed = $false
+
+          $Holding = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
+            Where-Object { $PSItem.IPAddress -eq $Address })
+          If ($Holding.Count -ne 1) {
+            Throw ("The declared registration address {0} is on {1} interfaces; it must be on exactly one." -f $Address, $Holding.Count)
+          }
+          $Wanted = $Holding[0].InterfaceIndex
+
           ForEach ($Client In Get-DnsClient) {
-            $Wanted = ($Client.ConnectionSpecificSuffix -eq $Realm)
-            If ($Client.RegisterThisConnectionsAddress -ne $Wanted) {
-              Set-DnsClient -InterfaceIndex $Client.InterfaceIndex -RegisterThisConnectionsAddress $Wanted
+            $Should = ($Client.InterfaceIndex -eq $Wanted)
+            If ($Client.RegisterThisConnectionsAddress -ne $Should) {
+              Set-DnsClient -InterfaceIndex $Client.InterfaceIndex -RegisterThisConnectionsAddress $Should
               $Ansible.Changed = $true
             }
           }
 
-    #endregion --- [ Process: Register Only The Address The Realm Can Reach ] ------------------ #
+          # Registration otherwise waits for the client's next refresh or a reboot, so a converge
+          # that changed the flags would leave the old record standing and report success.
+          If ($Ansible.Changed) { Register-DnsClient }
+
+    #endregion --- [ Process: Publish Only The Declared Address ] ------------------------------ #
 
 #endregion --- [ Process: Join This Windows Host To The Realm ] ------------------------------- #
 
@@ -539,5 +555,76 @@
           - __domain_member_secure_channel__.output | default([], true) | first | default(false) | bool
 
     #endregion --- [ End: Prove The Machine Account Credential ] ------------------------------ #
+
+    #region ------ [ End: Prove The Realm Publishes The Declared Address ] -------------------- #
+    # Setting the flags proves nothing. Windows registration fails SILENTLY to whoever set them --
+    # the failure that produced this whole design was two entries in an event log behind a join
+    # that looked healthy -- so the only honest proof is the record itself, read back from a domain
+    # controller rather than from the host that claims to have written it.
+    #
+    # Asking a DC directly, rather than resolving normally, is the point: a client can answer from
+    # its own cache or from a resolver that is not authoritative, and both would agree with a host
+    # that published nothing. The DC comes from the realm's own SRV record, so nothing here names
+    # one.
+    #
+    # This catches every cause at once and needs no guard per cause: a missing NRPT rule on a
+    # tunnelled host, a realm that does not match, a policy overriding the flags, a secure-update
+    # refusal because some other principal owns the name. The bounded wait is because registration
+    # is asynchronous; the measured settling time was well inside it.
+
+    - name: 'END | Read This Host Back From A Domain Controller'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_published__'
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Realm: "{{ domain_member_running.realm }}"
+        remote_src: false
+        script: |
+          [CmdletBinding(SupportsShouldProcess)]
+          Param([System.String]$Realm)
+          $Controller = (Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.{0}' -f $Realm) -Type SRV -ErrorAction Stop |
+            Where-Object { $PSItem.NameTarget } | Select-Object -First 1).NameTarget
+          $Name = '{0}.{1}' -f $env:COMPUTERNAME, $Realm
+
+          $Deadline = (Get-Date).AddSeconds(60)
+          Do {
+            $Answer = @(Resolve-DnsName -Name $Name -Type A -Server $Controller -DnsOnly -ErrorAction SilentlyContinue |
+              Where-Object { $PSItem.Type -eq 'A' } | ForEach-Object { $PSItem.IPAddress })
+            If ($Answer.Count -gt 0) { Break }
+            Start-Sleep -Seconds 5
+          } While ((Get-Date) -lt $Deadline)
+
+          $Ansible.Changed = $false
+          [PSCustomObject]@{ Controller = $Controller; Name = $Name; Addresses = @($Answer) }
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Prove The Realm Publishes This Host At The Declared Address'
+      vars:
+        __published__: >-
+          {{ (__domain_member_published__.output | default([], true) | first | default({}, true)).Addresses
+             | default([], true) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' is a member of '{{ domain_member_running.realm }}' but the
+          realm does not publish it at its declared address
+          '{{ domain_member_running.registration_address }}'. A domain controller answers
+          {{ __published__ | default([], true) | join(', ') | default('nothing', true) }}.
+          A host that publishes nothing reaches a domain controller that will not accept its
+          update -- on a tunnelled host, most often because no policy rule points the realm at the
+          directory's own servers; a host that publishes some other address, or more than one, has
+          another interface registering or another principal owning the name.
+        quiet: true
+        that:
+          - __published__ | default([], true) | length == 1
+          - (__published__ | default([], true) | first | default('', true)) == domain_member_running.registration_address
+
+    #endregion --- [ End: Prove The Realm Publishes The Declared Address ] -------------------- #
 
 #endregion --- [ End: Join This Windows Host To The Realm ] ----------------------------------- #
