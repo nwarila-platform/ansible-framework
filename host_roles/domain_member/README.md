@@ -24,6 +24,7 @@ dict. Tasks read the merged result as `domain_member_running`.
 | Key | Required | Default | Purpose |
 |---|---|---|---|
 | `password.bucket` | Yes | `''` | S3 bucket holding the join account's password. Account-scoped, so only the deploying pipeline knows it. |
+| `registration_address` | Yes (Windows) | `''` | The IPv4 address this host publishes in the realm's DNS under its own name — the address the systems that manage it connect to. Declared rather than guessed: only the deployment knows which address it manages the host by, and no heuristic gets it right on both a cloud-only member and one reaching the realm across a tunnel. Empty is refused. Not implemented on RedHat; declaring it there reports that it has no effect. |
 | `realm` | No | site | DNS name of the realm. Not the NetBIOS short name. |
 | `user` | No | site | Account permitted to create or reuse this machine's computer object. |
 | `password.object` | No | site | Object key of the password. |
@@ -84,6 +85,7 @@ and break it. A Windows play therefore needs an explicit `localhost` inventory h
 | `force_rejoin` | `ad_integration_force_rejoin` → `realm leave` + `realm join` | unjoin to workgroup, restart, join |
 | `timesync_source` | `ad_integration_manage_timesync` + the `timesync` role | `W32Time` `NtpServer` + `Type`, service restarted |
 | machine-account posture | `sssd_custom_settings` in `vars/redhat.yml` | `secure_channel` in `vars/windows.yml` |
+| `registration_address` | not implemented — the equivalent is sssd's `dyndns_iface`, whose default is the interface that reaches AD and therefore reproduces the defect on a split network | `RegisterThisConnectionsAddress` on the one interface holding that address and off on every other, then `Register-DnsClient`, proven by reading the name back from a domain controller |
 
 ## Security posture
 
