@@ -388,6 +388,39 @@
 
     #endregion --- [ Process: Point The Clock At The Declared Source ] ------------------------ #
 
+    #region ------ [ Process: Register Only The Address The Realm Can Reach ] ------------------ #
+    # A member publishes its own A record, and Windows offers every adapter carrying the primary
+    # suffix as a candidate. On a host with one network that is the right answer and this task
+    # changes nothing. On a host that reaches the realm across a second network it is not: the
+    # other adapter's address is routable only on its own side, so registering it publishes an
+    # address the realm cannot open a connection to -- worse than publishing none, because the
+    # name then resolves and fails instead of failing to resolve.
+    #
+    # The adapter that reaches the realm is the one the realm's own DHCP or VPN named with the
+    # realm as its connection suffix, so that is the test. Registration is not merely enabled on
+    # it: it is turned OFF everywhere else, because the wrong record is the failure being fixed.
+
+    - name: 'PROCESS | Register Only The Adapter That Reaches The Realm'
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Realm: "{{ __realm_to_join__ }}"
+        remote_src: false
+        script: |
+          [CmdletBinding(SupportsShouldProcess)]
+          Param([System.String]$Realm)
+          $Ansible.Changed = $false
+          ForEach ($Client In Get-DnsClient) {
+            $Wanted = ($Client.ConnectionSpecificSuffix -eq $Realm)
+            If ($Client.RegisterThisConnectionsAddress -ne $Wanted) {
+              Set-DnsClient -InterfaceIndex $Client.InterfaceIndex -RegisterThisConnectionsAddress $Wanted
+              $Ansible.Changed = $true
+            }
+          }
+
+    #endregion --- [ Process: Register Only The Address The Realm Can Reach ] ------------------ #
+
 #endregion --- [ Process: Join This Windows Host To The Realm ] ------------------------------- #
 
 
