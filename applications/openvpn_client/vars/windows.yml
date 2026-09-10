@@ -49,6 +49,17 @@ service_account: 'NT SERVICE\OpenVPNService'
 
 #endregion --- [ The automatic service ] ------------------------------------------------------ #
 
+#region ------ [ The tunnel adapter ] --------------------------------------------------------- #
+
+# How this role recognises the adapter it created, so it can keep that adapter's address out of
+# the realm's DNS. Matched on the DRIVER's own description rather than the connection name, because
+# the connection name is renameable by anyone and the description comes from the driver the install
+# region selects (ADDLOCAL=...,Drivers.OvpnDco): the data channel offload adapter is the only one
+# this role installs, so 'OpenVPN*' names it and nothing else.
+adapter_description_match: 'OpenVPN*'
+
+#endregion --- [ The tunnel adapter ] --------------------------------------------------------- #
+
 #region ------ [ The profile's permissions ] -------------------------------------------------- #
 
 # The EXACT descriptor the connection profile carries, enforced wholesale rather than granted

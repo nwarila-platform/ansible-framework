@@ -607,6 +607,76 @@
 
     #endregion --- [ Process: Point The Realm At The Domain Controllers ] --------------------- #
 
+    #region ------ [ Process: Keep This Adapter Out Of The Realm's DNS ] ---------------------- #
+    # Two settings, one task, because separating them produces a state worse than either: measured,
+    # a host with the registration policy enabled while this adapter still registers publishes BOTH
+    # its addresses, and a resolver then hands out the unreachable one half the time.
+    #
+    # WHY THIS ROLE OWNS THEM. Both exist only because the realm is reached through a tunnel this
+    # role built:
+    #
+    #   * This adapter must never publish its address. A tunnel address is an artifact of reaching
+    #     the realm, not somewhere anything should connect to, and the pool reissues it to another
+    #     host later -- which is how a name comes to resolve to the wrong machine.
+    #   * Since the Windows 10 May 2020 update a client does NOT register through DNS servers that
+    #     come from a Name Resolution Policy Table rule, and the rule written above is the only
+    #     thing pointing the realm at the directory's servers. Left at its default, the host asks a
+    #     resolver that is not authoritative for the realm, and the registration fails silently.
+    #     The value is machine-wide, so it belongs to whatever writes a FORWARD rule for the realm:
+    #     today that is this task, and two writers would be a conflict to refuse, not to merge.
+    #
+    # A host with no tunnel never runs this role and never sees either setting, which is what keeps
+    # a cloud-only member and a tunnelled one identical everywhere else.
+    #
+    # The registration flag is cleared BEFORE the policy value is set, so an interruption between
+    # them leaves the host publishing nothing rather than publishing both.
+
+    - name: 'PROCESS | Keep This Adapter Out Of The Realm''s DNS'
+      vars:
+        __registration_policy__: 'HKLM:\System\CurrentControlSet\Services\Dnscache\Parameters'
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          AdapterDescriptionMatch: "{{ openvpn_client_running.adapter_description_match }}"
+          PolicyPath: "{{ __registration_policy__ }}"
+          RegisterThroughPolicy: "{{ __dns_declared__ | bool }}"
+        remote_src: false
+        script: |
+          [CmdletBinding(SupportsShouldProcess)]
+          Param(
+            [System.String]$AdapterDescriptionMatch,
+            [System.String]$PolicyPath,
+            [System.Boolean]$RegisterThroughPolicy
+          )
+          $Ansible.Changed = $false
+
+          $Adapters = @(Get-NetAdapter -ErrorAction Stop |
+            Where-Object { $PSItem.InterfaceDescription -like $AdapterDescriptionMatch })
+          If ($Adapters.Count -eq 0) {
+            Throw ("No adapter matches '{0}'. This role installs that driver, so its absence means the install did not produce the tunnel adapter -- refusing to permit registration through the policy while the adapter that must be excluded cannot be found." -f $AdapterDescriptionMatch)
+          }
+
+          ForEach ($Adapter In $Adapters) {
+            $Client = Get-DnsClient -InterfaceIndex $Adapter.ifIndex -ErrorAction Stop
+            If ($Client.RegisterThisConnectionsAddress) {
+              Set-DnsClient -InterfaceIndex $Adapter.ifIndex -RegisterThisConnectionsAddress $false
+              $Ansible.Changed = $true
+            }
+          }
+
+          # 0 permits registration through the rule's servers; 1 is the platform default and is
+          # what a host without such a rule must be left at.
+          $Wanted = [System.Int32]$(If ($RegisterThroughPolicy) { 0 } Else { 1 })
+          $Current = (Get-ItemProperty -Path $PolicyPath -Name 'DisableNRPTForAdapterRegistration' -ErrorAction SilentlyContinue).'DisableNRPTForAdapterRegistration'
+          If ($Current -ne $Wanted) {
+            Set-ItemProperty -Path $PolicyPath -Name 'DisableNRPTForAdapterRegistration' -Value $Wanted -Type DWord
+            $Ansible.Changed = $true
+          }
+
+    #endregion --- [ Process: Keep This Adapter Out Of The Realm's DNS ] ---------------------- #
+
     #region ------ [ Process: Apply Any Pending Restart ] ------------------------------------- #
     # Handlers would otherwise run at the very END of the play, after this role's own proofs.
     # Flushing here means the service has already re-read config-auto, as its own account, by the

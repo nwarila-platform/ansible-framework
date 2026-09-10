@@ -14,7 +14,7 @@ realm it cannot resolve or reach.
 | Stage | What happens |
 | --- | --- |
 | BEGIN | Reads the installed client's version from the binary's own version resource, and refuses a host carrying any `.ovpn` profile this role did not declare. |
-| PROCESS | Fetches the installer and the profile through the **controller**, verifies both against pinned digests, installs silently, writes the profile under a locked descriptor, holds the service on, and pins the realm's namespace to the declared servers. |
+| PROCESS | Fetches the installer and the profile through the **controller**, verifies both against pinned digests, installs silently, writes the profile under a locked descriptor, holds the service on, pins the realm's namespace to the declared servers, and keeps the tunnel adapter's own address out of the realm's DNS. |
 | END | Proves the client version, the profile's digest, the profile's exact permissions, the service's state/start mode/account, and that the tunnel actually reaches what the playbook declared. |
 
 One action is decided in BEGIN — install, upgrade, or none — and a converged host reads as a column
@@ -82,6 +82,29 @@ The service account admitted by that descriptor is the MSI's own virtual account
 `NT SERVICE\OpenVPNService`. Its SID is written as a literal in `vars/windows.yml` because SDDL has
 no abbreviation for a service account; the derivation is documented there and can be checked on any
 host with `sc.exe showsid OpenVPNService`.
+
+## Why this role, and not the join, keeps the tunnel out of DNS
+
+Two settings exist only because the realm is reached through a tunnel this role built, so this role
+owns them and a host without a tunnel never sees either:
+
+- **The tunnel adapter never registers its address.** A tunnel address is an artifact of reaching
+  the realm rather than somewhere anything should connect to, and the pool reissues it to another
+  host later — which is how a name comes to resolve to the wrong machine.
+- **`DisableNRPTForAdapterRegistration` is set to `0` while a realm rule exists**, and returned to
+  the platform default when no realm is declared. Since the Windows 10 May 2020 update a client
+  does not register through DNS servers that came from an NRPT rule, and the rule this role writes
+  is the only thing pointing the realm at the directory's servers — so at the default the host asks
+  a resolver that is not authoritative for the realm and the registration fails silently. The value
+  is machine-wide, so it belongs to whatever writes a **forward** rule for the realm; two writers
+  would be a conflict to refuse rather than merge.
+
+Both are written by one task, in that order. Separating them produces a state worse than either:
+with registration permitted through the policy while the tunnel adapter still registers, the host
+publishes **both** addresses and a resolver hands out the unreachable one half the time.
+
+Which address a member does publish is not this role's business — that belongs to `domain_member`,
+which behaves identically whether or not a tunnel exists.
 
 ## Secrets and what pipelining does not change
 
