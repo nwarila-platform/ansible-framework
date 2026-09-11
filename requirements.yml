@@ -1,11 +1,13 @@
 ---
 # =============================================================================
-# Runtime Collection Dependencies
+# Runtime Collection Dependencies (the Galaxy-published set)
 # =============================================================================
-# Every collection whose modules this framework's roles call, pinned to an
-# exact version. Roles pin every documented module option so a vendor cannot
-# move behaviour inside a version (style guide 4f); this file closes the other
-# half of that promise by fixing which version is installed at all.
+# Every Galaxy-published collection this framework's roles call, pinned to an
+# exact version. Roles state every module option whose documented default is
+# non-null so a vendor cannot move behaviour inside a version; this file
+# closes the other half of that promise by fixing which version is installed
+# at all. One dependency is not served by Galaxy and is recorded, unpinned,
+# at the end of this file.
 #
 # This matters downstream: consuming repositories pin the framework by full
 # commit SHA, so an unpinned collection set would leave those pins reproducible
@@ -14,8 +16,10 @@
 # Install via: make collections
 # Or directly:  ansible-galaxy collection install -r requirements.yml
 #
-# Upgrading a pin is a deliberate, tested change -- never a drive-by edit.
-# Diff the new version's documented defaults against the old one first:
+# Upgrading a pin is a deliberate, tested change -- never a drive-by edit, and
+# a Renovate bump PR is reviewed the same way (.github/renovate.json5 routes
+# this file to chore(deps-dev)). Diff the new version's documented defaults
+# against the old one first:
 #   ansible-doc -j <module> | jq '..|.options?|objects|map_values(.default)'
 # =============================================================================
 
@@ -37,7 +41,8 @@ collections:
   - name: 'ansible.windows'
     version: '3.7.0'
 
-  # win_acl and the wider Windows management surface.
+  # win_file_version (openvpn_client); win_disk_facts, win_initialize_disk,
+  # win_partition and win_format (windows_disk_manager).
   - name: 'community.windows'
     version: '3.3.0'
 
@@ -56,13 +61,27 @@ collections:
   # community.general is deliberately NOT advanced to 13.x here: 'parted' gained
   # a new defaulted option (unit_preserve_case) after 7.5.9, which is exactly the
   # silent-default class this file exists to prevent. Moving to it belongs in its
-  # own PR that pins the new option in linux_disk_manager's four parted calls.
+  # own PR that pins the new option in linux_disk_manager's parted task.
   # ---------------------------------------------------------------------------
 
-  # parted and filesystem, used by linux_disk_manager.
+  # parted and filesystem, used by linux_disk_manager. Also a dependency of the
+  # ad_integration system role that domain_member runs on RedHat (see below).
   - name: 'community.general'
     version: '7.5.9'
 
-  # mount, used by linux_disk_manager.
+  # mount, used by linux_disk_manager. Also a dependency of the ad_integration
+  # system role that domain_member runs on RedHat (see below).
   - name: 'ansible.posix'
     version: '1.6.2'
+
+  # ---------------------------------------------------------------------------
+  # Not pinned here: content Galaxy does not serve
+  # ---------------------------------------------------------------------------
+  # domain_member's RedHat path (tasks/present_redhat.yml) includes the
+  # ad_integration role from redhat.rhel_system_roles. galaxy.ansible.com does
+  # not publish that collection: it ships in the RHEL repositories as the
+  # rhel-system-roles package, and on Red Hat Automation Hub. An install from
+  # this file therefore cannot resolve it; a controller that runs the RedHat
+  # path carries it from one of those sources, as the role's README says. Its
+  # own dependencies, ansible.posix and community.general, ARE pinned above.
+  # ---------------------------------------------------------------------------

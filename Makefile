@@ -2,11 +2,9 @@
 # Makefile — Developer Convenience Targets
 # =============================================================================
 # Usage:
-#   make install      Install all dev dependencies
+#   make install      Install dev dependencies, pinned collections, and hooks
 #   make collections  Install the pinned runtime collections
-#   make materialize-check
-#                     Verify every PowerShell stub resolves and no copy is stale
-#   make lint         Run yamllint + ansible-lint + allowlist guard
+#   make lint         Run yamllint, ansible-lint, and every guard target
 #   make pre-commit   Run full pre-commit suite against all files
 #   make allowlist-check
 #                     Fail if a deliverable file is silently ignored
@@ -14,6 +12,8 @@
 #                     Assert every framework application loader is byte-identical
 #   make loader-defaults-convention-check
 #                     Assert every loader role's defaults file defines its namespaced key
+#   make materialize-check
+#                     Verify every PowerShell stub resolves and no copy is stale
 #   make clean        Remove Python cache artifacts
 # =============================================================================
 
@@ -44,11 +44,9 @@ LOADER_PATHS := \
 # ---------------------------------------------------------------------------
 help:
 	@echo ""
-	@echo "  make install       Install dev dependencies from requirements-dev.txt"
+	@echo "  make install       Install dev dependencies, pinned collections, and hooks"
 	@echo "  make collections   Install pinned runtime collections from requirements.yml"
-	@echo "  make materialize-check"
-	@echo "                     Verify every PowerShell stub resolves and no copy is stale"
-	@echo "  make lint          Run yamllint, ansible-lint, and the allowlist guard"
+	@echo "  make lint          Run yamllint, ansible-lint, and every guard target"
 	@echo "  make yamllint      Run yamllint only"
 	@echo "  make ansible-lint  Run ansible-lint only"
 	@echo "  make allowlist-check"
@@ -57,6 +55,8 @@ help:
 	@echo "                     Assert every framework application loader is byte-identical"
 	@echo "  make loader-defaults-convention-check"
 	@echo "                     Assert every loader role's defaults file defines its namespaced key"
+	@echo "  make materialize-check"
+	@echo "                     Verify every PowerShell stub resolves and no copy is stale"
 	@echo "  make pre-commit    Run full pre-commit suite against all files"
 	@echo "  make clean         Remove Python cache artifacts"
 	@echo ""
