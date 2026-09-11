@@ -1,7 +1,7 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/present_debian_ubuntu.yml'                                    #
+# File: '{{ role_path }}/tasks/present_debian_ubuntu.yml'                                     #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for Debian-family hosts (Ubuntu, Debian, etc.) — state: present.                          #
+# OS-specific task file for Ubuntu — state: present.                                          #
 #                                                                                             #
 # Execution order:                                                                            #
 #   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #

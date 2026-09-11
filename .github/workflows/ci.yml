@@ -6,12 +6,15 @@
 # Jobs are intentionally independent so they run in parallel — a yamllint
 # failure does not block ansible-lint from reporting its own findings.
 #
-# Required status checks (configure in branch protection):
-#   - yamllint
-#   - allowlist-check
-#   - ansible-lint
-#   - loader-identity-check
-#   - materialize-check
+# Jobs, in file order, by the check name GitHub shows. None is currently
+# required by the ruleset on main; making one required is an owner action in
+# the repository rulesets, not in this file.
+#   - YAML Lint
+#   - Deny-All Allowlist
+#   - Shared Loader Byte Identity
+#   - PowerShell Stub Materialization
+#   - Ansible Lint
+#   - Pre-Commit Hooks
 # =============================================================================
 
 name: CI
@@ -54,7 +57,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install yamllint
+      - name: Install the dev toolchain (requirements-dev.txt)
         run: pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Run yamllint
@@ -137,7 +140,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install ansible-lint
+      - name: Install the dev toolchain (requirements-dev.txt)
         run: pip install --no-cache-dir -r requirements-dev.txt
 
       # ansible-lint runs against the pinned collections rather than whatever the
@@ -176,7 +179,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install pre-commit
+      - name: Install the dev toolchain (requirements-dev.txt)
         run: pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Run pre-commit

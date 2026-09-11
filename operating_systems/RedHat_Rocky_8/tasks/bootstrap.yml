@@ -32,7 +32,7 @@
 #          wazuh_agents_windows host in a combined run."
 #     That exclusion is now enforced two ways instead of one: the OS assert below fails LOUDLY
 #     on a host other than RHEL/Rocky 8 (strictly better than a play silently skipping it), and
-#     hosts call 'Windows_Server_2025/tasks/bootstrap.yml' instead.
+#     hosts call the matching 'Windows_Server_<release>/tasks/bootstrap.yml' instead.
 #   * 'gather_facts' may be true or false — the INIT stage loads, conditionally and narrowly,
 #     exactly the three fact subsets this file reads. That is the whole reason it is safe to
 #     call on a host nobody has touched yet.

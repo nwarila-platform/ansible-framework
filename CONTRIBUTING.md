@@ -50,9 +50,9 @@ Please open an issue using the bug report template and include:
 
 ## Adding a new role
 
-1. Create the role directory under `applications/`, `operating_systems/` or `utilities/`
+1. Create the role directory under `applications/`, `host_roles/`, `operating_systems/` or `utilities/`
 2. Copy the shared `tasks/main.yml` loader from an existing role
-3. Create the most-specific OS task file (e.g., `tasks/redhat_rocky_10.yml`)
+3. Create the most-specific OS task file (e.g., `tasks/present_redhat_rocky_10.yml`; the loader prefixes the state)
 4. Populate `defaults/main.yml` with namespaced defaults (`<rolename>_defaults`)
 5. Add a `README.md` documenting variables, security highlights, and known gaps
 6. Add a `meta/main.yml` with Galaxy metadata
@@ -81,7 +81,7 @@ A utility role is a helper a play calls; it is not something a host has deployed
 ```
 <type>(<scope>): <short description>
 
-Types:  feat | fix | docs | refactor | test | chore | perf | ci | build | revert
+Types:  feat | fix | docs | style | refactor | test | chore | perf | ci | build | revert
 Scope:  role name or 'framework' (e.g., python3_pip, RedHat_Rocky_10, framework)
 ```
 

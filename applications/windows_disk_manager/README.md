@@ -23,7 +23,7 @@ Each `disks[]` entry uses this contract:
 | key | Required | Default | Purpose |
 |-----|----------|---------|---------|
 | `unique_id` | Identity option | — | VMware whole-disk identity such as `eui.<hex>`; required for VMware. |
-| `function` | Identity option | — | AWS EBS `Function` tag, resolved in a later piece. Do not combine with `unique_id`. |
+| `function` | Identity option | — | AWS EBS `Function` tag, resolved at run time by `tasks/resolve_aws.yml`. Do not combine with `unique_id`. |
 | `drive_letter` | Yes | — | One ASCII letter, optionally followed by `:` or `:\`. |
 | `label` | Yes | — | Volume label. |
 | `allocation_unit` | No | `4096` | Allocation-unit size in bytes. |
@@ -39,8 +39,6 @@ letter, so equivalent spellings such as `D`, `d:`, and `D:\` are duplicates.
 - `platform: vmware` requires detected vendor `VMware, Inc.`.
 - `platform: aws` requires detected vendor `Amazon EC2`.
 - All validation guards are scoped to `state=present`; `state=clean` is a supported no-op.
-- AWS `function` resolution is deferred; every active declaration must provide a literal
-  `unique_id`.
 - Literal `unique_id` values are trusted configuration. After resolving each declared disk and
   applying the online/writable fixup, the role classifies its observed contents as follows:
 

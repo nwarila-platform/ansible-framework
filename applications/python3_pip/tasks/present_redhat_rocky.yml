@@ -1,7 +1,7 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/present_redhat_rocky.yml'                                     #
+# File: '{{ role_path }}/tasks/present_redhat_rocky.yml'                                      #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for Rocky Linux / RHEL (all versions) — state: present.             #
+# OS-specific task file for Rocky Linux — state: present.                                     #
 #                                                                                             #
 # Execution order:                                                                            #
 #   0. Preflight: verify ansible.builtin.dnf prerequisites are met                           #

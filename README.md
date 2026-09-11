@@ -2,7 +2,7 @@
 
 A professional, security-hardened Ansible automation framework for standardized, repeatable infrastructure and application deployments.
 
-[![CI](https://github.com/HellBomb/ansible-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/HellBomb/ansible-framework/actions/workflows/ci.yml)
+[![CI](https://github.com/nwarila-platform/ansible-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/nwarila-platform/ansible-framework/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
@@ -13,7 +13,7 @@ The framework is organized into namespaces, each mapped as an Ansible `roles_pat
 
 | Namespace            | Purpose                                                       |
 |----------------------|---------------------------------------------------------------|
-| `applications/`      | Application-specific roles (e.g., `python3_pip`, `nginx`)     |
+| `applications/`      | Application-specific roles (e.g., `python3_pip`, `wazuh_agent`) |
 | `operating_systems/` | Per-OS bootstrap and hardening roles                          |
 | `utilities/`         | Helper roles a play calls; they carry no lifecycle loader     |
 | `host_roles/`        | What a host IS, not what it runs                              |
@@ -53,12 +53,12 @@ The seed variable may come from any normal Ansible variable source. Merely shipp
 The loader selects the **most specific** matching task file that exists:
 
 ```
-tasks/redhat_rocky_10.yml   ← most specific (family + distro + version)
-tasks/redhat_rocky.yml      ← distro-level fallback
-tasks/redhat.yml            ← family-level fallback
+tasks/present_redhat_rocky_10.yml   ← most specific (state + family + distro + version)
+tasks/present_redhat_rocky.yml      ← distro-level fallback
+tasks/present_redhat.yml            ← family-level fallback
 ```
 
-A role like `python3_pip` can ship a single `redhat.yml` that works across all RedHat-family systems, while roles with version-specific logic provide `redhat_rocky_10.yml`.
+The resolved `state` is prefixed to every candidate. A role can ship a single `present_redhat.yml` that works across the RedHat family, while roles with distribution- or version-specific logic provide `present_redhat_rocky.yml` or `present_redhat_rocky_10.yml` (`python3_pip` ships `present_redhat_rocky.yml` and a family-level `clean_redhat.yml`).
 
 ### 4. Secure Temp Directory
 After the required OS facts are verified, an enabled temp directory is created as `0700
@@ -74,17 +74,23 @@ modified.
 
 ### Applications
 
-| Role          | Description                                                                              | Status |
-|---------------|------------------------------------------------------------------------------------------|--------|
-| `python3_pip` | Installs, upgrades, and configures Python3 pip with a security-hardened `pip.conf`      | Stable |
+| Role                   | Description                                                                                                                              |
+|------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `linux_disk_manager`   | Step-0 storage initializer: selects disks by stable by-id identity, then partitions, formats, and mounts by UUID (VMware, Proxmox, AWS)   |
+| `openvpn_client`       | OpenVPN community client for Windows, installed at a pinned version from S3 through the controller and verified against a pinned digest  |
+| `python3_pip`          | Installs, upgrades, and configures Python3 pip with a security-hardened `pip.conf`                                                       |
+| `s3_artifact_delivery` | Delivers checksum-pinned S3 artifacts through fresh controller-generated presigned URLs; no target holds AWS credentials                 |
+| `wazuh_agent`          | Installs and enrolls the Wazuh agent: a standalone RPM on RedHat, an MSI on Windows, both fetched from S3                                |
+| `windows_disk_manager` | Windows NTFS disk provisioning (initialize, partition, format) with stable disk identity and a drive-letter contract for VMware and AWS  |
 
 ### Operating Systems
 
 | Role              | Description                                          | Status      |
 |-------------------|------------------------------------------------------|-------------|
-| `RedHat_Rocky_10` | Full OS bootstrap: Ansible venv, packages, hostname  | In Progress |
+| `RedHat_Rocky_10` | Loader scaffold only; no bootstrap task file yet     | Planned     |
 | `RedHat_Rocky_9`  | Rocky Linux 9 bootstrap                              | Planned     |
-| `RedHat_Rocky_8`  | RHEL / Rocky Linux 8 bootstrap                       | In Progress |
+| `RedHat_Rocky_8`  | RHEL / Rocky Linux 8 bootstrap and STIG hardening    | In Progress |
+| `Windows_Server_2022` | Windows Server 2022 bootstrap                  | In Progress |
 | `Windows_Server_2025` | Windows Server 2025 bootstrap                  | In Progress |
 
 ### Utilities
@@ -107,7 +113,7 @@ modified.
 
 ### Prerequisites
 
-- Ansible >= 2.17, < 2.19
+- ansible-core >= 2.21.3, < 2.22 (the range pinned in `requirements-dev.txt`; `domain_member` declares a 2.20 floor)
 - Python >= 3.12
 - `pre-commit` (for local hook enforcement)
 
@@ -164,7 +170,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/), 
 ```
 <type>(<scope>): <description>
 
-Types:  feat | fix | docs | refactor | test | chore | perf | ci | build | revert
+Types:  feat | fix | docs | style | refactor | test | chore | perf | ci | build | revert
 Scope:  role name or 'framework'
 ```
 

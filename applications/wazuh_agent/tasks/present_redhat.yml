@@ -374,7 +374,6 @@
 
     # Service-up does not prove manager connectivity; the agent's own state file is the contract.
     # Linux's wazuh-agentd.state filename differs from Windows by design, not by typo.
-    # This CONNECTED gate is proven live; see converge-reconnect.md for the full rationale.
     - name: 'END | Read Agent Connection State File'
       become: true
       register: '__agent_state__'

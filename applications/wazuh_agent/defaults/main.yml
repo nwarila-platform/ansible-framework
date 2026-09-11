@@ -78,7 +78,7 @@ wazuh_agent_defaults:
     # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.
     fim_realtime_paths:
       - 'C:\Windows\System32\drivers\etc'
-  #endregion --- [ Windows agent ] -------------------------------------------------------------- #
+  #endregion --- [ Windows agent (native win_* path) ] ----------------------------------------- #
 
   #region ------ [ Side-deps ] ------------------------------------------------------------------ #
   # boto3/botocore are provided by the bootstrap venv (/opt/ansible/venv); no longer pulled

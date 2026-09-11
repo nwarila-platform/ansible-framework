@@ -1,8 +1,8 @@
 # linux_disk_manager
 
 The **step-0 storage initializer**. Given a machine with attached-but-blank data disks, it
-**partitions → formats → labels → mounts** each declared disk, then the application role (e.g.
-`wazuh_server`) consumes the mounted volume at `/mnt/data`.
+**partitions → formats → labels → mounts** each declared disk, then a downstream application
+role (for example secure-wazuh's `wazuh_server`) consumes the mounted volume at `/mnt/data`.
 
 Framework-compatible role: ships the ansible-framework **shared** generic loader
 (`tasks/main.yml`, byte-identical — never edit), merged-config guards in `tasks/validate.yml`,
@@ -69,7 +69,7 @@ Each `disks[]` entry:
 
 ```bash
 # step 0 — provision the data disk, then deploy the stack
-ansible-playbook -i lab/inventory.yml playbooks/linux_disk_manager.yml -e ENV=dev
+ansible-playbook -i inventory.yml site.yml -e ENV=dev   # a consumer play that lists this role
 ```
 
 ## Requirements

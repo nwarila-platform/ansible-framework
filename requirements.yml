@@ -37,7 +37,10 @@ collections:
   - name: 'amazon.aws'
     version: '11.4.0'
 
-  # win_copy, win_file, win_service, win_package, win_powershell, win_stat, setup.
+  # setup and the win_* modules every Windows path uses: win_copy, win_file,
+  # win_find, win_get_url, win_hostname, win_package, win_powershell, win_reboot,
+  # win_regedit, win_service, win_service_info, win_shell, win_stat, win_uri and
+  # win_wait_for.
   - name: 'ansible.windows'
     version: '3.7.0'
 

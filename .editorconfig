@@ -40,7 +40,7 @@ trim_trailing_whitespace = false
 max_line_length = off
 
 # ---------------------------------------------------------------------------
-# JSON (release-please manifest, pre-commit config)
+# JSON (release-please manifest and config)
 # ---------------------------------------------------------------------------
 [*.json]
 indent_style = space
@@ -51,3 +51,10 @@ indent_size = 2
 # ---------------------------------------------------------------------------
 [Makefile]
 indent_style = tab
+
+# ---------------------------------------------------------------------------
+# Python — the lookup plugin, the module, and the tests use 4-space indentation
+# ---------------------------------------------------------------------------
+[*.py]
+indent_style = space
+indent_size = 4

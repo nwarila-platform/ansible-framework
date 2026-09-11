@@ -10,8 +10,8 @@
 #
 # WHAT THIS ROLE IS
 #   The "step-0" storage initializer. Given a machine handed to it with attached-but-blank data
-#   disks, it partitions -> formats -> labels -> mounts each one, then the application role
-#   (e.g. wazuh_server) consumes the mounted volume (/mnt/data).
+#   disks, it partitions -> formats -> labels -> mounts each one, then a downstream application
+#   role (for example secure-wazuh's wazuh_server) consumes the mounted volume (/mnt/data).
 #
 # THE NITRO FIX (why this role exists)
 #   Block-device names (/dev/sda, /dev/nvme0n1) are NOT stable. On AWS Nitro the NVMe

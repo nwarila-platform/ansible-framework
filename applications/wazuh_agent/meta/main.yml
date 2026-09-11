@@ -9,7 +9,7 @@ galaxy_info:
   role_name: 'wazuh_agent'
   namespace: 'ansible_framework'
   author: 'HellBomb'
-  description: 'Installs and enrolls the Wazuh agent from a standalone RPM in S3.'
+  description: 'Installs and enrolls the Wazuh agent: a standalone RPM on RedHat, an MSI on Windows, both fetched from S3.'
 
   license: 'MIT'
   min_ansible_version: '2.16'
@@ -18,12 +18,16 @@ galaxy_info:
     - name: 'EL'
       versions:
         - '8'
+    - name: 'Windows'
+      versions:
+        - 'all'
 
   galaxy_tags:
     - 'wazuh'
     - 'agent'
     - 'endpoint'
     - 'redhat'
+    - 'windows'
     - 's3'
 
 allow_duplicates: false

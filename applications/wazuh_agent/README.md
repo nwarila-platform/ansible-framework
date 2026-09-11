@@ -25,7 +25,7 @@ Decoupling the agent from the central bundle lets the two ship on independent ca
 | Variable | Type | Description |
 |---|---|---|
 | `ENV` | str | Environment selector (`dev`, `test`, or `prod`). Used by overlay loader. |
-| `wazuh_agent.state` | str | `present` (default) or `clean`. |
+| `state` (a play variable, not a key of `wazuh_agent`) | str | `present` (default) or `clean`. |
 | `wazuh_agent.manager.host` | str | Required and non-empty for `state=present`. Set explicitly to the manager's routable IP address or DNS name; the shared role does not infer consumer inventory topology. |
 | `wazuh_agent.agent_ip` | str | Optional explicit endpoint IPv4 for `agent-auth -I`. Required when `ansible_host` is a DNS name instead of an IPv4 address. |
 
@@ -77,8 +77,9 @@ s3:
 ## S3 Python deps
 
 boto3/botocore come from the **bootstrap venv** (`/opt/ansible/venv`, built by
-`playbooks/bootstrap.yml`) — not from pip on the target. The agent's `amazon.aws.s3_object`
-task borrows the venv via a block-level `ansible_python_interpreter` override, while every other
+`operating_systems/RedHat_Rocky_8/tasks/bootstrap.yml`) — not from pip on the target. The agent's
+`amazon.aws.s3_object` task borrows the venv via a task-level `ansible_python_interpreter`
+override, while every other
 task runs under platform-python (which carries the libselinux/dnf/firewalld bindings the role
 needs). The former `python3-pip` install + fapolicyd-trust dance was removed with that change.
 
