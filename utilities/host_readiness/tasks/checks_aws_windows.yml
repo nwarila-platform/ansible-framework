@@ -25,3 +25,54 @@
   ansible.builtin.raw: >-
     powershell -NoProfile -Command
     "& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b"
+
+# EC2Launch reporting 'complete' is not the same as the machine having finished starting. Measured
+# on a Server 2025 image, 2026-09-11: the blocking status call returned in one second and the
+# machine restarted itself a minute later -- winlogon, on behalf of SYSTEM, reason 'Operating
+# System: Upgrade (Planned)'. Windows was finishing its own setup, and the agent's answer did not
+# speak for that.
+#
+# A play that continues into those seconds configures a host that is about to vanish. It cost a
+# converge: the domain join completed, its own restart completed, and the machine then went away
+# under the following task. It went away QUIETLY, too -- SSH keepalives take ten minutes to call a
+# dead connection dead, so a ninety-second event surfaced as an eleven-minute hang attributed to
+# whichever task happened to be running.
+#
+# So the gate is the machine's own uptime rather than an agent's opinion of it: wait until the host
+# has been up for a settle window with no restart pending, and treat a lost connection as the very
+# thing being waited for instead of as a failure. ignore_unreachable plus a retry is what makes
+# that survivable -- a host that reboots mid-check is unreachable for one attempt and answers the
+# next.
+- name: 'Host Readiness | Wait Until The Machine Has Stopped Restarting Itself'
+  become: false
+  changed_when: false
+  check_mode: false
+  delay: 20
+  ignore_unreachable: true
+  register: '__host_readiness_settled__'
+  retries: 15
+  until:
+    - not (__host_readiness_settled__.unreachable | default(false))
+    - (__host_readiness_settled__.rc | default(1)) == 0
+
+  ansible.builtin.raw: >-
+    powershell -NoProfile -Command
+    "$Up = ((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds;
+    $Pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
+    (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired');
+    if ($Up -ge 90 -and -not $Pending) { exit 0 };
+    Write-Output ('not settled: up {0:N0}s, reboot pending {1}' -f $Up, $Pending); exit 1"
+
+# The retry budget is finite, so exhausting it has to stop the run rather than let the play proceed
+# into the state the wait exists to avoid.
+- name: 'Host Readiness | Require That The Machine Settled'
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' never stayed up long enough to be configured: it was still
+      restarting, or still reported a restart pending, after every attempt. Configuring a host that
+      is about to reboot is how a converge half-applies, so this stops here. The System log's event
+      1074 names the process that restarted the machine, and why.
+    quiet: true
+    that:
+      - not (__host_readiness_settled__.unreachable | default(false))
+      - (__host_readiness_settled__.rc | default(1)) == 0
