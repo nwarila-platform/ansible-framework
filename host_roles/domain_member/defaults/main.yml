@@ -102,15 +102,20 @@ domain_member_defaults:
   # rather than guessed, because only the deployment knows which of a host's addresses it manages
   # the host by.
   #
-  # No default is possible or honest. Every heuristic tried in its place picks the wrong address on
-  # some real host: "the adapter with the realm as its connection suffix" is the physical NIC on a
-  # cloud-only member and the VPN adapter on a member that reaches the realm across a tunnel, so it
-  # inverts between two environments that must behave identically. An address the caller states
-  # cannot invert.
+  # OPTIONAL, and normally left unset. A host with one route to the world has one answer, and
+  # asking every caller to restate it is ceremony -- so an empty value means "ask the host", and
+  # the Windows path publishes the address it would use to reach a remote network, as the platform
+  # itself resolves that. The converge SAYS which address it chose, because routing describes how
+  # this host reaches the world and is not evidence of how anything reaches this host.
   #
-  # REQUIRED on Windows. Empty is refused rather than tolerated: a host that publishes nothing
-  # resolves to nothing, and a converge that quietly left registration as it found it would report
-  # success while the name stayed wrong.
+  # DECLARE IT where those differ: a host whose management path is not its default route, one whose
+  # tunnel carries the default route, or an interface holding several usable addresses. Those are
+  # the unusual cases, and stating the address is how they are settled.
+  #
+  # What must never come back is a rule derived from the realm's DNS suffix. The suffix is set by
+  # whatever hands out the network -- a VPN sets it on the tunnel adapter -- so a rule keyed on it
+  # selects the physical NIC on a cloud-only member and the tunnel on a member reaching the realm
+  # across one, inverting between two environments that must behave identically.
   #
   # The RedHat path does not implement this yet and says so in validate.yml. The INVARIANT applies
   # there equally -- sssd's dyndns_iface is the same idea, and its default (the interface that

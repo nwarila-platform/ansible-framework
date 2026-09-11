@@ -24,7 +24,7 @@ dict. Tasks read the merged result as `domain_member_running`.
 | Key | Required | Default | Purpose |
 |---|---|---|---|
 | `password.bucket` | Yes | `''` | S3 bucket holding the join account's password. Account-scoped, so only the deploying pipeline knows it. |
-| `registration_address` | Yes (Windows) | `''` | The IPv4 address this host publishes in the realm's DNS under its own name — the address the systems that manage it connect to. Declared rather than guessed: only the deployment knows which address it manages the host by, and no heuristic gets it right on both a cloud-only member and one reaching the realm across a tunnel. Empty is refused. Not implemented on RedHat; declaring it there reports that it has no effect. |
+| `registration_address` | No | `''` | The IPv4 address this host publishes in the realm's DNS under its own name. Empty asks the host: Windows publishes the address it reaches a remote network from, and the converge says which it chose. Declare it where that is wrong — a management path that is not the default route, a tunnel carrying the default route, or an interface holding several usable addresses. Not implemented on RedHat; declaring it there reports that it has no effect. |
 | `realm` | No | site | DNS name of the realm. Not the NetBIOS short name. |
 | `user` | No | site | Account permitted to create or reuse this machine's computer object. |
 | `password.object` | No | site | Object key of the password. |
