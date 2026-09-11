@@ -114,15 +114,15 @@ modified.
 ### Development Setup
 
 ```bash
-# Install pre-commit hooks (run once after cloning)
-pip install pre-commit
-pre-commit install
-pre-commit install --hook-type commit-msg
+# Run once after cloning: installs the dev toolchain (requirements-dev.txt), the
+# pinned runtime collections (requirements.yml, force-installed into your default
+# Ansible collections path, ~/.ansible/collections unless configured otherwise),
+# and the git hooks
+make install
 
-# Lint all files
-pre-commit run --all-files
-ansible-lint
-yamllint --config-file .yamllint.yml .
+# Lint all files: every guard target, then the full pre-commit suite
+make lint
+make pre-commit
 ```
 
 ### Usage

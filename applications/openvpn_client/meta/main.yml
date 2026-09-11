@@ -37,8 +37,9 @@
 # bucket. The role installs the automatic service, running config-auto with nobody signed in, and
 # everything moves through the controller.
 #
-# COLLECTIONS. min_ansible_version below is a CORE floor and cannot express these; nothing in this
-# repository pins collection versions, so they are stated here and must be checked by the consumer:
+# COLLECTIONS. min_ansible_version below is a CORE floor and cannot express these. The exact
+# versions the framework installs are pinned in /requirements.yml; the floors here are what this
+# role's tasks require, and a consumer that installs its own set must satisfy them:
 #
 #   ansible.windows    >= 3.4.0   the win_file timestamp options the present path declares
 #   community.windows  >= 2.4.0   win_file_version, which reads the installed client's version

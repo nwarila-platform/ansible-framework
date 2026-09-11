@@ -22,6 +22,7 @@
 !/SUPPORT.md
 !/release-please-config.json
 !/requirements-dev.txt
+!/requirements.yml
 
 # Repository-level lookup plugins
 !/lookup_plugins/

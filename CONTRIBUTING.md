@@ -25,11 +25,13 @@ Thanks for considering a contribution! Contributions and bug reports are very we
 ## Development setup
 
 ```bash
-# Install all dev dependencies
+# Install the dev toolchain, the pinned runtime collections, and the git hooks.
+# The collections step is `make collections`: it force-installs the versions in
+# requirements.yml, replacing any other version already in your collections path.
 make install
 
 # Run linters individually
-make lint       # yamllint + ansible-lint
+make lint       # yamllint, ansible-lint, and every guard target
 make yamllint
 make ansible-lint
 ```

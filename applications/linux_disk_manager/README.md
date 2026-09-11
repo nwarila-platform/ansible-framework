@@ -84,4 +84,4 @@ ansible-playbook -i lab/inventory.yml playbooks/linux_disk_manager.yml -e ENV=de
   do not produce this by-id name. Function-tag resolution also requires controller-side AWS
   credentials with permission to describe attached volumes; the target needs no EBS/IAM grant.
 - Toolchain: RHEL 8 targets run platform-python 3.6 → controller ansible-core `>=2.16,<2.17`
-  with `community.general <8` / `ansible.posix <2` (see `ansible/requirements.yml`).
+  with `community.general <8` / `ansible.posix <2` (pinned in the root `requirements.yml`).
