@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.8](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.7...v0.1.8) (2026-09-11)
+
+
+### Features
+
+* publish the address the deployment declares, and keep the tunnel out of DNS ([#87](https://github.com/nwarila-platform/ansible-framework/issues/87)) ([7054c4a](https://github.com/nwarila-platform/ansible-framework/commit/7054c4a8e9288fdd155c198801aff94c1ec8e9fc))
+
+
+### Bug Fixes
+
+* **domain_member:** ask the host which address it publishes, and wait for it ([#88](https://github.com/nwarila-platform/ansible-framework/issues/88)) ([f37d0c5](https://github.com/nwarila-platform/ansible-framework/commit/f37d0c55c60629b5abc9d9fe2f11b059bf65cf9f))
+* **domain_member:** publish only the address the realm can reach ([#84](https://github.com/nwarila-platform/ansible-framework/issues/84)) ([e15db00](https://github.com/nwarila-platform/ansible-framework/commit/e15db004a9965e267df34256b5e9fc6ccfc8be0a))
+* **host_readiness:** the settle check must carry no PowerShell variables ([#91](https://github.com/nwarila-platform/ansible-framework/issues/91)) ([4074411](https://github.com/nwarila-platform/ansible-framework/commit/407441121f99c6b444ebdc83c1af05038e6a103e))
+* **host_readiness:** wait for the machine to stop restarting itself ([#90](https://github.com/nwarila-platform/ansible-framework/issues/90)) ([d025ddf](https://github.com/nwarila-platform/ansible-framework/commit/d025ddfa1e451fae58be38719153528620b1f13d))
+* **remote_client:** follow the apprepo installer rename ([#85](https://github.com/nwarila-platform/ansible-framework/issues/85)) ([2d63f84](https://github.com/nwarila-platform/ansible-framework/commit/2d63f84575ca9d3e773dacf367dbf33a8253eede))
+* **windows_disk_manager:** retry the IMDS calls that anchor disk identity ([#89](https://github.com/nwarila-platform/ansible-framework/issues/89)) ([3269c7e](https://github.com/nwarila-platform/ansible-framework/commit/3269c7e004f1899104ca6cef7976c1df39a38a24))
+
+
+### Miscellaneous
+
+* **framework:** pin the collections and gate the PowerShell stubs ([#79](https://github.com/nwarila-platform/ansible-framework/issues/79)) ([ac3673a](https://github.com/nwarila-platform/ansible-framework/commit/ac3673ae5d057b76240be3eb8a0bd48a130f18d4))
+
 ## [0.1.7](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.6...v0.1.7) (2026-09-01)
 
 
