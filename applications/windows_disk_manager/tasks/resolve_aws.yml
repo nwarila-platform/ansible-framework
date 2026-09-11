@@ -26,23 +26,43 @@
 # The identity anchor: ask the MACHINE which instance it is, so the volume describe below can
 # never be scoped to a stale or mistyped inventory value. IMDSv2 only — the token PUT fails
 # closed on anything that is not this instance's own link-local metadata service.
+#
+# Retried for the same reason the describe below is retried: this address either answers or it does
+# not, and a host that cannot reach it for a moment is not a host with the wrong volumes. Measured
+# on a converged guest 2026-09-11: the token PUT failed once with a 21-second connect timeout while
+# every task around it succeeded, and that single failure ended a run that was otherwise correct --
+# this was the one call in the region with no second attempt.
+#
+# The per-attempt timeout is deliberately short. The endpoint is link-local: it answers in
+# milliseconds or it is not being reached at all, so a thirty-second wait only delays the retry
+# that would have fixed it.
 - name: 'BEGIN (aws) | Acquire IMDSv2 Session Token'
+  delay: 5
+  register: '__imds_token__'
+  retries: 5
+  until: __imds_token__ is succeeded
+
   ansible.windows.win_uri:
     url: 'http://169.254.169.254/latest/api/token'
     method: 'PUT'
     headers:
       X-aws-ec2-metadata-token-ttl-seconds: '300'
     return_content: true
-  register: '__imds_token__'
+    timeout: 10
 
 - name: 'BEGIN (aws) | Resolve This Instance Id From IMDSv2'
+  delay: 5
+  register: '__imds_instance_id__'
+  retries: 5
+  until: __imds_instance_id__ is succeeded
+
   ansible.windows.win_uri:
     url: 'http://169.254.169.254/latest/meta-data/instance-id'
     method: 'GET'
     headers:
       X-aws-ec2-metadata-token: "{{ __imds_token__.content }}"
     return_content: true
-  register: '__imds_instance_id__'
+    timeout: 10
 
 - name: 'BEGIN (aws) | Publish Resolved Instance Id'
   ansible.builtin.set_fact:
