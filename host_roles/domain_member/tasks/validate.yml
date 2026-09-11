@@ -116,23 +116,20 @@
         | list | length == 0
       - domain_member_running.workgroup_name | default('', true) | string | trim | length > 0
 
-- name: 'VALIDATE | Require The Address This Host Will Publish'
+- name: 'VALIDATE | Require A Usable Address When One Is Declared'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | lower) == 'windows'
+    - domain_member_running.registration_address | default('', true) | string | trim | length > 0
 
   ansible.builtin.assert:
     fail_msg: >-
-      Refusing to join: domain_member.registration_address is empty. A member publishes its own
-      name in the realm's DNS, and which of this host's addresses it should publish is the
-      deployment's to state — it is the address the deployment manages the host by, and no
-      heuristic gets it right on both a cloud-only member and one that reaches the realm across a
-      tunnel. Declare it as an IPv4 address, normally the host's primary private address from the
-      inventory. Leaving it unset is refused rather than tolerated, because a converge that left
-      registration as it found it would report success while the name stayed wrong.
+      domain_member.registration_address must be an IPv4 address — it names one address this host
+      holds, not an interface, a hostname or a CIDR. Leave it unset to have the host publish the
+      address it reaches the world from; declare it where that is the wrong answer, which is any
+      host whose management path is not its default route.
     quiet: true
     that:
-      - domain_member_running.registration_address | default('', true) | string | trim | length > 0
       - domain_member_running.registration_address | string | trim
         is match('^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$')
 

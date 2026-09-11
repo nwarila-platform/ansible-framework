@@ -388,38 +388,63 @@
 
     #endregion --- [ Process: Point The Clock At The Declared Source ] ------------------------ #
 
-    #region ------ [ Process: Publish Only The Declared Address ] ------------------------------ #
+    #region ------ [ Process: Publish One Address, The One That Is Reached ] ------------------- #
     # A member publishes its own A record, and Windows publishes the addresses of every interface
-    # whose registration flag is set. Which interface that should be is not something a host can
-    # work out: the address the deployment manages the host by is the deployment's to state, and
-    # every heuristic tried in its place inverts between a cloud-only member and one that reaches
-    # the realm across a tunnel. So the declaration decides, and this task fails rather than guess
-    # when the declared address is not on exactly one interface.
+    # whose registration flag is set. Registration is turned OFF everywhere except the one
+    # interface that should publish, because the wrong record is the failure being fixed -- and a
+    # host publishing two addresses is worse than one publishing the wrong one, since a resolver
+    # hands out each in turn.
     #
-    # Registration is turned OFF everywhere else, not merely on where it belongs, because the wrong
-    # record is the failure being fixed -- and a host that publishes two addresses is worse than
-    # one that publishes the wrong one, since a resolver hands out each in turn.
+    # WHICH address is normally not worth asking about: a host with one route to the world has one
+    # answer, and asking every caller to restate it is ceremony. So the declaration is optional and
+    # the host is asked instead -- Find-NetRoute reports the source address Windows itself would
+    # use, which settles metrics and multiple defaults the way the platform settles them rather
+    # than by arithmetic repeated here.
     #
-    # Addresses the platform excludes from registration stay excluded: a cluster IP resource is
-    # brought online with SkipAsSource, and Windows does not publish those. That is what lets an
+    # It is asked, not trusted. Routing says how this host reaches the world; it is not evidence of
+    # how anything reaches this host, and those differ on a host whose management path is not its
+    # default route, or one whose tunnel carries the default. So a computed answer WARNS, naming
+    # what it chose, and END proves the published record either way. Declaring the address silences
+    # the warning and is the answer for any host whose networking is unusual.
+    #
+    # The anchor address is never contacted: Find-NetRoute is a routing question, and the address
+    # exists only to mean "somewhere outside every local prefix".
+    #
+    # Addresses the platform excludes from registration stay excluded -- a cluster IP resource is
+    # brought online with SkipAsSource, and Windows does not publish those -- which is what lets an
     # interface-wide flag satisfy a per-record contract on a cluster node.
 
-    - name: 'PROCESS | Publish Only The Declared Address'
+    - name: 'PROCESS | Publish One Address, The One That Is Reached'
+      register: '__domain_member_registration__'
+
       ansible.windows.win_powershell:
         depth: 2
         error_action: 'stop'
         parameters:
-          Address: "{{ domain_member_running.registration_address }}"
+          Address: "{{ domain_member_running.registration_address | default('', true) }}"
         remote_src: false
         script: |
           [CmdletBinding(SupportsShouldProcess)]
           Param([System.String]$Address)
           $Ansible.Changed = $false
+          $Computed = $false
 
+          If ([System.String]::IsNullOrWhiteSpace($Address)) {
+            $Computed = $true
+            $Route = Find-NetRoute -RemoteIPAddress '198.51.100.1' -ErrorAction SilentlyContinue |
+              Where-Object { $PSItem.IPAddress } | Select-Object -First 1
+            If (-not $Route) {
+              Throw 'This host has no route to a remote address, so it cannot be asked which of its addresses is reached. Declare domain_member.registration_address.'
+            }
+            $Address = $Route.IPAddress
+          }
+
+          # Preferred excludes tentative, duplicate and deprecated addresses -- states in which an
+          # address exists but must not be used for anything new.
           $Holding = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-            Where-Object { $PSItem.IPAddress -eq $Address })
+            Where-Object { $PSItem.IPAddress -eq $Address -and $PSItem.AddressState -eq 'Preferred' })
           If ($Holding.Count -ne 1) {
-            Throw ("The declared registration address {0} is on {1} interfaces; it must be on exactly one." -f $Address, $Holding.Count)
+            Throw ("The registration address {0} is on {1} interfaces in the Preferred state; it must be on exactly one. Declare domain_member.registration_address to say which address this host is reached at." -f $Address, $Holding.Count)
           }
           $Wanted = $Holding[0].InterfaceIndex
 
@@ -435,7 +460,25 @@
           # that changed the flags would leave the old record standing and report success.
           If ($Ansible.Changed) { Register-DnsClient }
 
-    #endregion --- [ Process: Publish Only The Declared Address ] ------------------------------ #
+          [PSCustomObject]@{ Address = $Address; Computed = $Computed; InterfaceIndex = $Wanted }
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Say Which Address Was Chosen When Nobody Declared One'
+      vars:
+        __chosen__: "{{ (__domain_member_registration__.output | default([], true) | first | default({}, true)) }}"
+      when: __chosen__.Computed | default(false) | bool
+
+      ansible.builtin.debug:
+        msg: >-
+          No domain_member.registration_address was declared, so '{{ inventory_hostname }}' will
+          publish {{ __chosen__.Address | default('(unknown)', true) }} -- the address this host
+          uses to reach the world. That is the right answer for a host with one route out, and the
+          WRONG one for a host whose management path is not its default route, or whose tunnel
+          carries it. Declare the address to decide it here instead.
+        verbosity: 0
+
+    #endregion --- [ Process: Publish One Address, The One That Is Reached ] ------------------- #
 
 #endregion --- [ Process: Join This Windows Host To The Realm ] ------------------------------- #
 
@@ -582,30 +625,39 @@
         depth: 2
         error_action: 'stop'
         parameters:
+          Expected: "{{ (__domain_member_registration__.output | default([], true) | first | default({}, true)).Address | default('', true) }}"
           Realm: "{{ domain_member_running.realm }}"
         remote_src: false
         script: |
           [CmdletBinding(SupportsShouldProcess)]
-          Param([System.String]$Realm)
+          Param([System.String]$Expected, [System.String]$Realm)
           $Controller = (Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.{0}' -f $Realm) -Type SRV -ErrorAction Stop |
             Where-Object { $PSItem.NameTarget } | Select-Object -First 1).NameTarget
           $Name = '{0}.{1}' -f $env:COMPUTERNAME, $Realm
 
-          $Deadline = (Get-Date).AddSeconds(60)
+          # Wait for the state the assert demands, not merely for an answer. Registration is
+          # asynchronous, and a host that is REPLACING a record answers with the old address --
+          # or briefly with both -- until Windows finishes. Breaking on "any answer" would report
+          # whatever the zone held at the first read, which on a cutover is the record being
+          # replaced, and would fail a converge that was seconds from being correct.
+          $Deadline = (Get-Date).AddSeconds(90)
           Do {
             $Answer = @(Resolve-DnsName -Name $Name -Type A -Server $Controller -DnsOnly -ErrorAction SilentlyContinue |
-              Where-Object { $PSItem.Type -eq 'A' } | ForEach-Object { $PSItem.IPAddress })
-            If ($Answer.Count -gt 0) { Break }
+              Where-Object { $PSItem.Type -eq 'A' } | ForEach-Object { $PSItem.IPAddress } | Sort-Object -Unique)
+            If ($Answer.Count -eq 1 -and $Answer[0] -eq $Expected) { Break }
             Start-Sleep -Seconds 5
           } While ((Get-Date) -lt $Deadline)
 
           $Ansible.Changed = $false
-          [PSCustomObject]@{ Controller = $Controller; Name = $Name; Addresses = @($Answer) }
+          [PSCustomObject]@{ Controller = $Controller; Expected = $Expected; Name = $Name; Addresses = @($Answer) }
 
     # ----------------------------------------------------------------------------------------- #
 
-    - name: 'END | Prove The Realm Publishes This Host At The Declared Address'
+    - name: 'END | Prove The Realm Publishes This Host At The Address It Chose'
       vars:
+        __expected__: >-
+          {{ (__domain_member_registration__.output | default([], true) | first | default({}, true)).Address
+             | default('', true) }}
         __published__: >-
           {{ (__domain_member_published__.output | default([], true) | first | default({}, true)).Addresses
              | default([], true) }}
@@ -613,17 +665,16 @@
       ansible.builtin.assert:
         fail_msg: >-
           '{{ inventory_hostname }}' is a member of '{{ domain_member_running.realm }}' but the
-          realm does not publish it at its declared address
-          '{{ domain_member_running.registration_address }}'. A domain controller answers
+          realm does not publish it at '{{ __expected__ }}'. A domain controller answers
           {{ __published__ | default([], true) | join(', ') | default('nothing', true) }}.
-          A host that publishes nothing reaches a domain controller that will not accept its
+          A host that publishes nothing reached a domain controller that would not accept its
           update -- on a tunnelled host, most often because no policy rule points the realm at the
-          directory's own servers; a host that publishes some other address, or more than one, has
-          another interface registering or another principal owning the name.
+          directory's own servers, and on any host because another principal already owns the name.
+          A host publishing some other address, or more than one, has another interface registering.
         quiet: true
         that:
           - __published__ | default([], true) | length == 1
-          - (__published__ | default([], true) | first | default('', true)) == domain_member_running.registration_address
+          - (__published__ | default([], true) | first | default('', true)) == __expected__
 
     #endregion --- [ End: Prove The Realm Publishes The Declared Address ] -------------------- #
 
