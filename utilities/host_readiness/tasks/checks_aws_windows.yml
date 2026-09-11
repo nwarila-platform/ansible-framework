@@ -55,13 +55,18 @@
     - not (__host_readiness_settled__.unreachable | default(false))
     - (__host_readiness_settled__.rc | default(1)) == 0
 
+  # NO PowerShell VARIABLES, deliberately, and this is the reason the header above gives: the shell
+  # OpenSSH serves is cmd on first boot and PowerShell after os_bootstrap flips DefaultShell. Under
+  # PowerShell the outer double quotes INTERPOLATE, so a '$Name' inside them is expanded by the
+  # outer shell -- to nothing -- before the inner powershell ever sees it. Measured: a first draft
+  # of this check used two variables and reached the host as "... -f , )", a parse error that
+  # consumed every retry. One expression, no variables, parses the same under both shells.
   ansible.builtin.raw: >-
     powershell -NoProfile -Command
-    "$Up = ((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds;
-    $Pending = (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
-    (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired');
-    if ($Up -ge 90 -and -not $Pending) { exit 0 };
-    Write-Output ('not settled: up {0:N0}s, reboot pending {1}' -f $Up, $Pending); exit 1"
+    "if ((((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds -ge 90)
+    -and (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'))
+    -and (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')))
+    { exit 0 } else { exit 1 }"
 
 # The retry budget is finite, so exhausting it has to stop the run rather than let the play proceed
 # into the state the wait exists to avoid.
