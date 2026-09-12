@@ -70,6 +70,10 @@ s3:
   agent_rpm_sha256: '<sha256sum of the uploaded RPM>'
 ```
 
+The `prod` and `test` overlays ship `CHANGE_ME` in the digest fields on purpose: an operator fills
+them per environment, and until then the digest check fails closed rather than installing an
+unverified package.
+
 ## S3 Python deps
 
 boto3/botocore come from the **bootstrap venv** (`/opt/ansible/venv`, built by

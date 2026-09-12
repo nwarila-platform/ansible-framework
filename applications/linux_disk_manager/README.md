@@ -86,5 +86,7 @@ ansible-playbook -i inventory.yml site.yml -e ENV=dev   # a consumer play that l
   `/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol<id>` exists); non-Nitro (Xen) instances
   do not produce this by-id name. Function-tag resolution also requires controller-side AWS
   credentials with permission to describe attached volumes; the target needs no EBS/IAM grant.
-- Toolchain: RHEL 8 targets run platform-python 3.6 → controller ansible-core `>=2.16,<2.17`
-  with `community.general <8` / `ansible.posix <2` (pinned in the root `requirements.yml`).
+- Toolchain: RHEL 8 targets run platform-python 3.6, so a controller that manages them stays on
+  ansible-core `>=2.16,<2.17` (2.17 dropped Python 3.6 targets; secure-wazuh pins exactly that)
+  with `community.general <8` / `ansible.posix <2` (pinned in the root `requirements.yml`). The
+  framework's own lint toolchain is ansible-core 2.21 (`requirements-dev.txt`).
