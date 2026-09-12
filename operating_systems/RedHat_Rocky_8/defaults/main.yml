@@ -72,12 +72,10 @@ rhel8_bootstrap_boto3_pins:
 # loop + include_role wiring), but nothing is enabled out of the box:
 #   * 'ca_certificates' DOES NOT EXIST in this framework (see applications/ for the roles
 #     that do). include_role on it would hard-fail.
-#   * 'python3_pip' exists but FAILS ON RHEL 8, which is the actual target here. Its
-#     first_found ladder searches present_redhat_redhat_8.yml / present_redhat_redhat.yml /
-#     present_redhat.yml; the role ships only present_redhat_rocky.yml and
-#     present_debian_ubuntu.yml, so all three miss and its 'OS-specific task file not found'
-#     fail fires. It works on Rocky 8 only. It also hard-asserts 'ENV' before doing anything,
-#     and bootstrap.yml runs on brand-new systems where ENV may not be in scope.
+#   * 'python3_pip' dispatches on any RedHat-family host through present_redhat.yml, but it is
+#     declared for EL 10, so RHEL/Rocky 8 remains outside its declared support. It also
+#     hard-asserts 'ENV' before doing anything, and bootstrap.yml runs on brand-new systems
+#     where ENV may not be in scope.
 # A caller on Rocky 8 with ENV set can opt in by setting this list.
 rhel8_bootstrap_prerequisite_roles: []
 

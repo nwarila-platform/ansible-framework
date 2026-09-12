@@ -22,7 +22,7 @@
 # before any of that can happen.
 #
 # STATE SCOPE: package_manager/templates are asserted for present AND absent — both states
-# dispatch on them identically (absent_redhat_rocky.yml and absent_debian_ubuntu.yml carry
+# dispatch on them identically (absent_redhat.yml and absent_debian.yml carry
 # the same no-fail-branch gate). clean reads no config at all (verified) and stays
 # unblocked. The self-upgrade shape matters only to the present path.
 #

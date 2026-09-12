@@ -18,12 +18,12 @@ Execution path is controlled by the `state` variable:
 
 | OS          | Version | Task Files |
 |-------------|---------|------------|
-| Rocky Linux | 10      | `tasks/present_redhat_rocky.yml`, `tasks/absent_redhat_rocky.yml`, `tasks/clean_redhat.yml` |
-| Ubuntu      | all     | `tasks/present_debian_ubuntu.yml`, `tasks/absent_debian_ubuntu.yml`, `tasks/clean_debian.yml` |
+| RedHat family | EL 10, as declared in `meta/main.yml` | `tasks/present_redhat.yml`, `tasks/absent_redhat.yml`, `tasks/clean_redhat.yml` |
+| Debian family | Ubuntu (all), as declared in `meta/main.yml` | `tasks/present_debian.yml`, `tasks/absent_debian.yml`, `tasks/clean_debian.yml` |
 
 Additional platforms are resolved via the hierarchical task loader. The resolved `state` is prepended to each candidate:
 
-`present_redhat_rocky_10.yml` → `present_redhat_rocky.yml` → `present_redhat.yml`
+`present_redhat_redhat_8.yml` → `present_redhat_redhat.yml` → `present_redhat.yml` (family fallback; only the last ships)
 
 ## Quick Start
 

@@ -58,7 +58,7 @@ tasks/present_redhat_rocky.yml      ← distro-level fallback
 tasks/present_redhat.yml            ← family-level fallback
 ```
 
-The resolved `state` is prefixed to every candidate. A role can ship a single `present_redhat.yml` that works across the RedHat family, while roles with distribution- or version-specific logic provide `present_redhat_rocky.yml` or `present_redhat_rocky_10.yml` (`python3_pip` ships `present_redhat_rocky.yml` and a family-level `clean_redhat.yml`).
+The resolved `state` is prefixed to every candidate. A role can ship a single `present_redhat.yml` that works across the RedHat family, while roles with distribution- or version-specific logic provide `present_redhat_rocky.yml` or `present_redhat_rocky_10.yml` (`python3_pip` ships family-level `present_redhat.yml` and `clean_redhat.yml`).
 
 ### 4. Secure Temp Directory
 After the required OS facts are verified, an enabled temp directory is created as `0700
