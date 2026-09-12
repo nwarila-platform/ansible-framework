@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.9](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.8...v0.1.9) (2026-09-12)
+
+
+### Features
+
+* **domain_member:** take the identity and the join password from the caller ([#94](https://github.com/nwarila-platform/ansible-framework/issues/94)) ([e152da8](https://github.com/nwarila-platform/ansible-framework/commit/e152da80db6cd4c5d28af244aeb77caa871882d3))
+
+
+### Bug Fixes
+
+* **windows_disk_manager:** leave cluster-owned disks to the cluster ([#95](https://github.com/nwarila-platform/ansible-framework/issues/95)) ([06599ed](https://github.com/nwarila-platform/ansible-framework/commit/06599ed8fe6625ad6c8bd1c72e0b2802161fec3c))
+
+
+### Miscellaneous
+
+* **framework:** correct the descriptions two sweeps found false ([#92](https://github.com/nwarila-platform/ansible-framework/issues/92)) ([3696c67](https://github.com/nwarila-platform/ansible-framework/commit/3696c678f4a7bbbe9c9a7ad279d72c271e25338f))
+
 ## [0.1.8](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.7...v0.1.8) (2026-09-11)
 
 
