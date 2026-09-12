@@ -44,6 +44,7 @@ body:
       options:
         - Role loader (tasks/main.yml)
         - Application role (applications/)
+        - Host role (host_roles/)
         - Operating system role (operating_systems/)
         - Utility role (utilities/)
         - CI/CD pipeline

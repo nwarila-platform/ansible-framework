@@ -70,8 +70,8 @@ rhel8_bootstrap_boto3_pins:
 
 # EMPTY BY DEFAULT — deliberately. The extension point exists (bootstrap.yml keeps the
 # loop + include_role wiring), but nothing is enabled out of the box:
-#   * 'ca_certificates' DOES NOT EXIST in this framework (applications/ holds exactly
-#     linux_disk_manager, python3_pip, wazuh_agent). include_role on it would hard-fail.
+#   * 'ca_certificates' DOES NOT EXIST in this framework (see applications/ for the roles
+#     that do). include_role on it would hard-fail.
 #   * 'python3_pip' exists but FAILS ON RHEL 8, which is the actual target here. Its
 #     first_found ladder searches present_redhat_redhat_8.yml / present_redhat_redhat.yml /
 #     present_redhat.yml; the role ships only present_redhat_rocky.yml and

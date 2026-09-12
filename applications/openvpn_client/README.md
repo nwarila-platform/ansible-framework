@@ -57,7 +57,7 @@ markers naming their sources are committed; the `.ps1` copies are build artifact
 deliberately never allowlists, so a stale or hand-edited copy can never be committed.
 
 ```bash
-scripts/materialize-role-scripts.sh     # in the consuming repository, before lint or run
+scripts/materialize-role-scripts.sh     # from the framework checkout the consumer composes in, before the role runs
 ```
 
 | Script | What it owns |

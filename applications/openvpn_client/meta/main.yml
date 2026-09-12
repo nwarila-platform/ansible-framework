@@ -50,10 +50,12 @@
 # 'amazon.aws' runs on the CONTROLLER only.
 #
 # SCRIPTS. The two PowerShell scripts this role executes -- Set-FileAcl.ps1 and
-# Set-DnsNamespaceForwarder.ps1 -- are MATERIALIZED into files/ from the consuming repository's
-# scripts/ directory before the role is linted or run. The role tracks only the '.ps1.stub' build
-# markers that name their sources; the materialized copies are build artifacts the .gitignore
-# deliberately never allowlists. Run the materializer before this role.
+# Set-DnsNamespaceForwarder.ps1 -- are MATERIALIZED into files/ from this framework's own
+# scripts/ directory, where each source sits beside its Pester spec. The consumer runs
+# scripts/materialize-role-scripts.sh inside its framework checkout before this role runs;
+# lint sees only the stubs. The role tracks only the '.ps1.stub' build markers that name
+# their sources; the materialized copies are build artifacts the .gitignore deliberately
+# never allowlists.
 # =========================================================================================== #
 ---
 galaxy_info:

@@ -64,7 +64,6 @@
 !/applications/s3_artifact_delivery/
 !/applications/wazuh_agent/
 !/applications/*/*.md
-!/applications/*/.gitkeep
 !/applications/openvpn_client/defaults/
 !/applications/openvpn_client/files/
 !/applications/openvpn_client/handlers/
@@ -161,10 +160,12 @@
 !/applications/s3_artifact_delivery/tests/fixtures/ansible_collections/amazon/aws/plugins/modules/sts_assume_role.py
 !/applications/wazuh_agent/files/GPG-KEY-WAZUH
 
-# openvpn_client executes two PowerShell scripts that are MATERIALIZED into files/ from the
-# consuming repository's scripts/ directory. Only the build markers naming those sources are
-# tracked here; the materialized .ps1 copies are build artifacts and are deliberately NOT
-# allowlisted, so a stale or hand-edited copy can never be committed.
+# openvpn_client executes two PowerShell scripts that are MATERIALIZED into files/ from this
+# framework's own scripts/ directory, where each source sits beside its Pester spec; the consumer
+# runs scripts/materialize-role-scripts.sh inside its framework checkout before the role runs.
+# Only the build markers naming those sources are tracked here; the materialized .ps1 copies are
+# build artifacts and are deliberately NOT allowlisted, so a stale or hand-edited copy can never
+# be committed.
 !/applications/openvpn_client/files/Set-DnsNamespaceForwarder.ps1.stub
 !/applications/openvpn_client/files/Set-FileAcl.ps1.stub
 
@@ -173,8 +174,6 @@
 !/host_roles/domain_member/
 !/host_roles/remote_client/
 !/host_roles/*/*.md
-!/host_roles/*/.gitkeep
-!/host_roles/domain_member/
 !/host_roles/domain_member/defaults/
 !/host_roles/domain_member/files/
 !/host_roles/domain_member/handlers/
@@ -252,12 +251,9 @@
 !/operating_systems/*/*/.gitkeep
 !/operating_systems/*/tests/inventory
 
-!/utilities/
 !/utilities/os_bootstrap/
-!/utilities/*/*.md
 !/utilities/os_bootstrap/tasks/
 !/utilities/os_bootstrap/vars/
-!/utilities/*/*/*.yml
 
 # Ansible runtime artifacts
 *.retry

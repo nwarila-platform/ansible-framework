@@ -41,10 +41,10 @@ This repository enforces the following security controls at every commit and in 
 | Secret detection | `detect-private-key` (pre-commit-hooks) | pre-commit |
 | YAML correctness | `yamllint` | pre-commit, CI |
 | Ansible security rules | `ansible-lint` (safety profile) | pre-commit, CI |
-| Dependency updates | Dependabot | Automated weekly PRs |
-| Pinned Action SHAs | Manual + Dependabot | CI workflows |
+| Dependency updates | Renovate | Nightly PRs after a 7-day release quarantine |
+| Pinned Action SHAs | Manual + Renovate | CI workflows |
 | No persisted credentials in CI | `persist-credentials: false` | CI workflows |
-| Minimal workflow permissions | `permissions: read-all` baseline | CI workflows |
+| Minimal workflow permissions | `permissions: contents: read` (or `{}`) at workflow level, elevated per job | CI workflows |
 | Conventional commit enforcement | `conventional-pre-commit` | pre-commit (commit-msg) |
 
 ## Scope

@@ -52,6 +52,17 @@ rules:
   comments-indentation: disable
 
   # ---------------------------------------------------------------------------
+  # Octal Values
+  # ---------------------------------------------------------------------------
+  # ansible-lint accepts a custom yamllint configuration only when both octal
+  # forbids are set; without them it rejects this file and disables its fix
+  # mode. The tree holds no unquoted octal value, so this adds no finding.
+  # ---------------------------------------------------------------------------
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
+  # ---------------------------------------------------------------------------
   # Braces & Brackets
   # ---------------------------------------------------------------------------
   # Allow up to 1 space inside braces and brackets to match common Jinja2

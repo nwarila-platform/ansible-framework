@@ -14,7 +14,6 @@ Fixes # (issue)
 - [ ] Documentation update (`docs:`)
 - [ ] Refactor (`refactor:`)
 - [ ] Chore (`chore:`)
-- [ ] Security fix (`security:`)
 - [ ] Breaking change (include `!` in commit type, e.g. `feat!:`)
 
 ## Checklist

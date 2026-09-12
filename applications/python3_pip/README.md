@@ -16,10 +16,10 @@ Execution path is controlled by the `state` variable:
 
 ## Supported Platforms
 
-| OS                  | Version | Task Files (prefix `<state>_`) |
-|---------------------|---------|--------------------------------|
-| Rocky Linux / RHEL  | 10      | `tasks/<state>_redhat_rocky.yml` |
-| Debian / Ubuntu     | all     | `tasks/<state>_debian_ubuntu.yml` |
+| OS          | Version | Task Files |
+|-------------|---------|------------|
+| Rocky Linux | 10      | `tasks/present_redhat_rocky.yml`, `tasks/absent_redhat_rocky.yml`, `tasks/clean_redhat.yml` |
+| Ubuntu      | all     | `tasks/present_debian_ubuntu.yml`, `tasks/absent_debian_ubuntu.yml`, `tasks/clean_debian.yml` |
 
 Additional platforms are resolved via the hierarchical task loader. The resolved `state` is prepended to each candidate:
 

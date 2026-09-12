@@ -3,7 +3,7 @@ name: Security
 # One visible security entrypoint. The detailed implementations stay in local
 # reusable workflows so consumers can pin the same checks by SHA.
 
-on:
+'on':
   branch_protection_rule:
   push:
     branches: [main]

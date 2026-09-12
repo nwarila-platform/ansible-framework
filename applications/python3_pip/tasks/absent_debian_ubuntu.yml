@@ -1,7 +1,7 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/absent_debian_ubuntu.yml'                                     #
+# File: '{{ role_path }}/tasks/absent_debian_ubuntu.yml'                                      #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for Debian-family hosts (Ubuntu, Debian, etc.) — state: absent.                           #
+# OS-specific task file for Ubuntu — state: absent.                                           #
 #                                                                                             #
 # Execution order:                                                                            #
 #   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #

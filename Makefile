@@ -5,6 +5,8 @@
 #   make install      Install dev dependencies, pinned collections, and hooks
 #   make collections  Install the pinned runtime collections
 #   make lint         Run yamllint, ansible-lint, and every guard target
+#   make yamllint     Run yamllint only
+#   make ansible-lint Run ansible-lint only
 #   make pre-commit   Run full pre-commit suite against all files
 #   make allowlist-check
 #                     Fail if a deliverable file is silently ignored
