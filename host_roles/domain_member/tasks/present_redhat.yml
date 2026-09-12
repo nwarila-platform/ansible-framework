@@ -13,8 +13,8 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different realm.
-#   PROCESS  hands the caller's resolved join password to the system role, and
-#            hands the whole contract to the system role.
+#   PROCESS  hands the caller's resolved join password, and the whole contract with it, to the
+#            system role.
 #   END      proves the result from the machine rather than from the system role's report.
 #
 # RC4 IS NOT A KNOB: the system role can re-admit it through a crypto subpolicy, and this role
@@ -28,9 +28,8 @@
 # asked to change its crypto policy.
 #
 # The password arrives resolved from the caller and is handed to the system role as a variable,
-# so the
-# guest is never given cloud credentials and no task here writes the value to a file. What
-# pipelining does and does not change about that is in the README.
+# so the guest is never given cloud credentials and no task here writes the value to a file.
+# What pipelining does and does not change about that is in the README.
 #
 # ============================================================================================= #
 ---

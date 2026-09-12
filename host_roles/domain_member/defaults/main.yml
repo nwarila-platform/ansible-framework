@@ -12,20 +12,18 @@
 # against microsoft.ad and the registry. A key that could only ever mean something on one platform
 # does not belong here -- it belongs in that platform's overlay, or nowhere.
 #
-# SITE IDENTITY BELONGS HERE, and that is what changed when this role moved to host_roles/. This
-# role is a WRAPPER: the join itself is redhat.rhel_system_roles.ad_integration on RedHat and
-# microsoft.ad.membership on Windows, and what this role adds is one organization's answer to
-# which realm, as whom, and with which secret. Those values are one site's, stated once, which is
-# what makes defaulting them honest here -- the same reason remote_client defaults the tunnel it
-# hands to openvpn_client. A generic mechanism must refuse them; a site wrapper is where they go.
+# IDENTITY DOES NOT BELONG HERE. This role is a WRAPPER: the join itself is
+# redhat.rhel_system_roles.ad_integration on RedHat and microsoft.ad.membership on Windows,
+# and what this role adds is the guards and the posture around it. Which realm, as whom, and
+# with which secret are the estate's identity, and a role that travels between estates cannot
+# carry any of them: all three are declared empty below and required from the caller, who
+# resolves the secret with the framework's secret lookup and passes the value.
 #
-# The earlier text here said the opposite, and was right while this role sat in applications/ as
-# a role a caller configured. It is kept in mind rather than kept: the namespace move is what
-# changed the answer, not a change of taste.
+# An earlier version defaulted the realm and the account as one site's identity, stated once. It
+# was withdrawn when this role began to serve more than one estate; the caller states them now.
 #
-# WHAT STILL DOES NOT BELONG HERE: the bucket. It is account-scoped rather than site-scoped, the
-# deploying pipeline is the only thing that knows which account it is, and a wrong one fails as a
-# bucket that does not exist rather than as a credential that does not work.
+# NOR DOES THE SECRET'S LOCATION. The bucket and key the password lives under are the deploying
+# pipeline's to know; they appear only in the caller's lookup call, never in this role.
 #
 # NOT OFFERED, deliberately: renaming the machine, and any way to re-admit RC4. A rename is a
 # separate change with its own consequences -- certificates, monitoring, DNS -- and nobody expects

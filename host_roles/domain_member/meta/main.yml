@@ -5,8 +5,8 @@
 # spec. The role's tasks/validate.yml enforces its merged-config guards.
 #
 # This role WRAPS the platform's domain-join mechanism -- ad_integration on RedHat,
-# microsoft.ad.membership on Windows -- and adds one organization's answer to which realm, as
-# whom, and with which secret. Those are defaulted, because they are this site's and stated once.
+# microsoft.ad.membership on Windows -- and adds the guards and the posture around a join. Which
+# realm, as whom, and with which secret are the estate's identity, and arrive from the caller.
 #
 # REQUIRED INPUTS -- three, supplied by the caller. All are the estate's identity, and a role that
 # travels between estates cannot carry any of them.
@@ -32,9 +32,8 @@
 #                                   container, where OU-linked policy does not reach it -- which
 #                                   is a choice, not an error, and so is not guarded.
 #
-# DEFAULTED, and overridable:
-#
-# OPTIONAL: force_rejoin (leave and join again), timesync_source (the clock's source).
+# OPTIONAL: force_rejoin (leave and join again), timesync_source (the clock's source),
+# registration_address (the IPv4 address this host publishes in the realm's DNS; Windows only).
 #
 # NOT OFFERED: any way to re-admit RC4. Both platforms exclude it unconditionally -- Windows by the
 # Kerberos encryption-types policy, RedHat by leaving the crypto policy alone rather than applying
@@ -43,7 +42,8 @@
 # COLLECTIONS. RedHat requires 'redhat.rhel_system_roles' for the ad_integration role that performs
 # the join, and that role's own dependencies -- 'ansible.posix' and 'community.general'. Windows
 # requires 'microsoft.ad' and 'ansible.windows'. Neither path fetches anything: the password
-# arrives resolved, so 'amazon.aws' is the CALLER's dependency now, not this role's.
+# arrives resolved through the framework's secret lookup, which the caller invokes; that lookup
+# needs boto3 and botocore on the controller, and no collection at all.
 # =========================================================================================== #
 ---
 galaxy_info:

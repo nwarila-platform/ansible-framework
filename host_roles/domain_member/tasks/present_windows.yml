@@ -33,9 +33,8 @@
 # below, beside the write.
 #
 # The password arrives resolved from the caller and is handed to the join module as an argument,
-# so the
-# guest is never given cloud credentials and no task here writes the value to a file. What
-# pipelining does and does not change about that is in the README.
+# so the guest is never given cloud credentials and no task here writes the value to a file.
+# What pipelining does and does not change about that is in the README.
 #
 # ============================================================================================= #
 ---

@@ -3,10 +3,9 @@
 # --- [ Description ] ------------------------------------------------------------------------ #
 #
 # state=clean is a supported no-op. The role stages nothing on the guest: the join is performed by
-# a module, the password arrives resolved from the caller and is handed over as an argument,
-# and nothing
-# is downloaded to the target. There is therefore nothing to remove, and this path says so rather
-# than inventing work.
+# a module, the password arrives resolved from the caller and is handed over as an argument, and
+# nothing is downloaded to the target. There is therefore nothing to remove, and this path says
+# so rather than inventing work.
 #
 # Leaving a domain is NOT what clean means here, and is deliberately not implemented under any
 # state: removing a machine from a domain abandons a directory object and every access granted

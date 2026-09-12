@@ -5,8 +5,9 @@ same thing and produces the same end state on both.
 
 This role WRAPS the platform's join mechanism -- `ad_integration` on RedHat,
 `microsoft.ad.membership` on Windows -- and adds this organization's answer to which realm, as
-whom, and with which secret. Those are defaulted, so a caller declares two things: the bucket, and
-the OU it wants its computer object in.
+whom, and with which secret. Those are the estate's identity, so a caller declares all three: the
+realm, the account, and the join password resolved through the framework's `secret` lookup with the
+digest of the stored bytes as its second term. It may also declare the OU for a new computer object.
 
 The RedHat path hands that contract to `redhat.rhel_system_roles.ad_integration` — the vendor's own
 implementation of the join, shipped in the RHEL mirror, which is the only source an offline
@@ -23,12 +24,10 @@ dict. Tasks read the merged result as `domain_member_running`.
 
 | Key | Required | Default | Purpose |
 |---|---|---|---|
-| `password.bucket` | Yes | `''` | S3 bucket holding the join account's password. Account-scoped, so only the deploying pipeline knows it. |
+| `password` | Yes | `''` | The join account's password, already resolved to a string: `lookup('secret', 's3://<bucket>/<key>', '<sha256 of the stored bytes>')`. A value, not a location. The digest is the lookup's second term and is what makes a moved or truncated object fail at the read; the role cannot check it after the fact, so a caller that omits it joins with an unverified value. |
 | `registration_address` | No | `''` | The IPv4 address this host publishes in the realm's DNS under its own name. Empty asks the host: Windows publishes the address it reaches a remote network from, and the converge says which it chose. Declare it where that is wrong — a management path that is not the default route, a tunnel carrying the default route, or an interface holding several usable addresses. Not implemented on RedHat; declaring it there reports that it has no effect. |
-| `realm` | No | site | DNS name of the realm. Not the NetBIOS short name. |
-| `user` | No | site | Account permitted to create or reuse this machine's computer object. |
-| `password.object` | No | site | Object key of the password. |
-| `password.sha256` | No | site | Lowercase 64-character digest, verified before the value is used. |
+| `realm` | Yes | `''` | DNS name of the realm. Not the NetBIOS short name. |
+| `user` | Yes | `''` | Account permitted to create or reuse this machine's computer object, as a UPN. |
 | `computer_ou` | No | `null` | LDAP DN of the OU a **new** computer object is created in. Null files it in the directory's default computers container, where OU-linked policy does not reach it. |
 | `force_rejoin` | No | `false` | Leave the current realm and join again from scratch. |
 | `timesync_source` | No | `null` | Host or address to synchronise the clock with. |
@@ -39,39 +38,37 @@ dict. Tasks read the merged result as `domain_member_running`.
 `state` accepts `present` and `clean`; `absent` is deliberately not implemented and fails at task
 resolution rather than silently doing nothing.
 
-The credential is fetched, not declared: the role pulls the object through the **controller**,
-verifies it against `password.sha256`, and hands the value to the join. The guest is never given
-cloud credentials, and no task in this role writes the value to a file.
+The credential arrives resolved: the caller reads it through the framework's `secret` lookup, which
+runs on the **controller** and, given the digest as its second term, verifies the stored bytes
+before returning the value; the role hands that value to the join. The guest is never given cloud
+credentials, and no task in this role writes the value to a file.
 
 That is not the same as "it never touches disk": with pipelining off — Ansible's default, which
 this chassis keeps — Ansible itself stages every module payload as a file in the target's temp
 directory before executing it, and for the join that payload carries the password. Enable
 pipelining for plays running this role if that transit matters to you.
 
-The fetch runs **on the controller, with the controller's own ambient AWS credentials** — the role
-never authenticates to S3 itself. It is also `no_log`, so a failure prints the censored-output
-notice rather than a reason: check controller credentials, region, and `boto3` first. Note that
-`ignore_nonexistent_bucket: true` means a missing bucket surfaces as an object-level error.
-
-Delegated tasks resolve connection variables from the **delegate**, not the target, so site
-`group_vars` that set WinRM/SSH connection vars on `all` will follow the delegation onto localhost
-and break it. A Windows play therefore needs an explicit `localhost` inventory host with
-`ansible_connection: local` and `ansible_python_interpreter: "{{ ansible_playbook_python }}"`.
+The lookup runs **on the controller, with the controller's own ambient AWS credentials** — this
+role never authenticates to S3 and has no task targeting `localhost`, so a play needs no controller
+inventory host on this role's account. A read failure is reported by the lookup, which names the
+URL and never the value: check controller credentials, region, and `boto3` first.
 
 ```yaml
-# inventory must carry the controller host the fetch delegates to:
-#   localhost ansible_connection=local ansible_python_interpreter="{{ ansible_playbook_python }}"
 - hosts: 'domain_members'
   roles:
     - role: 'domain_member'
       vars:
         domain_member:
-          password:
-            bucket: '123456789012-ansible'
+          realm: 'corp.example.com'
+          user: 'svc-domainjoin@corp.example.com'
+          password: >-
+            {{ lookup('secret',
+                's3://123456789012-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
+                '<sha256 of the stored bytes>') }}
           computer_ou: 'OU=Servers,OU=Prod,DC=corp,DC=example,DC=com'
 
-# A second realm is a configuration, not a fork -- override realm, user and the password
-# coordinates together to join somewhere else.
+# A second realm is a configuration, not a fork -- declare a different realm, account and
+# password to join somewhere else.
 ```
 
 ## How one contract becomes two implementations
@@ -80,7 +77,7 @@ and break it. A Windows play therefore needs an explicit `localhost` inventory h
 |---|---|---|
 | `realm` | `ad_integration_realm` | `dns_domain_name` |
 | `user` | `ad_integration_user` | `domain_admin_user` |
-| password (fetched) | `ad_integration_password` | `domain_admin_password` |
+| `password` | `ad_integration_password` | `domain_admin_password` |
 | `computer_ou` | `ad_integration_computer_ou` → `computer-ou` in `realmd.conf` | `domain_ou_path` |
 | `force_rejoin` | `ad_integration_force_rejoin` → `realm leave` + `realm join` | unjoin to workgroup, restart, join |
 | `timesync_source` | `ad_integration_manage_timesync` + the `timesync` role | `W32Time` `NtpServer` + `Type`, service restarted |
@@ -128,10 +125,9 @@ The role neither reads nor sets FIPS state.
 - **Check mode cannot complete a join**, so END fails on a host that is not already a member, with
   a message that says so rather than a postcondition that looks broken — on RedHat the system-role
   include is skipped outright under `--check`, because it cannot run honestly on a host that has no
-  realm client yet. The password fetch and its
-  digest check *do* run under `--check` — they are reads, and `s3_object` returns early in check
-  mode without the `contents` field the digest needs — so a dry run still proves the secret object
-  exists and matches its pin.
+  realm client yet. When the caller uses the documented two-term lookup, that lookup runs under
+  `--check` as well, so a dry run still proves the secret object exists and matches the supplied
+  digest.
 
 ## What END proves
 

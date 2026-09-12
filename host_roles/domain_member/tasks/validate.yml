@@ -3,10 +3,10 @@
 # --- [ Description ] ------------------------------------------------------------------------ #
 #
 # Validates load-bearing domain_member configuration after the v3 loader merge, on the CONTROLLER,
-# before anything touches the guest. The realm, the joining account and the object its password
-# lives in are supplied by the playbook rather than defaulted, so this is where a missing or
-# malformed one is caught — in a second, rather than part-way through a join that leaves a
-# half-configured machine and an orphaned computer object behind.
+# before anything touches the guest. The realm, the joining account and its password are the
+# estate's identity and arrive from the caller rather than from a default, so this is where a
+# missing or malformed one is caught — in a second, rather than part-way through a join that
+# leaves a half-configured machine and an orphaned computer object behind.
 #
 # meta/main.yml describes these inputs; this file is what enforces them.
 #
@@ -15,7 +15,7 @@
 #
 # =========================================================================================== #
 ---
-- name: 'VALIDATE | Require The Realm, The Account, And Where Its Password Lives'
+- name: 'VALIDATE | Require The Realm, The Account, And Its Password'
   when: (state | default('present') | string | lower | trim) == 'present'
 
   ansible.builtin.assert:
@@ -23,16 +23,18 @@
       Refusing to join: the identity contract is incomplete. The playbook must supply
       domain_member.realm as the DNS name of the realm ('corp.example.com', not the NetBIOS short
       name), domain_member.user as an account permitted to create or reuse this machine's computer
-      object, and domain_member.password as that account's password, already resolved. It is a
-      value rather than a location because reading a credential out of S3 is the secret lookup's
-      job and the caller calls it -- pass the digest as the lookup's second term so a moved object
-      fails at the read. See meta/main.yml.
+      object, and domain_member.password as that account's password, already resolved to a
+      string. It is a value rather than a location because reading a credential out of S3 is the
+      secret lookup's job and the caller calls it -- pass the digest as the lookup's second
+      term so a moved object fails at the read. A mapping here is the old bucket/object/sha256
+      shape, which this role no longer reads. See meta/main.yml.
     quiet: true
     that:
       - domain_member_running.realm | default('', true) | string | trim
         is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
       - domain_member_running.user | default('', true) | string | trim | length > 0
-      - domain_member_running.password | default('', true) | string | trim | length > 0
+      - domain_member_running.password | default('', true) is string
+      - domain_member_running.password | default('', true) | trim | length > 0
 
 - name: 'VALIDATE | Require A Usable Join And Posture Contract'
   when: (state | default('present') | string | lower | trim) == 'present'
