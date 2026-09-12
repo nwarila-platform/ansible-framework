@@ -39,14 +39,15 @@ domain_member_defaults:
 
   #region ------ [ Identity: what to join, and as whom ] -------------------------------------- #
 
-  # The realm this host joins, as its DNS name -- not the NetBIOS short name.
-  realm: 'tcn.trinitytechnicalservices.com'
+  # The realm this host joins, as its DNS name -- not the NetBIOS short name. Declared empty:
+  # which realm is the estate's, and a role that travels between estates cannot carry one.
+  realm: ''
 
   # The account permitted to create or reuse this machine's computer object. A UPN, not a bare
   # name: the join module hands it to the directory verbatim, and an unqualified name is not
   # resolved against the realm from a host that is not yet in it. Delegated to join computers and
   # nothing else -- it is denied creating an OU, which is how it should be.
-  user: 'svc-domainjoin@tcn.trinitytechnicalservices.com'
+  user: ''
 
   # THE JOIN PASSWORD ITSELF, already resolved. A value and not a location: reading a credential
   # out of S3 is the secret lookup's job, and the caller calls it -- which is why this is declared
