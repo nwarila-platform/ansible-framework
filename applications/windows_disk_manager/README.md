@@ -59,7 +59,7 @@ letter, so equivalent spellings such as `D`, `d:`, and `D:\` are duplicates.
   as `ours`.
 - Cluster ownership supersedes content classification. Once Failover Clustering reports the disk
   as clustered, its offline/read-only state, partitioning, formatting, and access paths belong to
-  the cluster; the role reports it unchanged after the declared attachment identity is verified.
+  the cluster; the role leaves it unchanged after the declared attachment identity is verified.
 - `blank` and `unfmtd` disks enter the `force: false` GPT initialization, full-partition, and
   NTFS quick-format pipeline. Drive letters are canonicalized to their uppercase first letter,
   and `allocation_unit` defaults to 4096 bytes.
