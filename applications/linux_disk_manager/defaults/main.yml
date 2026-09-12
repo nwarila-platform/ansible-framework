@@ -28,10 +28,6 @@
 # =========================================================================================== #
 linux_disk_manager_defaults:
 
-  #region ------ [ Lifecycle ] ------------------------------------------------------------------ #
-  state: 'present'
-  #endregion --- [ Lifecycle ] ------------------------------------------------------------------ #
-
   #region ------ [ Platform targeting ] --------------------------------------------------------- #
   # Declared infrastructure platform (vmware | proxmox | aws). REQUIRED in the
   # linux_disk_manager: override dict; no default is safe. present_redhat.yml dispatches all

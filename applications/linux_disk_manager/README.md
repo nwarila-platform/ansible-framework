@@ -45,6 +45,9 @@ Defaults live under `linux_disk_manager_defaults` (`defaults/main.yml`) and merg
 `vars/<family>[_<env>].yml` overlays plus the playbook's `linux_disk_manager:` override dict
 into `linux_disk_manager_running` (exposed to task files as `config`).
 
+The lifecycle state is the play-level `state` variable (`present`, or `clean` as a supported
+no-op), not a key of the `linux_disk_manager:` dictionary; a `state` key there has no effect.
+
 Declare these in the `linux_disk_manager:` override dict:
 
 | key | Required | Default | Purpose |
