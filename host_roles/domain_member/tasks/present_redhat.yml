@@ -13,7 +13,7 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different realm.
-#   PROCESS  fetches the join password through the controller, proves it against its digest, and
+#   PROCESS  hands the caller's resolved join password to the system role, and
 #            hands the whole contract to the system role.
 #   END      proves the result from the machine rather than from the system role's report.
 #
@@ -27,7 +27,8 @@
 # means a FIPS host stays in FIPS rather than being moved to DEFAULT:AD-SUPPORT by a role nobody
 # asked to change its crypto policy.
 #
-# The password is fetched by the CONTROLLER and handed to the system role as a variable, so the
+# The password arrives resolved from the caller and is handed to the system role as a variable,
+# so the
 # guest is never given cloud credentials and no task here writes the value to a file. What
 # pipelining does and does not change about that is in the README.
 #
@@ -186,72 +187,6 @@
   # Begin The 'Process' Block
   block:
 
-    #region ------ [ Process: Fetch The Join Password ] --------------------------------------- #
-    # Pulled as a STRING through the controller and never written to a file by this role. The
-    # object holds the password with no trailing newline, so it is used verbatim; the digest pins
-    # that byte-for-byte, and a re-upload that adds whitespace fails the next task loudly. Reading
-    # changes nothing and the task says so, which is what lets a converged host report no changes
-    # at all -- a fetch that claimed one would hide real drift behind constant noise.
-    #
-    # become is off explicitly. The framework chassis turns become on for every task, and this one
-    # runs on the CONTROLLER, where elevation buys nothing and a controller that cannot sudo
-    # without a password would fail the play on a task that never needed root.
-    # check_mode is off for a sharper reason (verified in amazon.aws s3_object.py,
-    # download_s3str): s3_object supports check mode by RETURNING EARLY -- its getstr path exits
-    # with a message and NO 'contents' key -- so under --check the register exists but the field
-    # the next task reads does not, and the digest assert dies on a template error instead of its
-    # own message. Running the fetch for real under --check costs a read the task already
-    # declares changeless, and buys the most useful thing --check can say here: that the object
-    # exists and still matches the digest pinned in the playbook.
-
-    - name: 'PROCESS | Fetch The Join Password'
-      become: false
-      changed_when: false
-      check_mode: false
-      delegate_to: 'localhost'
-      no_log: true
-      register: '__domain_member_password__'
-
-      amazon.aws.s3_object:
-        bucket: "{{ domain_member_running.password.bucket }}"
-        ceph: false
-        debug_botocore_endpoint_logs: false
-        dualstack: false
-        encrypt: true
-        encryption_mode: 'AES256'
-        expiry: 600
-        ignore_nonexistent_bucket: true
-        mode: 'getstr'
-        object: "{{ domain_member_running.password.object }}"
-        overwrite: 'different'
-        permission: [ 'private' ]
-        prefix: ''
-        purge_tags: true
-        retries: 0
-        sig_v4: true
-        validate_bucket_name: true
-        validate_certs: true
-
-    #endregion --- [ Process: Fetch The Join Password ] --------------------------------------- #
-
-    #region ------ [ Process: Verify The Join Password Digest ] ------------------------------- #
-    # An object is trusted only once it matches the digest pinned in the playbook. Deliberately
-    # NOT no_log: assert reports the expression text and our message, never the value, so a
-    # mismatch stays diagnosable without exposing a secret.
-
-    - name: 'PROCESS | Verify The Join Password Digest'
-      ansible.builtin.assert:
-        fail_msg: >-
-          The join password object '{{ domain_member_running.password.object }}' does not match
-          the sha256 pinned in the playbook. Refusing to authenticate to the directory with an
-          unverified secret.
-        quiet: true
-        that:
-          - __domain_member_password__.contents | hash('sha256')
-            == domain_member_running.password.sha256
-
-    #endregion --- [ Process: Verify The Join Password Digest ] ------------------------------- #
-
     #region ------ [ Process: Hand The Contract To The System Role ] -------------------------- #
     # Every variable below is this role's contract translated into the system role's own names,
     # which is the whole reason the contract uses those names: the mapping is mechanical, so there
@@ -284,7 +219,7 @@
         ad_integration_force_rejoin: "{{ domain_member_running.force_rejoin | bool }}"
         ad_integration_manage_crypto_policies: false
         ad_integration_manage_timesync: "{{ __timesync_declared__ | bool }}"
-        ad_integration_password: "{{ __domain_member_password__.contents }}"
+        ad_integration_password: "{{ domain_member_running.password }}"
         ad_integration_realm: "{{ domain_member_running.realm | string | trim }}"
         ad_integration_secure_logging: true
         ad_integration_sssd_custom_settings: "{{ domain_member_running.sssd_custom_settings }}"

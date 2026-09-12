@@ -48,28 +48,18 @@ domain_member_defaults:
   # nothing else -- it is denied creating an OU, which is how it should be.
   user: 'svc-domainjoin@tcn.trinitytechnicalservices.com'
 
-  # WHERE the join password lives, never the password itself. The role fetches the object through
-  # the CONTROLLER, verifies it against the pinned digest, and hands the value to the join, so the
-  # guest is never given cloud credentials and no task in this role ever writes the value to a file.
+  # THE JOIN PASSWORD ITSELF, already resolved. A value and not a location: reading a credential
+  # out of S3 is the secret lookup's job, and the caller calls it -- which is why this is declared
+  # empty and validate.yml refuses a present run that omits it. The lookup takes the digest of the
+  # stored bytes as its second term, so a re-uploaded or truncated object fails at the read rather
+  # than as a wrong password at the directory, where the error names neither the object nor the
+  # upload. Rotating means moving the object and that digest together, in the caller, in one change.
   #
-  # That is not the same as "it never touches disk". With pipelining off -- which is Ansible's
-  # default and what this chassis leaves in place -- every module payload is staged as a file in
-  # the target's temp directory before it executes, and for the join that payload carries the
-  # password. Enable pipelining for plays that run this role if that transit matters to you.
-  #
-  # The digest is a hash of a live credential, committed to a repository: use a generated password,
-  # not a memorable one.
-  #
-  # The object and its digest are site identity and are defaulted; the bucket is not, and is
-  # REQUIRED from the caller. The digest is not decoration: it is what makes a re-uploaded or
-  # truncated object fail loudly here instead of failing as a wrong password at the directory,
-  # where the error names neither the object nor the upload. Rotating the password means moving
-  # the object and this digest together, in one change.
-  password:
-    # REQUIRED from the caller: account-scoped, and only the pipeline knows the account.
-    bucket: ''
-    object: 'host_roles/domain_member/svc-domainjoin-password.txt'
-    sha256: '07493ed779c2962bff0b5e19cfa00b8cdb95defcf477f6b5bac36ddef55087ae'
+  # This role never writes the value to a file. That is not the same as "it never touches disk":
+  # with pipelining off -- Ansible's default, which this chassis leaves in place -- every module
+  # payload is staged in the target's temp directory before it executes, and for the join that
+  # payload carries the password. Enable pipelining for plays that run this role if that matters.
+  password: ''
 
   #endregion --- [ Identity: what to join, and as whom ] -------------------------------------- #
 

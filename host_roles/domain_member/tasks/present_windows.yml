@@ -13,7 +13,7 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different domain.
-#   PROCESS  fetches the join password through the controller, proves it against its digest,
+#   PROCESS  hands the caller's resolved join password to the join module,
 #            joins, and writes the posture.
 #   END      proves the result from the machine rather than from the join module's report.
 #
@@ -32,7 +32,8 @@
 # playbook setting can re-admit them. The value and the argument for it are in the Kerberos region
 # below, beside the write.
 #
-# The password is fetched by the CONTROLLER and handed to the join module as an argument, so the
+# The password arrives resolved from the caller and is handed to the join module as an argument,
+# so the
 # guest is never given cloud credentials and no task here writes the value to a file. What
 # pipelining does and does not change about that is in the README.
 #
@@ -145,60 +146,6 @@
   # Begin The 'Process' Block
   block:
 
-    #region ------ [ Process: Fetch The Join Password ] --------------------------------------- #
-    # Byte-for-byte the task the RedHat path runs, deliberately: same object, same digest, same
-    # three modifiers, and the argument for each of them is written out once beside the RedHat
-    # copy in present_redhat.yml. Read it there. Changing one of these two tasks without the other
-    # is always a mistake.
-
-    - name: 'PROCESS | Fetch The Join Password'
-      become: false
-      changed_when: false
-      check_mode: false
-      delegate_to: 'localhost'
-      no_log: true
-      register: '__domain_member_password__'
-
-      amazon.aws.s3_object:
-        bucket: "{{ domain_member_running.password.bucket }}"
-        ceph: false
-        debug_botocore_endpoint_logs: false
-        dualstack: false
-        encrypt: true
-        encryption_mode: 'AES256'
-        expiry: 600
-        ignore_nonexistent_bucket: true
-        mode: 'getstr'
-        object: "{{ domain_member_running.password.object }}"
-        overwrite: 'different'
-        permission: [ 'private' ]
-        prefix: ''
-        purge_tags: true
-        retries: 0
-        sig_v4: true
-        validate_bucket_name: true
-        validate_certs: true
-
-    #endregion --- [ Process: Fetch The Join Password ] --------------------------------------- #
-
-    #region ------ [ Process: Verify The Join Password Digest ] ------------------------------- #
-    # An object is trusted only once it matches the digest pinned in the playbook. Deliberately
-    # NOT no_log: assert reports the expression text and our message, never the value, so a
-    # mismatch stays diagnosable without exposing a secret.
-
-    - name: 'PROCESS | Verify The Join Password Digest'
-      ansible.builtin.assert:
-        fail_msg: >-
-          The join password object '{{ domain_member_running.password.object }}' does not match
-          the sha256 pinned in the playbook. Refusing to authenticate to the directory with an
-          unverified secret.
-        quiet: true
-        that:
-          - __domain_member_password__.contents | hash('sha256')
-            == domain_member_running.password.sha256
-
-    #endregion --- [ Process: Verify The Join Password Digest ] ------------------------------- #
-
     #region ------ [ Process: Leave The Current Domain When A Rejoin Is Forced ] -------------- #
     # The RedHat system role's forced rejoin is 'realm leave' followed by 'realm join'; this is
     # the same operation in the form Windows takes it -- but not the same authentication. realm
@@ -222,7 +169,7 @@
         - __currently_joined__ | bool
 
       microsoft.ad.membership:
-        domain_admin_password: "{{ __domain_member_password__.contents }}"
+        domain_admin_password: "{{ domain_member_running.password }}"
         domain_admin_user: "{{ domain_member_running.user | string | trim }}"
         reboot: false
         state: 'workgroup'
@@ -267,7 +214,7 @@
 
       microsoft.ad.membership:
         dns_domain_name: "{{ __realm_to_join__ }}"
-        domain_admin_password: "{{ __domain_member_password__.contents }}"
+        domain_admin_password: "{{ domain_member_running.password }}"
         domain_admin_user: "{{ domain_member_running.user | string | trim }}"
         domain_ou_path: "{{ domain_member_running.computer_ou | default(omit, true) }}"
         reboot: false

@@ -10,9 +10,14 @@
 #
 # REQUIRED INPUT -- one, supplied by the caller.
 #
-#   domain_member.password.bucket   S3 bucket holding the join account's password. Account-scoped
-#                                   rather than site-scoped: only the deploying pipeline knows
-#                                   which account it is running in.
+#   domain_member.password          The join account's password, already resolved. A VALUE, not a
+#                                   location: reading a credential out of S3 is the framework
+#                                   secret lookup's job, and the caller calls it -- pass the
+#                                   digest of the stored bytes as that lookup's second term so a
+#                                   moved or truncated object fails at the read rather than as a
+#                                   wrong password at the directory. This role never writes it to
+#                                   a file; see the README for what pipelining does and does not
+#                                   change about that.
 #
 # EXPECTED but not enforced -- validate.yml accepts its absence, and should:
 #
@@ -28,12 +33,6 @@
 #   domain_member.realm             DNS name of the realm to join.
 #   domain_member.user              Account permitted to create or reuse this machine's computer
 #                                   object.
-#   domain_member.password.object   Object key of the password. Fetched through the CONTROLLER as
-#                                   a string; the guest is never given cloud credentials, and the
-#                                   value is never written to a file by this role. See the README
-#                                   for what pipelining does and does not change about that.
-#   domain_member.password.sha256   Lowercase 64-character digest of that object, verified before
-#                                   the value is used as a credential.
 #
 # OPTIONAL: force_rejoin (leave and join again), timesync_source (the clock's source).
 #
@@ -43,8 +42,8 @@
 #
 # COLLECTIONS. RedHat requires 'redhat.rhel_system_roles' for the ad_integration role that performs
 # the join, and that role's own dependencies -- 'ansible.posix' and 'community.general'. Windows
-# requires 'microsoft.ad' and 'ansible.windows'. Both paths require 'amazon.aws' on the CONTROLLER
-# to fetch the join password.
+# requires 'microsoft.ad' and 'ansible.windows'. Neither path fetches anything: the password
+# arrives resolved, so 'amazon.aws' is the CALLER's dependency now, not this role's.
 # =========================================================================================== #
 ---
 galaxy_info:
@@ -54,8 +53,8 @@ galaxy_info:
   author: 'nwarila-platform'
   description: >-
     Active Directory domain membership for RedHat-family and Windows hosts through one contract.
-    Fetches the join password from S3 through the controller and verifies it against a pinned
-    digest, then joins: RedHat hands the whole contract to redhat.rhel_system_roles.ad_integration,
+    Takes the join password as a resolved value from the caller, then joins: RedHat hands the
+    whole contract to redhat.rhel_system_roles.ad_integration,
     and Windows performs the same work against microsoft.ad and the registry. Refuses a host
     already joined elsewhere unless a rejoin is forced, excludes DES and RC4 from Kerberos on both
     platforms with no way to re-admit them, holds the machine-account and secure-channel posture,
