@@ -43,6 +43,17 @@
 # thing being waited for instead of as a failure. ignore_unreachable plus a retry is what makes
 # that survivable -- a host that reboots mid-check is unreachable for one attempt and answers the
 # next.
+#
+# The servicing flag, RebootPending, does NOT on its own mean a restart is owed. Component-Based
+# Servicing sets it when any servicing session starts and clears it when that session ends; it is a
+# crash-safety mark, not a request. Measured on a Server 2025 image, 2026-09-16, with the flag and
+# CBS.log watched through a whole converge: StartComponentCleanup -- idle component-store
+# maintenance, overdue on any freshly launched image -- began at the host's first idle moment,
+# held the flag for 1,465 seconds, and cleared it itself with S_OK and no restart. A converge that
+# began inside that window failed here after every retry, intermittently, because when a host first
+# goes idle varies from run to run. So the flag only holds this gate while the Windows Modules
+# Installer service is stopped: a mark left behind with servicing stopped is a restart genuinely
+# owed, while a mark held as servicing runs is simply work in progress.
 - name: 'Host Readiness | Wait Until The Machine Has Stopped Restarting Itself'
   become: false
   changed_when: false
@@ -64,7 +75,8 @@
   ansible.builtin.raw: >-
     powershell -NoProfile -Command
     "if ((((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds -ge 90)
-    -and (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'))
+    -and (-not ((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
+    -and ((Get-Service TrustedInstaller).Status -ne 'Running')))
     -and (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')))
     { exit 0 } else { exit 1 }"
 
@@ -76,7 +88,9 @@
       '{{ inventory_hostname }}' never stayed up long enough to be configured: it was still
       restarting, or still reported a restart pending, after every attempt. Configuring a host that
       is about to reboot is how a converge half-applies, so this stops here. The System log's event
-      1074 names the process that restarted the machine, and why.
+      1074 names the process that restarted the machine, and why. A servicing mark only counts while
+      the TrustedInstaller service is stopped, so a flag reported here is a restart genuinely owed:
+      restart the host, or read CBS.log for the session that set it.
     quiet: true
     that:
       - not (__host_readiness_settled__.unreachable | default(false))
