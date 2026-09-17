@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.1.10](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.9...v0.1.10) (2026-09-17)
+
+
+### Features
+
+* **host_readiness:** restart a Windows host once when it owes a restart ([#99](https://github.com/nwarila-platform/ansible-framework/issues/99)) ([a98df47](https://github.com/nwarila-platform/ansible-framework/commit/a98df47c5258a23a875da8263ed76396c3f1f051))
+
+
+### Bug Fixes
+
+* **host_readiness:** a servicing session in progress is not a restart pending ([#96](https://github.com/nwarila-platform/ansible-framework/issues/96)) ([9b18f26](https://github.com/nwarila-platform/ansible-framework/commit/9b18f26c132c1f12d8ebdfc8daaba4c71d9b60c4))
+
 ## [0.1.9](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.8...v0.1.9) (2026-09-12)
 
 
