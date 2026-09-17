@@ -49,49 +49,116 @@
 # crash-safety mark, not a request. Measured on a Server 2025 image, 2026-09-16, with the flag and
 # CBS.log watched through a whole converge: StartComponentCleanup -- idle component-store
 # maintenance, overdue on any freshly launched image -- began at the host's first idle moment,
-# held the flag for 1,465 seconds, and cleared it itself with S_OK and no restart. A converge that
-# began inside that window failed here after every retry, intermittently, because when a host first
-# goes idle varies from run to run. So the flag only holds this gate while the Windows Modules
-# Installer service is stopped: a mark left behind with servicing stopped is a restart genuinely
-# owed, while a mark held as servicing runs is simply work in progress.
-- name: 'Host Readiness | Wait Until The Machine Has Stopped Restarting Itself'
-  become: false
-  changed_when: false
-  check_mode: false
-  delay: 20
-  ignore_unreachable: true
-  register: '__host_readiness_settled__'
-  retries: 15
-  until:
-    - not (__host_readiness_settled__.unreachable | default(false))
-    - (__host_readiness_settled__.rc | default(1)) == 0
+# held the flag for 1,465 seconds, and cleared it itself with S_OK and no restart. So a mark held
+# while the Windows Modules Installer service runs is work in progress and does not hold this gate.
+#
+# A mark left behind with that service STOPPED is different: no session is running, so nothing will
+# clear it but a restart, and neither will the Windows Update flag. Waiting on either only fails the
+# run and leaves the restart for someone to do by hand. So the probe answers three ways -- 0
+# settled, 1 still settling, 2 a restart is owed -- and an owed restart is performed, once, and
+# the machine is waited for again. Restarting cannot interrupt servicing here: an owed restart is
+# only ever reported while the service that does the servicing is stopped.
+- name: 'Host Readiness | Settle The Machine, Restarting It Once If Windows Owes A Restart'
+  vars:
+    # Defined once so the wait before a restart and the wait after it can never ask different
+    # questions. NO PowerShell VARIABLES, deliberately: the shell OpenSSH serves is cmd on first boot
+    # and PowerShell after os_bootstrap flips DefaultShell, and under PowerShell the outer double
+    # quotes INTERPOLATE, so a '$Name' inside them is expanded by the outer shell -- to nothing --
+    # before the inner powershell ever sees it. Measured: a draft that used two variables reached the
+    # host as "... -f , )", a parse error that consumed every retry.
+    __host_readiness_settle_probe__: >-
+      powershell -NoProfile -Command
+      "if (((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds -lt 90) { exit 1 }
+      elseif (((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
+      -and ((Get-Service TrustedInstaller).Status -ne 'Running'))
+      -or (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'))
+      { exit 2 }
+      else { exit 0 }"
 
-  # NO PowerShell VARIABLES, deliberately, and this is the reason the header above gives: the shell
-  # OpenSSH serves is cmd on first boot and PowerShell after os_bootstrap flips DefaultShell. Under
-  # PowerShell the outer double quotes INTERPOLATE, so a '$Name' inside them is expanded by the
-  # outer shell -- to nothing -- before the inner powershell ever sees it. Measured: a first draft
-  # of this check used two variables and reached the host as "... -f , )", a parse error that
-  # consumed every retry. One expression, no variables, parses the same under both shells.
-  ansible.builtin.raw: >-
-    powershell -NoProfile -Command
-    "if ((((Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime).TotalSeconds -ge 90)
-    -and (-not ((Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending')
-    -and ((Get-Service TrustedInstaller).Status -ne 'Running')))
-    -and (-not (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired')))
-    { exit 0 } else { exit 1 }"
+  block:
 
-# The retry budget is finite, so exhausting it has to stop the run rather than let the play proceed
-# into the state the wait exists to avoid.
-- name: 'Host Readiness | Require That The Machine Settled'
-  ansible.builtin.assert:
-    fail_msg: >-
-      '{{ inventory_hostname }}' never stayed up long enough to be configured: it was still
-      restarting, or still reported a restart pending, after every attempt. Configuring a host that
-      is about to reboot is how a converge half-applies, so this stops here. The System log's event
-      1074 names the process that restarted the machine, and why. A servicing mark only counts while
-      the TrustedInstaller service is stopped, so a flag reported here is a restart genuinely owed:
-      restart the host, or read CBS.log for the session that set it.
-    quiet: true
-    that:
-      - not (__host_readiness_settled__.unreachable | default(false))
-      - (__host_readiness_settled__.rc | default(1)) == 0
+    # Stops as soon as the machine is settled OR owes a restart: waiting longer cannot change an owed
+    # restart. raw reports any non-zero exit as a failure, and 1 and 2 are answers here rather than
+    # errors, so the result is read -- by the tasks below and the assert that closes the block --
+    # instead of being allowed to stop the play on its own.
+    - name: 'Host Readiness | Wait Until The Machine Has Stopped Restarting Itself'
+      become: false
+      changed_when: false
+      check_mode: false
+      delay: 20
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__host_readiness_settled__'
+      retries: 15
+      until:
+        - not (__host_readiness_settled__.unreachable | default(false))
+        - (__host_readiness_settled__.rc | default(1)) in [0, 2]
+
+      ansible.builtin.raw: '{{ __host_readiness_settle_probe__ }}'
+
+    # 1115 and 1190 mean a shutdown is already in progress or scheduled: Windows was restarting itself
+    # anyway, which is the outcome asked for. A dropped connection is the restart taking effect.
+    - name: 'Host Readiness | Restart The Machine To Apply What Windows Owes'
+      become: false
+      changed_when: true
+      failed_when: >-
+        not (__host_readiness_restarted__.unreachable | default(false))
+        and (__host_readiness_restarted__.rc | default(1)) not in [0, 1115, 1190]
+      ignore_unreachable: true
+      register: '__host_readiness_restarted__'
+      when:
+        - not (__host_readiness_settled__.unreachable | default(false))
+        - (__host_readiness_settled__.rc | default(1)) == 2
+        - host_readiness_restart_when_owed | bool
+        - not ansible_check_mode
+
+      ansible.builtin.raw: >-
+        shutdown /r /t 5 /c "host_readiness: Windows reported a restart owed before configuration"
+
+    # Longer than the first wait: servicing finishes its pending work during that boot, which is the
+    # slowest boot a host has.
+    - name: 'Host Readiness | Wait For The Machine To Return Settled'
+      become: false
+      changed_when: false
+      check_mode: false
+      delay: 20
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__host_readiness_returned__'
+      retries: 30
+      until:
+        - not (__host_readiness_returned__.unreachable | default(false))
+        - (__host_readiness_returned__.rc | default(1)) == 0
+      when: __host_readiness_restarted__ is changed
+
+      ansible.builtin.raw: '{{ __host_readiness_settle_probe__ }}'
+
+    # The one place this gate fails, so the reason it gives is always the real one. Check mode reports
+    # an owed restart as the restart a real run would make, rather than failing over it.
+    - name: 'Host Readiness | Require That The Machine Settled'
+      vars:
+        __settled_rc__: "{{ __host_readiness_settled__.rc | default(1) }}"
+        __settled_lost__: "{{ __host_readiness_settled__.unreachable | default(false) }}"
+        __restarted__: "{{ __host_readiness_restarted__ is changed }}"
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' is not ready to be configured:
+          {% if __settled_lost__ | bool %}it never stayed reachable long enough to be checked.
+          {% elif (__settled_rc__ | int) == 2 and not (host_readiness_restart_when_owed | bool) %}Windows
+          owes a restart -- a servicing mark with the Windows Modules Installer stopped, or the Windows
+          Update reboot flag -- and host_readiness_restart_when_owed is false, so it was not restarted.
+          Restart the host, or allow the role to.
+          {% elif __restarted__ | bool %}it was restarted once because Windows owed a restart, and did
+          not settle afterwards. A restart owed again straight away needs a person rather than a loop;
+          CBS.log names the servicing session that set the mark.
+          {% else %}it was still restarting after every attempt.{% endif %}
+          The System log's event 1074 names whatever restarted the machine, and why.
+        quiet: true
+        that:
+          - >-
+            (not (__settled_lost__ | bool) and (__settled_rc__ | int) == 0)
+            or (not (__settled_lost__ | bool) and (__settled_rc__ | int) == 2
+                and ansible_check_mode and (host_readiness_restart_when_owed | bool))
+            or ((__restarted__ | bool)
+                and not (__host_readiness_returned__.unreachable | default(false))
+                and (__host_readiness_returned__.rc | default(1)) == 0)

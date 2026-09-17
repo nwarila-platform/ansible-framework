@@ -31,7 +31,7 @@ Either way it selects `tasks/checks_<platform>_<os>.yml`. Ships today:
 
 | File | Waits for |
 |---|---|
-| `checks_aws_windows.yml` | EC2Launch to report provisioning complete |
+| `checks_aws_windows.yml` | EC2Launch to report provisioning complete, then the machine to stop restarting itself -- restarting it once if Windows owes a restart |
 
 A vendor this framework has no name for, a host with no SMBIOS, a shell that answers oddly, or a
 pair that ships no file all resolve the same way: the probe runs, nothing else does. Most platforms
@@ -94,12 +94,13 @@ written rather than wrapped.
 
 ## Inputs
 
-All optional bounds, declared as **play** variables (never as `vars:` on the include).
+All optional, declared as **play** variables (never as `vars:` on the include).
 
 | Variable | Default | Meaning |
 | --- | ---: | --- |
 | `host_readiness_attempts` | `60` | How many times the probe may run before the wait fails. |
 | `host_readiness_pause_seconds` | `15` | Pause between attempts. |
+| `host_readiness_restart_when_owed` | `true` | Restart a Windows host once when it owes a restart -- a servicing mark with the Windows Modules Installer stopped, or the Windows Update reboot flag -- instead of failing. Turn off where a converge must never restart the machine. |
 
 The two multiply: the wait runs for at most `attempts × (pause + however long a refused connection
 takes to give up)`. The defaults allow roughly fifteen minutes of pauses, which covers a Windows
