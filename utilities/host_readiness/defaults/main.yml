@@ -1,9 +1,9 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
 # --- [ Description ] ------------------------------------------------------------------------ #
-# Bounds, not behaviour: how long the role may wait, never what it waits for. They live here
-# rather than in vars/ so a play can raise them for a slow first boot -- role vars outrank play
-# vars, defaults do not.
+# Bounds, not behaviour: how long the role may wait, never what it waits for -- with one exception,
+# below, for a host that must not be restarted by a converge. They live here rather than in vars/ so
+# a play can change them -- role vars outrank play vars, defaults do not.
 #
 # The two multiply: the wait runs for at most attempts x (pause + however long a refused
 # connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which covers
@@ -22,3 +22,11 @@ host_readiness_pause_seconds: 15
 # inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most platforms
 # have no precondition beyond answering, and saying so by omission is cheaper than a stub per pair.
 host_readiness_platform: ''
+
+# Whether a Windows host that owes a restart is restarted, once, before it is configured. Owed means
+# a servicing mark left with the Windows Modules Installer stopped, or the Windows Update reboot
+# flag: nothing clears either but a restart, so waiting on them only fails the run. On by default,
+# because a host being built should be restarted and the run carried on. Turn it off where a
+# converge must never restart the machine -- a live cluster node, say, where several owing a restart
+# at once would all restart together -- and the role then stops and says the restart is owed.
+host_readiness_restart_when_owed: true
