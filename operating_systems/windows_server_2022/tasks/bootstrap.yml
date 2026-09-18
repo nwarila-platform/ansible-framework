@@ -1,18 +1,18 @@
-# =========================================================================================== #
-# File: '{{ role_path }}/tasks/bootstrap.yml'                                  | Version 1.0.0 #
-# --- [ Description ] ----------------------------------------------------------------------- #
-# MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2022     #
-# host. Called EXPLICITLY by the deploying playbook — never by a loader.                       #
-#                                                                                             #
-# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The framework's shared         #
-# application loader is Linux-only: it requires 'ENV',                                         #
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/bootstrap.yml'                                  | Version 1.0.0  #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2022      #
+# host. Called EXPLICITLY by the deploying playbook — never by a loader.                        #
+#                                                                                               #
+# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The framework's shared          #
+# application loader is Linux-only: it requires 'ENV',                                          #
 # escalates with become=sudo, stages with ansible.builtin.tempfile and labels with SELinux,     #
-# and derives its dispatch name from ansible_distribution — which on Windows is                #
-# Win32_OperatingSystem.Caption, yielding the space-containing string                          #
-# 'microsoft windows server 2022 datacenter_10'. See tasks/main.yml for the guard that stands  #
-# in its place.                                                                                #
-#                                                                                             #
-# --- [ How To Call It ] --------------------------------------------------------------------- #
+# and derives its dispatch name from ansible_distribution — which on Windows is                 #
+# Win32_OperatingSystem.Caption, yielding the space-containing string                           #
+# 'microsoft windows server 2022 datacenter_10'. See tasks/main.yml for the guard that stands   #
+# in its place.                                                                                 #
+#                                                                                               #
+# --- [ How To Call It ] ---------------------------------------------------------------------- #
 #   - name: 'Bootstrap | Windows Server 2022 minimum requirements'
 #     hosts: 'wazuh_agents_windows'
 #     gather_facts: false
@@ -55,11 +55,11 @@
 # assert cannot come first — it guards the MAIN work, not the transport repair. Any fact or
 # assert placed before the gate is a coin flip, because the file cannot know which shell the
 # host is currently serving until it has probed.
-# =========================================================================================== #
+# ============================================================================================= #
 
-#region ------ [ Script ] ------------------------------------------------------------------- #
+#region ------ [ Process: Bootstrap The Host ] ------------------------------------------------ #
 
-- name: 'INFO | Entering Bootstrap'
+- name: 'PROCESS | Bootstrap The Windows Server Host'
 
   # become: BOTH forms, deliberately, and over the WHOLE file rather than just the cmd stage.
   # The keyword alone is not durable — the 'ansible_become' VARIABLE is what ansible-core
@@ -82,7 +82,7 @@
 
   block:
 
-  #region ------ [ Transport ] --------------------------------------------------------------- #
+  #region ------ [ Process: Serve PowerShell Over The Transport ] ----------------------------- #
   #   WHY THIS EXISTS AT ALL: the Terraform layer that builds these instances deliberately
   #   leaves OpenSSH's DefaultShell at cmd.exe — per that framework's own locals.tf, setting it
   #   to PowerShell breaks Terraform remote-exec SCP upload when its dormant SSH bootstrap is
@@ -93,7 +93,7 @@
   #   a fresh Windows boot and DefaultShell back at cmd.exe, regardless of what a prior run
   #   flipped it to.
 
-    - name: 'INFO | Entering Transport Stage'
+    - name: 'PROCESS | Serve PowerShell Over The Transport'
 
       # SCOPE, precisely: block vars are precedence 16. They outrank the per-host
       # 'ansible_shell_type: powershell' a dynamic inventory composes for Windows hosts
@@ -111,7 +111,7 @@
 
       block:
 
-      #region ------ [ Transport: Flip OpenSSH DefaultShell (cmd -> PowerShell) ] ------------- #
+      #region ------ [ Process: Set OpenSSH DefaultShell To PowerShell ] ---------------------- #
 
         # BEST-EFFORT BY CONSTRUCTION (failed_when: false), and RE-ENTRANCY is exactly why.
         # An ALREADY-FLIPPED host cannot be reached through the cmd wrapper at all: ansible
@@ -124,8 +124,8 @@
         # abort a run that was actually already healthy. Hence: no task in this stage is allowed
         # to fail the run — the ONLY gate is the post-reset verify, which runs over a fresh
         # session with the shell type the rest of the suite uses.
-        - name: 'INIT | Query Current OpenSSH DefaultShell'
-          register: '__openssh_defaultshell_query__'
+        - name: 'BEGIN | Read The Current OpenSSH DefaultShell'
+          register: '__windows_server_2022_defaultshell_query__'
           changed_when: false
           failed_when: false
 
@@ -145,10 +145,10 @@
         # query's real output — breaking the idempotency guard forever, with no error anywhere.
         # '\W', '\S' and '\p' are not valid escapes and survive unharmed, which is exactly why
         # the bug is invisible on inspection: 90% of the path still looks right.
-        - name: 'INIT | Flip OpenSSH DefaultShell To PowerShell'
+        - name: 'PROCESS | Set OpenSSH DefaultShell To PowerShell'
           when: >-
             'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' not in
-            (__openssh_defaultshell_query__.stdout | default('', true))
+            (__windows_server_2022_defaultshell_query__.stdout | default('', true))
           changed_when: true
           failed_when: false
 
@@ -156,9 +156,9 @@
             reg add "HKLM\SOFTWARE\OpenSSH" /v DefaultShell /t REG_SZ
             /d "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" /f
 
-      #endregion --- [ Transport: Flip OpenSSH DefaultShell (cmd -> PowerShell) ] ------------- #
+      #endregion --- [ Process: Set OpenSSH DefaultShell To PowerShell ] ---------------------- #
 
-  #region ------ [ Transport: Rebind The Session To The New Shell ] -------------------------- #
+  #region ------ [ Process: Rebind The Session To The New Shell ] ----------------------------- #
 
     # UNCONDITIONAL — no 'when:' — for two reasons: (a) ansible-core explicitly lists
     # reset_connection among the meta actions that do NOT support conditionals
@@ -177,7 +177,7 @@
     # Sitting OUTSIDE the cmd-scoped block is intentional: it is the boundary between the two
     # transport worlds, and it is shell-agnostic (the reset only runs 'ssh -O check' then
     # 'ssh -O stop' against the mux socket).
-    - name: 'INIT | Reset The SSH Connection (Apply The New DefaultShell)'
+    - name: 'PROCESS | Reset The Connection To Apply The New Shell'
       ansible.builtin.meta: 'reset_connection'
 
     # THE REAL GATE. Everything above is best-effort precisely because a re-entrant run cannot
@@ -191,27 +191,27 @@
     # inventory: a shared framework file must not depend on the caller's inventory having
     # composed ansible_shell_type at all, and 17 also outranks a block-scoped 16 if this task is
     # ever moved back inside the cmd block.
-    - name: 'INIT | Verify DefaultShell Now Serves PowerShell'
+    - name: 'END | Verify DefaultShell Now Serves PowerShell'
       vars:
         ansible_shell_type: 'powershell'
-      register: '__openssh_defaultshell_verify__'
+      register: '__windows_server_2022_defaultshell_verify__'
       changed_when: false
       failed_when: >-
         'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' not in
-        (__openssh_defaultshell_verify__.stdout | default('', true))
+        (__windows_server_2022_defaultshell_verify__.stdout | default('', true))
 
       ansible.builtin.raw: 'reg query "HKLM\SOFTWARE\OpenSSH" /v DefaultShell'
 
-  #endregion --- [ Transport: Rebind The Session To The New Shell ] -------------------------- #
+  #endregion --- [ Process: Rebind The Session To The New Shell ] ----------------------------- #
 
-  #endregion --- [ Transport ] --------------------------------------------------------------- #
+  #endregion --- [ Process: Serve PowerShell Over The Transport ] ----------------------------- #
 
-  #region ------ [ Initialization ] ---------------------------------------------------------- #
+  #region ------ [ Begin: Read The Host And Confirm It Is Supported ] ------------------------- #
 
-    - name: 'INFO | Entering Initialization Stage'
+    - name: 'BEGIN | Read The Host And Confirm It Is Supported'
       block:
 
-      #region ------ [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+      #region ------ [ Begin: Load The Required Facts ] --------------------------------------- #
 
         # CONDITIONAL AND NARROW, same contract as the Linux bootstrap: this file is called on
         # hosts whose facts may or may not have been gathered, so it loads only what its own
@@ -237,16 +237,16 @@
         #     identically here ('!all' excludes all-minus-min, '!min' then excludes min,
         #     'distribution' adds it back). Unlike POSIX setup, an INVALID subset only WARNS on
         #     Windows rather than failing — a typo degrades silently, so do not mistype it.
-        - name: 'INIT | Loading Facts'
+        - name: 'BEGIN | Load The Required Facts'
           when: >-
             ansible_facts.os_family is undefined
             or ansible_facts.distribution_version is undefined
             or ansible_facts.os_product_type is undefined
           ansible.windows.setup: { gather_subset: [ '!all', '!min', 'distribution' ] }
 
-      #endregion --- [ Initialization: Loading Required Fact(s) ] ---------------------------- #
+      #endregion --- [ Begin: Load The Required Facts ] --------------------------------------- #
 
-      #region ------ [ Initialization: Perform OS Validation ] ------------------------------- #
+      #region ------ [ Begin: Require A Supported Release ] ----------------------------------- #
 
         # BUILD NUMBER, not major version: EVERY Windows since 10 reports major version 10, so
         # the Linux reference's '(major_version | int) == 8' shape asserts nothing at all here.
@@ -260,34 +260,38 @@
         # distribution_version is [Environment]::OSVersion.Version.ToString(), e.g.
         # '10.0.20348.0'; element 2 is the build. 'distribution' and installation type are
         # printed for the operator only, never asserted on.
-        - name: 'INIT | Perform OS Check'
+        - name: 'BEGIN | Require A Supported Windows Server Release'
           vars:
             # Padded BEFORE indexing: an unexpected short version string must not blow up the
             # assert itself with an index error instead of reporting the OS it actually found.
             __os_build__: >-
-              {{ (((ansible_facts.distribution_version | default('') | string).split('.')) + ['0', '0', '0'])[2] }}
+              {{ (((ansible_facts.distribution_version | default('') | string).split('.'))
+              + ['0', '0', '0'])[2] }}
           ansible.builtin.assert:
             that:
               - (ansible_facts.os_family | default('') | string) == 'Windows'
-              - (ansible_facts.os_product_type | default('') | string) in ['server', 'domain_controller']
+              - (ansible_facts.os_product_type | default('') | string)
+                in ['server', 'domain_controller']
               - (__os_build__ | int) == 20348
             fail_msg: >-
               The role 'windows_server_2022' is intended for Windows Server 2022
               (NT 10.0 build 20348) hosts only. Detected:
-              {{ ansible_facts.distribution | default('<unreported: needs an elevated token>', true) }}
+              {{ ansible_facts.distribution
+              | default('<unreported: needs an elevated token>', true) }}
               version {{ ansible_facts.distribution_version | default('<unknown>', true) }},
               family {{ ansible_facts.os_family | default('<unknown>', true) }},
               product type {{ ansible_facts.os_product_type | default('<unknown>', true) }},
-              installation type {{ ansible_facts.os_installation_type | default('<unknown>', true) }}.
+              installation type
+              {{ ansible_facts.os_installation_type | default('<unknown>', true) }}.
               NOTE 'distribution' is reported only when the session token is elevated, and it is
               localized — it is printed for the operator, never asserted on.
             quiet: true
 
-      #endregion --- [ Initialization: Perform OS Validation ] ------------------------------- #
+      #endregion --- [ Begin: Require A Supported Release ] ----------------------------------- #
 
-  #endregion --- [ Initialization ] ---------------------------------------------------------- #
+  #endregion --- [ Begin: Read The Host And Confirm It Is Supported ] ------------------------- #
 
-  #region ------ [ Main ] -------------------------------------------------------------------- #
+  #region ------ [ Process: Converge The Host Identity ] -------------------------------------- #
   #   INTENTIONALLY THIN. Every item the Linux bootstrap does in its Main stage is either
   #   already guaranteed on Windows or actively wrong to port:
   #     * python3.12 / pip / venv / venv drift probe / venv permissions — nothing on a Windows
@@ -319,10 +323,10 @@
   #   tries sftp (a shell-independent subsystem) first, so this is latent, not live, and a
   #   var-level assert cannot see an ini-level setting anyway.
 
-    - name: 'INFO | Entering Main Stage'
+    - name: 'PROCESS | Converge The Host Identity'
       block:
 
-      #region ------ [ MAIN: Verifying The Session Token Is Elevated ] ----------------------- #
+      #region ------ [ Begin: Require An Elevated Session Token ] ----------------------------- #
 
         # The one precondition the suite cannot recover from on its own. Installing the agent
         # MSI, writing under 'C:\Program Files (x86)', and driving a Windows service all require
@@ -335,8 +339,8 @@
         # the tell is that ansible_distribution above comes back null. Probe it in one round
         # trip and fail here instead, with the reason, at the cheapest possible point.
         # This is a CHECK, not a repair: a filtered token cannot elevate itself in-session.
-        - name: 'MAIN | Probing The Session Token For Administrator Rights'
-          register: '__win_token_elevated__'
+        - name: 'BEGIN | Read Whether The Session Token Is Elevated'
+          register: '__windows_server_2022_token_elevated__'
           changed_when: false
 
           ansible.windows.win_powershell:
@@ -344,83 +348,102 @@
             script: |
               $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
               $principal = [Security.Principal.WindowsPrincipal]$identity
+              $adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
               $Ansible.Result = @{
                   user = $identity.Name
-                  elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+                  elevated = $principal.IsInRole($adminRole)
               }
               $Ansible.Changed = $false
 
-        - name: 'MAIN | Verifying The Session Token Is Elevated'
+        - name: 'BEGIN | Require An Elevated Session Token'
           ansible.builtin.assert:
             that:
-              - (__win_token_elevated__.result.elevated | default(false)) | bool
+              - (__windows_server_2022_token_elevated__.result.elevated | default(false)) | bool
             fail_msg: >-
               The connected session
-              ({{ __win_token_elevated__.result.user | default('<unknown>') }}) does not hold an
+              ({{ __windows_server_2022_token_elevated__.result.user | default('<unknown>') }})
+              does not hold an
               elevated Administrators token. The suite installs an MSI, writes under
               'C:\Program Files (x86)' and manages a service with become: false, so it cannot
               elevate for itself. Check UAC Admin Approval Mode for the built-in Administrator
               (FilterAdministratorToken) and the SSH login used for this host.
             quiet: true
 
-      #endregion --- [ MAIN: Verifying The Session Token Is Elevated ] ----------------------- #
+      #endregion --- [ Begin: Require An Elevated Session Token ] ----------------------------- #
 
-        #region ------ [ MAIN: Setting The Computer Name ] --------------------------------------- #
+        #region ------ [ Process: Set The Computer Name ] ------------------------------------- #
         # The host's own name. A host that later joins a directory carries this name into its
-        # computer object, and a rename AFTER a join needs directory credentials the bootstrap does
+        # computer object, and a rename AFTER a join needs directory credentials the bootstrap
+        # does
         # not have -- so it happens here, first. win_hostname only queues the change; the restart
-        # applies it, and the name is read back from the machine afterwards, so nothing downstream
+        # applies it, and the name is read back from the machine afterwards, so nothing
+        # downstream
         # runs on a half-renamed host.
         #
-        # It defaults to 'inventory_hostname': an inventory that names its hosts after the machines
+        # It defaults to 'inventory_hostname': an inventory that names its hosts after the
+        # machines
         # already carries the answer, and passing it again would be a second copy of one value. A
         # consumer whose inventory names hosts by something that is not a computer name -- an
         # address, an instance id -- sets 'windows_bootstrap_hostname' to '' to leave the name
-        # alone. Declare it as a PLAY variable, never as 'vars:' on the include (call contract above).
+        # alone. Declare it as a PLAY variable, never as 'vars:' on the include (call contract
+        # above).
 
-        # A rename is only possible while the host stands alone. Once it has joined a directory its
+        # A rename is only possible while the host stands alone. Once it has joined a directory
+        # its
         # name lives in the computer object, and changing it needs directory credentials this
-        # bootstrap does not hold -- Windows answers 'Access is denied'. That is an ORDERING fault,
-        # not a runtime one, so it is named here rather than left to surface as a permission error.
+        # bootstrap does not hold -- Windows answers 'Access is denied'. That is an ORDERING
+        # fault,
+        # not a runtime one, so it is named here rather than left to surface as a permission
+        # error.
 
-        - name: 'MAIN | Reading The Current Name And Directory Membership'
+        - name: 'BEGIN | Read The Current Name And Directory Membership'
           changed_when: false
-          register: '__windows_bootstrap_identity__'
+          register: '__windows_server_2022_identity__'
 
           ansible.windows.win_shell: |
             $system = Get-CimInstance -ClassName 'Win32_ComputerSystem'
             Write-Output ($system.Name + '|' + $system.PartOfDomain)
 
-        - name: 'MAIN | Requiring The Name To Be Set Before Any Directory Join'
+        - name: 'BEGIN | Require The Name To Be Set Before Any Join'
           vars:
             __windows_bootstrap_current__: >-
-              {{ (__windows_bootstrap_identity__.stdout | trim).split('|') | first | upper }}
+              {{ (__windows_server_2022_identity__.stdout | trim).split('|') | first | upper }}
             __windows_bootstrap_joined__: >-
-              {{ ((__windows_bootstrap_identity__.stdout | trim).split('|') | last | lower) == 'true' }}
+              {{ ((__windows_server_2022_identity__.stdout | trim).split('|')
+              | last | lower) == 'true' }}
             __windows_bootstrap_declared__: >-
-              {{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}
-          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+              {{ windows_bootstrap_hostname | default(inventory_hostname)
+              | string | trim | upper }}
+          when: >-
+            (windows_bootstrap_hostname | default(inventory_hostname)
+            | string | trim | length) > 0
 
           ansible.builtin.assert:
             fail_msg: >-
-              '{{ __windows_bootstrap_current__ }}' has already joined a directory, so it cannot be
+              '{{ __windows_bootstrap_current__ }}' has already joined a directory, so it
+              cannot be
               renamed to '{{ __windows_bootstrap_declared__ }}' from here -- that rename needs
               directory credentials this bootstrap does not hold. The name must be set BEFORE the
-              join: run this bootstrap ahead of the role that joins, or rename the computer object
+              join: run this bootstrap ahead of the role that joins, or rename the computer
+              object
               in the directory and let the host follow it.
             quiet: true
             that:
               - not (__windows_bootstrap_joined__ | bool)
                 or __windows_bootstrap_current__ == __windows_bootstrap_declared__
 
-        - name: 'MAIN | Setting The Computer Name'
-          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
-          register: '__windows_bootstrap_hostname__'
+        - name: 'PROCESS | Set The Computer Name'
+          when: >-
+            (windows_bootstrap_hostname | default(inventory_hostname)
+            | string | trim | length) > 0
+          register: '__windows_server_2022_hostname__'
           ansible.windows.win_hostname:
-            name: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim }}"
+            name: >-
+              {{ windows_bootstrap_hostname | default(inventory_hostname)
+              | string | trim }}
 
-        - name: 'MAIN | Restarting To Apply The Computer Name'
-          when: __windows_bootstrap_hostname__.reboot_required | default(false) | bool
+        - name: 'PROCESS | Restart To Apply The Computer Name'
+          when: __windows_server_2022_hostname__.reboot_required | default(false) | bool
           ansible.windows.win_reboot:
             connect_timeout: 5
             msg: 'Restart requested by Ansible to apply the computer name'
@@ -430,24 +453,32 @@
 
         # Proven from the machine, not from facts: the bootstrap gathers none it does not need,
         # and the name that matters is the one the host answers with after the restart.
-        - name: 'MAIN | Reading The Computer Name Back'
-          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
-          register: '__windows_bootstrap_hostname_now__'
+        - name: 'END | Read The Computer Name Back'
+          when: >-
+            (windows_bootstrap_hostname | default(inventory_hostname)
+            | string | trim | length) > 0
+          register: '__windows_server_2022_hostname_now__'
           changed_when: false
           ansible.windows.win_shell: '$env:COMPUTERNAME'
 
-        - name: 'MAIN | Verifying The Computer Name'
-          when: (windows_bootstrap_hostname | default(inventory_hostname) | string | trim | length) > 0
+        - name: 'END | Verify The Computer Name'
+          when: >-
+            (windows_bootstrap_hostname | default(inventory_hostname)
+            | string | trim | length) > 0
           vars:
-            __declared__: "{{ windows_bootstrap_hostname | default(inventory_hostname) | string | trim | upper }}"
-            __actual__: "{{ __windows_bootstrap_hostname_now__.stdout | default('') | trim | upper }}"
+            __declared__: >-
+              {{ windows_bootstrap_hostname | default(inventory_hostname)
+              | string | trim | upper }}
+            __actual__: >-
+              {{ __windows_server_2022_hostname_now__.stdout | default('') | trim | upper }}
           ansible.builtin.assert:
             that: [ __actual__ == __declared__ ]
             fail_msg: >-
-              The computer name is '{{ __actual__ }}' but the playbook declared '{{ __declared__ }}'.
+              The computer name is '{{ __actual__ }}' but the playbook declared
+              '{{ __declared__ }}'.
             quiet: true
-        #endregion --- [ MAIN: Setting The Computer Name ] --------------------------------------- #
+        #endregion --- [ Process: Set The Computer Name ] ------------------------------------- #
 
-  #endregion --- [ Main ] -------------------------------------------------------------------- #
+  #endregion --- [ Process: Converge The Host Identity ] -------------------------------------- #
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Process: Bootstrap The Host ] ------------------------------------------------ #

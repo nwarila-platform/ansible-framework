@@ -195,6 +195,7 @@
 !/operating_systems/
 !/operating_systems/redhat_rocky_8/
 !/operating_systems/windows_server_2022/
+!/operating_systems/windows_server_2022/README.md
 !/operating_systems/windows_server_2025/
 !/operating_systems/*/.gitkeep
 !/operating_systems/redhat_rocky_8/defaults/
