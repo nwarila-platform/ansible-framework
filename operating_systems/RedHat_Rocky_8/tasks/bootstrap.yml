@@ -4,7 +4,7 @@
 # MINIMUM requirements for the ansible-framework suite to run on a NEW RHEL / Rocky 8 host.    #
 #                                                                                             #
 # Called explicitly with include_role/import_role + tasks_from 'bootstrap'. The generic         #
-# tasks/main.yml entry is a loud guard because the v2.2.0 loader retained in RedHat_Rocky_10   #
+# tasks/main.yml entry is a loud guard because the framework's shared application loader       #
 # has an unrelated ENV contract and can execute a remote module before this file establishes    #
 # a caller-configured remote-tmp base. This named entry has no loader-created 'config' or        #
 # '<role_name>_running' fact and deliberately needs                                             #

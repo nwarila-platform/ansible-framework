@@ -4,8 +4,8 @@
 # MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2022     #
 # host. Called EXPLICITLY by the deploying playbook — never by a loader.                       #
 #                                                                                             #
-# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The v2.2.0 loader retained     #
-# only in operating_systems/RedHat_Rocky_10/tasks/main.yml is Linux-only: it requires 'ENV',   #
+# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The framework's shared         #
+# application loader is Linux-only: it requires 'ENV',                                         #
 # escalates with become=sudo, stages with ansible.builtin.tempfile and labels with SELinux,     #
 # and derives its dispatch name from ansible_distribution — which on Windows is                #
 # Win32_OperatingSystem.Caption, yielding the space-containing string                          #

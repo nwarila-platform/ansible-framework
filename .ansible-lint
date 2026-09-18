@@ -15,13 +15,11 @@ profile: safety
 # Exclude Paths
 # -----------------------------------------------------------------------------
 # The Makefile supplies every cached or visible role YAML path explicitly because bare discovery
-# sees no role files through this repository's deny-all .gitignore. RedHat_Rocky_9 alone remains
-# excluded because it is an empty stub.
+# sees no role files through this repository's deny-all .gitignore.
 # -----------------------------------------------------------------------------
 exclude_paths:
   - .git/
   - .github/
-  - operating_systems/RedHat_Rocky_9/
 
 # -----------------------------------------------------------------------------
 # Warnings (non-blocking)

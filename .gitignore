@@ -193,24 +193,10 @@
 !/host_roles/*/*/.gitkeep
 
 !/operating_systems/
-!/operating_systems/RedHat_Rocky_10/
 !/operating_systems/RedHat_Rocky_8/
-!/operating_systems/RedHat_Rocky_9/
 !/operating_systems/Windows_Server_2022/
 !/operating_systems/Windows_Server_2025/
 !/operating_systems/*/.gitkeep
-!/operating_systems/RedHat_Rocky_10/defaults/
-!/operating_systems/RedHat_Rocky_10/files/
-!/operating_systems/RedHat_Rocky_10/handlers/
-!/operating_systems/RedHat_Rocky_10/library/
-!/operating_systems/RedHat_Rocky_10/lookup_plugins/
-!/operating_systems/RedHat_Rocky_10/meta/
-!/operating_systems/RedHat_Rocky_10/module_utils/
-!/operating_systems/RedHat_Rocky_10/molecule/
-!/operating_systems/RedHat_Rocky_10/tasks/
-!/operating_systems/RedHat_Rocky_10/templates/
-!/operating_systems/RedHat_Rocky_10/tests/
-!/operating_systems/RedHat_Rocky_10/vars/
 !/operating_systems/RedHat_Rocky_8/defaults/
 !/operating_systems/RedHat_Rocky_8/files/
 !/operating_systems/RedHat_Rocky_8/handlers/

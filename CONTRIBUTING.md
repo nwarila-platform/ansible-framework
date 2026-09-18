@@ -82,7 +82,7 @@ A utility role is a helper a play calls; it is not something a host has deployed
 <type>(<scope>): <short description>
 
 Types:  feat | fix | docs | style | refactor | test | chore | perf | ci | build | revert
-Scope:  role name or 'framework' (e.g., python3_pip, RedHat_Rocky_10, framework)
+Scope:  role name or 'framework' (e.g., python3_pip, RedHat_Rocky_8, framework)
 ```
 
 ## Code of Conduct

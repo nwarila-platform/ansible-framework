@@ -4,7 +4,7 @@
 #                                                                                             #
 #                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                     #
 #                                                                                             #
-# This is NOT the v2.2.0 role loader retained only by RedHat_Rocky_10. That loader must never  #
+# This is NOT the framework's shared application loader. That loader must never                #
 # be copied here. Four concrete reasons, any one of them fatal:                                #
 #   1. Its 'INIT | Creating Temporary Directory' step uses ansible.builtin.tempfile under      #
 #      'become: true' — a POSIX module, and sudo does not exist on a Windows target. Hard      #

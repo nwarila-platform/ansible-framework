@@ -4,7 +4,7 @@
 #                                                                                             #
 #                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                     #
 #                                                                                             #
-# The v2.2.0 loader retained only in RedHat_Rocky_10 is not valid here: its ENV contract is    #
+# The framework's shared application loader is not valid here: its ENV contract is             #
 # unrelated to bootstrap, and it can execute a remote module before tasks/bootstrap.yml       #
 # establishes the caller-configured remote-tmp base.                                          #
 #                                                                                             #
