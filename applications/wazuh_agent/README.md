@@ -77,7 +77,7 @@ unverified package.
 ## S3 Python deps
 
 boto3/botocore come from the **bootstrap venv** (`/opt/ansible/venv`, built by
-`operating_systems/RedHat_Rocky_8/tasks/bootstrap.yml`) — not from pip on the target. The agent's
+`operating_systems/redhat_rocky_8/tasks/bootstrap.yml`) — not from pip on the target. The agent's
 `amazon.aws.s3_object` task borrows the venv via a task-level `ansible_python_interpreter`
 override, while every other
 task runs under platform-python (which carries the libselinux/dnf/firewalld bindings the role

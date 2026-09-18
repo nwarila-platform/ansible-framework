@@ -26,7 +26,7 @@
 # --- [ How To Call It ] --------------------------------------------------------------------- #
 #   - name: 'Harden | RHEL/Rocky 8 STIG'
 #     ansible.builtin.include_role:
-#       name: 'RedHat_Rocky_8'
+#       name: 'redhat_rocky_8'
 #       tasks_from: 'hardening'
 #
 #   * Requires 'tasks/bootstrap.yml' to have run first (interpreter and remote-tmp base).
@@ -70,7 +70,7 @@
           - ansible_distribution in ['RedHat', 'Rocky']
           - ansible_distribution_major_version is version('8', '==')
         fail_msg: >-
-          'RedHat_Rocky_8/tasks/hardening.yml' applies DISA STIG content for RHEL/Rocky 8 and
+          'redhat_rocky_8/tasks/hardening.yml' applies DISA STIG content for RHEL/Rocky 8 and
           was called on {{ ansible_distribution | default('an unknown distribution') }}
           {{ ansible_distribution_major_version | default('') }}. Rule identifiers, file paths,
           and PAM stack layout all differ across major versions, so applying it here would

@@ -81,7 +81,7 @@ repos:
   # ---------------------------------------------------------------------------
   # Enforces commit message format: <type>(<scope>): <description>
   # Types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
-  # Scope: role name (e.g., python3_pip, RedHat_Rocky_8) or 'framework'
+  # Scope: role name (e.g., python3_pip, redhat_rocky_8) or 'framework'
   # ---------------------------------------------------------------------------
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v3.4.0

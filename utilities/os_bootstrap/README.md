@@ -26,8 +26,8 @@ try a PowerShell module before a fresh Windows host's OpenSSH DefaultShell has b
 those as inventory variables so the selected bootstrap role can apply its own task-scoped
 transport and privilege settings.
 
-No play-level privilege escalation is required. `RedHat_Rocky_8` runs only its main bootstrap
-block with `become: true`; `Windows_Server_2025` explicitly disables become. A dynamic role
+No play-level privilege escalation is required. `redhat_rocky_8` runs only its main bootstrap
+block with `become: true`; `windows_server_2025` explicitly disables become. A dynamic role
 include does not replace those settings.
 
 ## Detection and routing
@@ -45,16 +45,16 @@ The first four checks are controller-side and open no target connection. Every o
 handled with an explicit empty default. The fallback is suitable for Linux and for a connection
 already configured to execute its platform's modules. It cannot make an unlabelled fresh Windows
 SSH host safe: inventory for that host must supply either `platform: Windows` or a Windows
-connection hint so dispatch reaches `Windows_Server_2025` before any module runs.
+connection hint so dispatch reaches `windows_server_2025` before any module runs.
 
 Routing is by OS family:
 
-- `RedHat` routes to `RedHat_Rocky_8`.
-- `Windows` routes to `Windows_Server_2025`.
+- `RedHat` routes to `redhat_rocky_8`.
+- `Windows` routes to `windows_server_2025`.
 
 The dispatcher does not validate a distribution, version, Windows product type, or build.
 Each selected bootstrap role retains that responsibility and fails if the target is unsupported.
-For example, another RedHat-family release is intentionally routed to `RedHat_Rocky_8`, whose
+For example, another RedHat-family release is intentionally routed to `redhat_rocky_8`, whose
 strict RHEL/Rocky 8 assertion rejects it.
 
 ## Failure contract
@@ -81,8 +81,8 @@ assertion. Then extend
 ### A second release of a family already in the map
 
 Detection yields an OS FAMILY, and on Windows it resolves before facts are available, so the map
-holds one role per family and cannot tell two releases apart. Adding `Windows_Server_2022`
-beside `Windows_Server_2025` therefore does NOT mean editing the map: pointing `Windows` at
+holds one role per family and cannot tell two releases apart. Adding `windows_server_2022`
+beside `windows_server_2025` therefore does NOT mean editing the map: pointing `Windows` at
 either one routes every Windows host to it and fails the other release's support assertion.
 
 Name the role in the INVENTORY instead. `os_bootstrap_role`, when set on a host, wins over the
@@ -92,7 +92,7 @@ map:
 compose:
   os_bootstrap_role: >-
     (aws_ec2_tags.Function | default('', true) == 'workstation')
-    | ternary('Windows_Server_2022', '')
+    | ternary('windows_server_2022', '')
 ```
 
 A host variable is the only override that arrives before detection runs and does not become a
