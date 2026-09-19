@@ -30,8 +30,8 @@
 # separate change with its own consequences -- certificates, monitoring, DNS -- and nobody
 # expects a domain join to perform one. RC4 is excluded by the benchmark this org builds to, so a
 # per-play setting for it would only ever be a way to fall out of compliance quietly; both
-# platforms hold that line in the way their platform expresses it, and neither reads a variable
-# to decide.
+# platforms hold that line in the way their platform expresses it, and neither reads a
+# variable to decide.
 #
 # ============================================================================================= #
 domain_member_defaults:
@@ -72,8 +72,8 @@ domain_member_defaults:
   #
   # It applies when the object is CREATED. A machine that already has a computer object is not
   # moved by a converge, on either platform: moving objects between OUs changes which policy
-  # applies to them, and that is a directory operation rather than a side effect of running a
-  # role.
+  # applies to them, and that is a directory operation rather than a side effect of
+  # running a role.
   computer_ou: null
 
   # Leave the current realm and join again from scratch. False is the only safe default: a rejoin
@@ -98,8 +98,8 @@ domain_member_defaults:
   # asking every caller to restate it is ceremony -- so an empty value means "ask the host", and
   # the Windows path publishes the address it would use to reach a remote network, as the
   # platform itself resolves that. The converge SAYS which address it chose, because routing
-  # describes how this host reaches the world and is not evidence of how anything reaches this
-  # host.
+  # describes how this host reaches the world and is not evidence of how anything
+  # reaches this host.
   #
   # DECLARE IT where those differ: a host whose management path is not its default route, one
   # whose tunnel carries the default route, or an interface holding several usable addresses.
@@ -122,8 +122,8 @@ domain_member_defaults:
 
   # The time source to synchronise the clock with. Kerberos rejects a ticket whose timestamp is
   # outside the directory's tolerance -- five minutes by default -- so a joined host with a
-  # drifting clock stops authenticating and reports a Kerberos error that names nothing about
-  # time.
+  # drifting clock stops authenticating and reports a Kerberos error that names
+  # nothing about time.
   #
   # Null leaves the platform's own arrangement alone, which is the right default for both: a
   # RedHat host normally has chrony pointed somewhere already, and a domain-joined Windows host

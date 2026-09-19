@@ -372,27 +372,22 @@
         #region ------ [ Process: Set The Computer Name ] ------------------------------------- #
         # The host's own name. A host that later joins a directory carries this name into its
         # computer object, and a rename AFTER a join needs directory credentials the bootstrap
-        # does
-        # not have -- so it happens here, first. win_hostname only queues the change; the restart
-        # applies it, and the name is read back from the machine afterwards, so nothing
-        # downstream
-        # runs on a half-renamed host.
+        # does not have -- so it happens here, first. win_hostname only queues the change; the
+        # restart applies it, and the name is read back from the machine afterwards, so nothing
+        # downstream runs on a half-renamed host.
         #
         # It defaults to 'inventory_hostname': an inventory that names its hosts after the
-        # machines
-        # already carries the answer, and passing it again would be a second copy of one value. A
-        # consumer whose inventory names hosts by something that is not a computer name -- an
-        # address, an instance id -- sets 'windows_bootstrap_hostname' to '' to leave the name
-        # alone. Declare it as a PLAY variable, never as 'vars:' on the include (call contract
-        # above).
+        # machines already carries the answer, and passing it again would be a second copy of one
+        # value. A consumer whose inventory names hosts by something that is not a computer name
+        # -- an address, an instance id -- sets 'windows_bootstrap_hostname' to '' to leave the
+        # name alone. Declare it as a PLAY variable, never as 'vars:' on the include
+        # (call contract above).
 
         # A rename is only possible while the host stands alone. Once it has joined a directory
-        # its
-        # name lives in the computer object, and changing it needs directory credentials this
+        # its name lives in the computer object, and changing it needs directory credentials this
         # bootstrap does not hold -- Windows answers 'Access is denied'. That is an ORDERING
-        # fault,
-        # not a runtime one, so it is named here rather than left to surface as a permission
-        # error.
+        # fault, not a runtime one, so it is named here rather than left to surface as
+        # a permission error.
 
         - name: 'BEGIN | Read The Current Name And Directory Membership'
           changed_when: false

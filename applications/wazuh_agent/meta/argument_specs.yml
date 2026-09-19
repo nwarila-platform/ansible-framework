@@ -3,8 +3,7 @@
 # --- [ Description ] ------------------------------------------------------------------------- #
 # Formal input specification for the `wazuh_agent:` dict — documents the input contract.
 # State-conditional manager/S3 guards live in tasks/validate.yml; endpoint-specific guards live
-# in
-# the installers.
+# in the installers.
 # ============================================================================================= #
 
 argument_specs:

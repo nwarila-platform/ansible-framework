@@ -13,8 +13,8 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different domain.
-#   PROCESS  hands the caller's resolved join password to the join module,
-#            joins, and writes the posture.
+#   PROCESS  hands the caller's resolved join password to the join module, joins, and
+#            writes the posture.
 #   END      proves the result from the machine rather than from the join module's report.
 #
 # Membership is read through the facts module, whose windows_domain subset calls
@@ -157,12 +157,12 @@
     # it. The credential it gets is the one declared for the realm being joined (verified in
     # microsoft.ad 1.4.1 membership.ps1), so a rejoin within one domain is fine and a move
     # between unrelated domains needs an account both accept. What the directory then does with
-    # the old computer object is Windows' business rather than this role's -- do not assume it is
-    # deleted.
+    # the old computer object is Windows' business rather than this role's -- do not assume
+    # it is deleted.
     #
     # THE CONNECTION ACCOUNT MUST BE LOCAL. From here until the join below completes, the machine
-    # is not in the domain, so a domain account cannot authenticate to it and the play stops
-    # part-way through.
+    # is not in the domain, so a domain account cannot authenticate to it and the play
+    # stops part-way through.
 
     - name: 'PROCESS | Leave The Current Domain When A Rejoin Is Forced'
       no_log: true
@@ -208,8 +208,8 @@
     # answers whether one is required, which is what that task acts on. No reboot bound is passed
     # to the module at all: the reboot it would bound is off, and the restart below carries its
     # own. And no_log because the password is a task argument -- it costs the module's diffs at
-    # -v, but the registered result is still read below and END proves the outcome from the
-    # machine.
+    # -v, but the registered result is still read below and END proves the outcome
+    # from the machine.
 
     - name: 'PROCESS | Join The Declared Realm'
       no_log: true
@@ -254,8 +254,8 @@
     # on every converge, not an action that belongs to the join. A converged host reports no
     # change. The registry PATH is owned here rather than offered as a setting, because where
     # Windows keeps this policy is a property of Windows and not a choice a site makes; the
-    # VALUES come from the overlay, where a site can hold a different posture and see that it
-    # has.
+    # VALUES come from the overlay, where a site can hold a different posture and see
+    # that it has.
 
     - name: 'PROCESS | Hold The Domain Member Secure Channel'
       loop: "{{ domain_member_running.secure_channel | dict2items }}"
@@ -321,8 +321,8 @@
       when: __timesync_declared__ | bool
 
       ansible.windows.win_regedit:
-        # The ,0x9 suffix is the per-peer flag byte W32Time expects: 0x1 SpecialInterval plus
-        # 0x8 Client. Without it the service takes the name and ignores the polling contract.
+        # The ,0x9 suffix is the per-peer flag byte W32Time expects: 0x1 SpecialInterval plus 0x8
+        # Client. Without it the service takes the name and ignores the polling contract.
         data: "{{ domain_member_running.timesync_source | string | trim }},0x9"
         delete_key: true
         name: 'NtpServer'

@@ -81,16 +81,13 @@
         prefix: 'ansible_wazuh_agent_win_'
 
     # AWS creds are passed as no_log module args (never target/controller shell env). The task
-    # runs
-    # on the controller (delegate_to localhost), whose interpreter is the venv running
-    # ansible-playbook
-    # and therefore already has boto3 — no per-task interpreter override needed (unlike the Linux
-    # target, which must borrow /opt/ansible/venv). ignore_nonexistent_bucket: the
-    # artifact-reader
-    # session is GetObject-only, so skip the HeadBucket precheck (see present_redhat.yml for the
-    # full rationale). run_once: the fetch + verify below are the same idempotent action
-    # regardless
-    # of how many Windows hosts this play targets — see the staging-directory tasks above.
+    # runs on the controller (delegate_to localhost), whose interpreter is the venv running
+    # ansible-playbook and therefore already has boto3 — no per-task interpreter override needed
+    # (unlike the Linux target, which must borrow /opt/ansible/venv). ignore_nonexistent_bucket:
+    # the artifact-reader session is GetObject-only, so skip the HeadBucket precheck (see
+    # present_redhat.yml for the full rationale). run_once: the fetch + verify below are the same
+    # idempotent action regardless of how many Windows hosts this play targets — see the
+    # staging-directory tasks above.
     - name: 'PROCESS | Fetch Agent MSI From S3 To The Controller'
       delegate_to: 'localhost'
       become: false
@@ -98,10 +95,9 @@
       no_log: true
       # Controller-side STAGING fetch (delegate_to localhost): it downloads the installer to the
       # controller, it does NOT mutate the Windows target — so it reports not-changed, matching
-      # its
-      # sibling staging tasks (the tempdir create/cleanup + the authd.pass copy all set this).
-      # The real, target-changing steps stay changed-reporting: win_copy (push) + win_package
-      # (install).
+      # its sibling staging tasks (the tempdir create/cleanup + the authd.pass copy all set
+      # this). The real, target-changing steps stay changed-reporting: win_copy (push)
+      # + win_package (install).
       changed_when: false
       vars:
         # Run boto3 under the SAME interpreter that runs ansible-playbook (the runner venv, which
@@ -169,8 +165,8 @@
 
     # OWN the <client><server> block every run (see the file header WHY). No community.windows
     # blockinfile-equivalent exists for a structured XML tag, so this uses the same
-    # win_powershell
-    # region-ownership technique as the FIM task below: read once, regex-replace, atomic write.
+    # win_powershell region-ownership technique as the FIM task below: read once,
+    # regex-replace, atomic write.
     - name: 'PROCESS | Own The Manager Server Block In The Agent Configuration'
       notify: 'wazuh-agent-windows-config-changed'
       vars:
@@ -236,15 +232,13 @@
 
     # OWN a marker-delimited region rather than inserting per line (community.windows has no
     # win_blockinfile). This is the Windows analogue of the Linux path's blockinfile and the
-    # server
-    # role's wholesale <syscheck> rewrite: the block is rebuilt from the declared list every run,
-    # so
-    # a path REMOVED from wazuh_agent.windows.fim_realtime_paths is dropped from ossec.conf too —
-    # insert-only win_lineinfile would strand it, and so would an add-only `when:` gate on this
-    # task (an emptied list must REMOVE the block, not just skip re-adding it — this task always
-    # runs, and the script itself decides add-vs-remove from Dirs.Count). .NET Read/WriteAllText
-    # keeps the file UTF-8 (no BOM); the write is atomic (temp + Move-Item) so a mid-write
-    # disconnect can't corrupt ossec.conf.
+    # server role's wholesale <syscheck> rewrite: the block is rebuilt from the declared list
+    # every run, so a path REMOVED from wazuh_agent.windows.fim_realtime_paths is dropped from
+    # ossec.conf too — insert-only win_lineinfile would strand it, and so would an add-only
+    # `when:` gate on this task (an emptied list must REMOVE the block, not just skip re-adding
+    # it — this task always runs, and the script itself decides add-vs-remove from Dirs.Count).
+    # .NET Read/WriteAllText keeps the file UTF-8 (no BOM); the write is atomic (temp +
+    # Move-Item) so a mid-write disconnect can't corrupt ossec.conf.
     - name: 'PROCESS | Own The Real-Time FIM Region In The Agent Configuration'
       notify: 'wazuh-agent-windows-config-changed'
       vars:
@@ -268,11 +262,9 @@
 
           if ($Dirs.Count -gt 0) {
               # Guard: [regex]::Replace below inserts the managed block before EVERY </syscheck>
-              # match.
-              # A vendor ossec.conf is expected to carry exactly one; more than one (e.g. a
-              # commented-out
-              # sample stanza) would silently duplicate the managed block. Fail loudly instead of
-              # guessing.
+              # match. A vendor ossec.conf is expected to carry exactly one; more than one (e.g.
+              # a commented-out sample stanza) would silently duplicate the managed block. Fail
+              # loudly instead of guessing.
               $closeCount = ([regex]::Matches($stripped, '</syscheck>')).Count
               if ($closeCount -ne 1) {
                   $Ansible.Failed = $true
@@ -283,16 +275,14 @@
               }) -join $nl
               $block   = $Begin + $nl + $entries + $nl + $End
               # Re-insert the fresh block immediately before the closing </syscheck>
-              # (MatchEvaluator
-              # avoids '$'-token issues if a path contains a dollar sign).
+              # (MatchEvaluator avoids '$'-token issues if a path contains a dollar sign).
               $new = [regex]::Replace($stripped, '(?<lead>\s*)</syscheck>',
                 { param($m) $nl + $block + $m.Groups['lead'].Value + '</syscheck>' },
                 'Singleline')
           } else {
               # An emptied Dirs list means "own nothing": leave the region stripped rather than
               # re-inserting empty BEGIN/END markers, so a path removed from config actually
-              # drops
-              # out of ossec.conf instead of stranding a hollow managed block forever.
+              # drops out of ossec.conf instead of stranding a hollow managed block forever.
               $new = $stripped
           }
 
@@ -373,8 +363,8 @@
                  | default('') | lower) == 'started'
 
         # Service-up does not prove manager connectivity; the agent's own state file is the
-        # contract.
-        # Windows's wazuh-agent.state filename differs from Linux by design, not by typo.
+        # contract. Windows's wazuh-agent.state filename differs from Linux by design,
+        # not by typo.
         - name: 'END | Read Agent Connection State File'
           register: '__wazuh_agent_win_state__'
           changed_when: false

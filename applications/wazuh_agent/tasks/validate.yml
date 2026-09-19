@@ -12,10 +12,8 @@
 # `-e state=clean` run must not be blocked on an input it never reads).
 #
 # WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but
-# validation
-# belongs in one hook. A malformed merged input now fails at loader INIT before staging or
-# installer
-# work begins.
+# validation belongs in one hook. A malformed merged input now fails at loader INIT before
+# staging or installer work begins.
 # ============================================================================================= #
 
 - name: 'VALIDATE | Assert Manager Endpoint Is Explicit'

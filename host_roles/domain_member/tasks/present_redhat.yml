@@ -13,8 +13,8 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different realm.
-#   PROCESS  hands the caller's resolved join password, and the whole contract with it, to the
-#            system role.
+#   PROCESS  hands the caller's resolved join password, and the whole contract with it, to
+#            the system role.
 #   END      proves the result from the machine rather than from the system role's report.
 #
 # RC4 IS NOT A KNOB: the system role can re-admit it through a crypto subpolicy, and this role
@@ -46,8 +46,8 @@
     # something establishes that it exists, and the stat is that something. The stat asks only
     # whether the file is there, because a digest and a MIME type are answers to questions nobody
     # here is asking, and both reads are marked read-only rather than left to be skipped under
-    # --check, because a run that cannot report what a machine currently is has nothing to say
-    # about it.
+    # --check, because a run that cannot report what a machine currently is has nothing to
+    # say about it.
 
     - name: 'BEGIN | Look For The Realm Client'
       check_mode: false
@@ -193,8 +193,8 @@
     #
     # Four are pinned here rather than exposed in the contract:
     #
-    #   allow_rc4_crypto        false, always, and not reachable from the contract. See the file
-    #                           header.
+    #   allow_rc4_crypto        false, always, and not reachable from the contract. See
+    #                           the file header.
     #   manage_crypto_policies  false, always, for the same reason: on RHEL 8 the subpolicy this
     #                           would apply is what enables RC4.
     #   manage_timesync         on exactly when a source was declared. The system role fails if
@@ -207,8 +207,8 @@
     # mode on the host that most needs a dry run: on a machine with no realmd yet, --check
     # installs nothing and the role's own 'ensure services started' step then fails on a service
     # that does not exist, which is an error about systemd rather than an honest account of what
-    # a real run would do. Skipped explicitly, --check reaches END and END says the useful thing
-    # instead.
+    # a real run would do. Skipped explicitly, --check reaches END and END says the
+    # useful thing instead.
 
     - name: 'PROCESS | Hand The Contract To The System Role'
       vars:

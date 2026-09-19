@@ -14,16 +14,16 @@
 #   domain_member.realm             DNS name of the realm to join -- 'corp.example.com', not the
 #                                   NetBIOS short name.
 #   domain_member.user              Account permitted to create or reuse this machine's computer
-#                                   object, as a UPN. Delegated to join computers and nothing
-#                                   else.
+#                                   object, as a UPN. Delegated to join computers
+#                                   and nothing else.
 #   domain_member.password          The join account's password, already resolved. A VALUE, not a
 #                                   location: reading a credential out of S3 is the framework
 #                                   secret lookup's job, and the caller calls it -- pass the
 #                                   digest of the stored bytes as that lookup's second term so a
 #                                   moved or truncated object fails at the read rather than as a
 #                                   wrong password at the directory. Never written to a file by
-#                                   this role; see the README for what pipelining changes about
-#                                   that.
+#                                   this role; see the README for what pipelining
+#                                   changes about that.
 #
 # EXPECTED but not enforced -- validate.yml accepts its absence, and should:
 #
@@ -62,8 +62,8 @@ galaxy_info:
     and the machine-account credential from the machine rather than from the join tool's report.
 
   license: 'MIT'
-  # 2.21 is the fleet's ansible-core baseline, not this role's own need: the stat reads
-  # want get_selinux_context, which core added in 2.20. The floor is the higher of the two.
+  # 2.21 is the fleet's ansible-core baseline, not this role's own need: the stat reads want
+  # get_selinux_context, which core added in 2.20. The floor is the higher of the two.
   min_ansible_version: '2.21'
 
   platforms:

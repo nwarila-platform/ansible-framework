@@ -58,10 +58,8 @@
 
         # Install python3-pip via apt. package_manager is a dict keyed by os_family so we access
         # the correct platform entry directly — no loop or filter needed. All parameters fall
-        # back
-        # to secure defaults via | default() so the task is safe even if an overlay only
-        # partially
-        # overrides the platform block.
+        # back to secure defaults via | default() so the task is safe even if an overlay only
+        # partially overrides the platform block.
         - name: 'PROCESS | Install The Python3 Pip Package'
           when: ansible_facts.os_family in config.package_manager
           vars:

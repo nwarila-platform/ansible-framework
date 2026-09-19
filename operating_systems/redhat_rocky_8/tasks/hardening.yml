@@ -82,7 +82,7 @@
 
   #region ------ [ Process: Apply The Hardening Settings ] ------------------------------------ #
 
-    # --- Kernel parameters (23 scored rules) ----------------------------------------------- #
+    # --- Kernel parameters (23 scored rules) -----------------------------------------------   #
     - name: 'PROCESS | Write The STIG Kernel Parameters'
       ansible.builtin.template:
         src: 'stig-sysctl.conf.j2'

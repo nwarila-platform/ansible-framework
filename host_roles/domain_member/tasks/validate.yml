@@ -16,8 +16,8 @@
 # ============================================================================================= #
 - name: 'VALIDATE | Require The Realm, The Account, And Its Password'
   vars:
-    # One DNS label, held as a part so the realm pattern stays inside the column limit
-    # without splitting the literal across lines, which would embed whitespace in it.
+    # One DNS label, held as a part so the realm pattern stays inside the column limit without
+    # splitting the literal across lines, which would embed whitespace in it.
     __label__: '[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
 
   when: (state | default('present') | string | lower | trim) == 'present'

@@ -21,10 +21,9 @@
 #           tasks_from: 'bootstrap'
 #
 #   * 'operating_systems' must be on roles_path. The framework's own ansible.cfg declares
-# 'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product whose
-# ansible.cfg
-#     overwrites it during composition must re-add the entry, or use the path form
-#     'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
+#     'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product
+#     whose ansible.cfg overwrites it during composition must re-add the entry, or use the path
+#     form 'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
 #   * HOST SELECTION IS THE CALLER'S JOB. The product play this was promoted from selected
 #     'all:!wazuh_agents_windows', with this reasoning, preserved verbatim:
 #         "Exclude Windows endpoints: /opt/ansible/venv is a Linux (RHEL) boto3-on-target
@@ -141,16 +140,13 @@
       #region ------ [ Process: Establish The Remote-Tmp Base ] ------------------------------- #
 
         # FIRST in Main because later non-pipelined modules need this base before ansible-core
-        # can
-        # stage their payload. If remote_tmp is relocated under a root-owned path such as /opt,
-        # ansible-core otherwise attempts its pre-module mkdir as the login user and reports the
-        # host UNREACHABLE. This initial file module must therefore be reachable through the
-        # bootstrap transport (normally pipelining); once it creates the base under become and
-        # gives it to the login user, later non-pipelined modules can create per-task
-        # directories.
-        # AnsiballZ is interpreter-invoked, so a filesystem noexec flag is not the reason for
-        # this
-        # relocation.
+        # can stage their payload. If remote_tmp is relocated under a root-owned path such as
+        # /opt, ansible-core otherwise attempts its pre-module mkdir as the login user and
+        # reports the host UNREACHABLE. This initial file module must therefore be reachable
+        # through the bootstrap transport (normally pipelining); once it creates the base under
+        # become and gives it to the login user, later non-pipelined modules can create per-task
+        # directories. AnsiballZ is interpreter-invoked, so a filesystem noexec flag is not the
+        # reason for this relocation.
         #
         # OWNER RESOLUTION: 'ansible_user' is a CONNECTION variable, not a fact — it has no
         # 'ansible_facts' form, so it is referenced bare here (the one principled exception to
@@ -166,8 +162,8 @@
         # PASS ONE intentionally omits selevel/serole/setype/seuser. A bare Rocky 8 image may not
         # have the python3-libselinux binding yet, so requesting a context here would fail before
         # the package task below could install that declared dependency. Ownership and mode do
-        # not
-        # require the binding. PASS TWO applies the context immediately after dnf installs it.
+        # not require the binding. PASS TWO applies the context immediately after
+        # dnf installs it.
         - name: 'PROCESS | Ensure The Remote-Tmp Base Exists'
           when: not (rhel8_bootstrap_remote_tmp_base | trim is match('~'))
           ansible.builtin.file:
@@ -289,9 +285,8 @@
         #
         # '| default(0)' IS LOAD-BEARING, not defensive padding: with state=absent on a missing
         # pyvenv.cfg, lineinfile succeeds unchanged but omits 'found' from its result. The
-        # default
-        # supplies 0, the removal below fires as a harmless no-op, and creation proceeds. That is
-        # what makes the chain correct on a host that has never been touched.
+        # default supplies 0, the removal below fires as a harmless no-op, and creation proceeds.
+        # That is what makes the chain correct on a host that has never been touched.
         - name: 'BEGIN | Probe The Venv Python Version'
           changed_when: false
           check_mode: true
@@ -397,9 +392,9 @@
         # SPLIT INTO TWO TASKS, and the order is load-bearing: pip / setuptools / wheel /
         # packaging are bumped to latest FIRST so the pinned boto3/botocore install below — a
         # separate, later pip invocation — runs under a modern resolver. The reference puts all
-        # six names in ONE task at 'state: latest'; that loses both the resolver ordering and
-        # the pins.
-        # BOTH registers are load-bearing: the post-install fapolicyd re-trust gates on them.
+        # six names in ONE task at 'state: latest'; that loses both the resolver ordering and the
+        # pins. BOTH registers are load-bearing: the post-install fapolicyd re-trust
+        # gates on them.
         - name: 'PROCESS | Upgrade The Pip Tooling In The Venv'  # noqa: package-latest
           register: '__redhat_rocky_8_venv_pip_tooling__'
 
