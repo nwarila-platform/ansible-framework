@@ -11,7 +11,7 @@
 #   <type>(<scope>): <description>
 #
 #   feat(python3_pip): add Debian task file
-#   fix(RedHat_Rocky_10): correct venv Python version check
+#   fix(RedHat_Rocky_8): correct venv Python version check
 #   chore(framework): update ansible-lint to 25.2.0
 # =============================================================================
 

@@ -3,7 +3,7 @@
 # --- [ Description ] ----------------------------------------------------------------------- #
 # Overridable inputs for 'tasks/bootstrap.yml'.                                               #
 #                                                                                             #
-# WHY FLAT, PREFIXED KEYS: the v2.2.0 loader retained in RedHat_Rocky_10 expects a             #
+# WHY FLAT, PREFIXED KEYS: the framework's shared application loader expects a                 #
 # '<role_name>_defaults' dict, but bootstrap.yml is called directly with include_role or        #
 # import_role + tasks_from 'bootstrap'. The generic tasks/main.yml entry is a loud guard        #
 # because applying that loader's ENV contract and pre-bootstrap remote work would be wrong      #
