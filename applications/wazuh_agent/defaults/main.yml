@@ -28,9 +28,9 @@ wazuh_agent_defaults:
     # Required for state=present; intentionally empty so validation rejects an omitted endpoint.
     host: ''
     port: 1514
-    # The Wazuh agent-manager link wraps every message in a per-agent AES-256 session keyed
-    # off client.keys, so `protocol: tcp` is encrypted end-to-end. UDP is the legacy 3.x
-    # transport and offers the same crypto envelope but no delivery guarantees.
+    # The Wazuh agent-manager link wraps every message in a per-agent AES-256 session keyed off
+    # client.keys, so `protocol: tcp` is encrypted end-to-end. UDP is the legacy 3.x transport
+    # and offers the same crypto envelope but no delivery guarantees.
     protocol: 'tcp'
     enrollment_port: 1515
     # Optional shared secret for the manager's authd. When unset, the manager must be running
@@ -72,8 +72,8 @@ wazuh_agent_defaults:
     service_name: 'WazuhSvc'
     # Written by the agent's own state thread (src/client-agent/state.c write_state(), Windows
     # branch: "%s.state" with __local_name -- ARGV0="wazuh-agent" in src/win32/win_agent.c --
-    # relative to the service's working directory, which is this install directory). The
-    # END (win) connection-verify gate in tasks/present_windows.yml polls this for
+    # relative to the service's working directory, which is this install directory). The END
+    # (win) connection-verify gate in tasks/present_windows.yml polls this for
     # status='connected'.
     state_file: 'C:\Program Files (x86)\ossec-agent\wazuh-agent.state'
     # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.

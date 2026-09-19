@@ -36,7 +36,8 @@ adcli_binary: '/usr/sbin/adcli'
 #   ad_machine_account_password_renewal_opts     'interval:initial_delay' in seconds for the
 #                                                renewal task.
 #   krb5_validate                                validate the TGT against the host keytab, which
-# is what makes a spoofed KDC fail instead of pass.
+#                                                is what makes a spoofed KDC fail instead of
+#                                                pass.
 sssd_custom_settings:
   - key: 'ad_maximum_machine_account_password_age'
     value: '30'

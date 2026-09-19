@@ -3,11 +3,10 @@
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Validates load-bearing domain_member configuration after the v3 loader merge, on the
-# CONTROLLER,
-# before anything touches the guest. The realm, the joining account and its password are the
-# estate's identity and arrive from the caller rather than from a default, so this is where a
-# missing or malformed one is caught — in a second, rather than part-way through a join that
-# leaves a half-configured machine and an orphaned computer object behind.
+# CONTROLLER, before anything touches the guest. The realm, the joining account and its password
+# are the estate's identity and arrive from the caller rather than from a default, so this is
+# where a missing or malformed one is caught — in a second, rather than part-way through a join
+# that leaves a half-configured machine and an orphaned computer object behind.
 #
 # meta/main.yml describes these inputs; this file is what enforces them.
 #
@@ -155,12 +154,9 @@
 
 # The RedHat path does not implement name publication yet. The invariant applies there too --
 # sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which
-# is
-# the tunnel on a split-network member and therefore the exact defect. Stated here so the
-# contract
-# is honestly asymmetric rather than silently so: a RedHat caller that declares the key is told
-# it
-# does nothing, instead of believing it did.
+# is the tunnel on a split-network member and therefore the exact defect. Stated here so the
+# contract is honestly asymmetric rather than silently so: a RedHat caller that declares the key
+# is told it does nothing, instead of believing it did.
 - name: 'VALIDATE | Report That RedHat Does Not Publish A Declared Address Yet'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
