@@ -1,18 +1,16 @@
----
-
-- name: 'OS Bootstrap | Initialize Dispatch State'
+- name: 'BEGIN | Initialize Dispatch State'
   ansible.builtin.set_fact:
     __os_bootstrap_detected_os__: ''
     __os_bootstrap_detection_signal__: ''
     __os_bootstrap_target_role__: ''
 
-- name: 'OS Bootstrap | Detect From Existing OS Family Fact'
+- name: 'BEGIN | Detect From Existing OS Family Fact'
   when: (ansible_facts.os_family | default('') | string | trim | length) > 0
   ansible.builtin.set_fact:
     __os_bootstrap_detected_os__: "{{ ansible_facts.os_family | default('') | string | trim }}"
     __os_bootstrap_detection_signal__: 'pre-populated ansible_facts.os_family'
 
-- name: 'OS Bootstrap | Detect Windows From EC2 Platform'
+- name: 'BEGIN | Detect Windows From EC2 Platform'
   when:
     - (__os_bootstrap_detected_os__ | default('') | length) == 0
     - (platform | default('') | string | lower | trim) == 'windows'
@@ -20,7 +18,7 @@
     __os_bootstrap_detected_os__: 'Windows'
     __os_bootstrap_detection_signal__: 'inventory hostvar platform=Windows'
 
-- name: 'OS Bootstrap | Detect Windows From PowerShell Hint'
+- name: 'BEGIN | Detect Windows From PowerShell Hint'
   when:
     - (__os_bootstrap_detected_os__ | default('') | length) == 0
     - (ansible_shell_type | default('') | string | lower | trim) == 'powershell'
@@ -28,24 +26,25 @@
     __os_bootstrap_detected_os__: 'Windows'
     __os_bootstrap_detection_signal__: 'connection hint ansible_shell_type=powershell'
 
-- name: 'OS Bootstrap | Detect Windows From Connection Hint'
+- name: 'BEGIN | Detect Windows From Connection Hint'
   when:
     - (__os_bootstrap_detected_os__ | default('') | length) == 0
     - (ansible_connection | default('') | string | lower | trim) in ['winrm', 'psrp']
   ansible.builtin.set_fact:
     __os_bootstrap_detected_os__: 'Windows'
     __os_bootstrap_detection_signal__: >-
-      connection hint ansible_connection={{ ansible_connection | default('') | string | lower | trim }}
+      connection hint ansible_connection={{ ansible_connection | default('') | string | lower |
+      trim }}
 
-- name: 'OS Bootstrap | Mark Fact-Gather Fallback'
+- name: 'BEGIN | Mark Fact-Gather Fallback'
   when: (__os_bootstrap_detected_os__ | default('') | length) == 0
   ansible.builtin.set_fact:
     __os_bootstrap_detection_signal__: 'fallback ansible.builtin.setup'
 
-- name: 'OS Bootstrap | Detect From Fact-Gather Fallback'
+- name: 'BEGIN | Detect From Fact-Gather Fallback'
   when: (__os_bootstrap_detected_os__ | default('') | length) == 0
   block:
-    - name: 'OS Bootstrap | Gather OS Family Fact As Last Resort'
+    - name: 'BEGIN | Gather OS Family Fact As Last Resort'
       register: '__os_bootstrap_fallback_result__'
       ignore_unreachable: true
       ansible.builtin.setup:
@@ -54,7 +53,7 @@
           - '!min'
           - 'distribution'
 
-    - name: 'OS Bootstrap | Require OS Family From Fact-Gather Fallback'
+    - name: 'BEGIN | Require OS Family From Fact-Gather Fallback'
       ansible.builtin.assert:
         that:
           - ((__os_bootstrap_fallback_result__ | default({})) is not failed)
@@ -66,18 +65,19 @@
           did not return ansible_facts.os_family.
         quiet: true
 
-    - name: 'OS Bootstrap | Record Fallback OS Family'
+    - name: 'BEGIN | Record Fallback OS Family'
       ansible.builtin.set_fact:
-        __os_bootstrap_detected_os__: "{{ ansible_facts.os_family | default('') | string | trim }}"
+        __os_bootstrap_detected_os__: >-
+          {{ ansible_facts.os_family | default('') | string | trim }}
         __os_bootstrap_detection_signal__: 'fallback-gathered ansible_facts.os_family'
 
   rescue:
-    - name: 'OS Bootstrap | Fail When Fact-Gather Fallback Cannot Detect OS'
+    - name: 'BEGIN | Fail When Fact-Gather Fallback Cannot Detect OS'
       ansible.builtin.fail:
         msg: >-
-          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
-          '{{ __os_bootstrap_detection_signal__ | default('') }}'. Detail:
-          {{ ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
+          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal: '{{
+          __os_bootstrap_detection_signal__ | default('') }}'. Detail: {{
+          ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
 
 # An inventory may name the role itself. Detection resolves an OS FAMILY, and on Windows it does
 # so before facts exist, so the map cannot tell two releases of one family apart -- yet the
@@ -85,12 +85,12 @@
 # arrives early enough to matter and does not become a role parameter, which this role's callers
 # are told never to pass.
 # The inventory hint is LOWER-CASED before it is used. Role directories are snake_case, but the
-# hint is hand-written in an inventory and two consumers still spell it 'Windows_Server_2022' from
-# when the directories were CamelCase. Normalising here keeps those inventories working without a
-# coordinated cross-repo merge, and a hand-supplied hostvar is exactly the input that should not be
-# case-sensitive. It does NOT make a wrong name succeed: an unmapped or misspelled value still
-# resolves to a role that does not exist and fails at the route guard below.
-- name: 'OS Bootstrap | Resolve Bootstrap Role'
+# hint is hand-written in an inventory and two consumers still spell it 'Windows_Server_2022'
+# from when the directories were CamelCase. Normalising here keeps those inventories working
+# without a coordinated cross-repo merge, and a hand-supplied hostvar is exactly the input that
+# should not be case-sensitive. It does NOT make a wrong name succeed: an unmapped or misspelled
+# value still resolves to a role that does not exist and fails at the route guard below.
+- name: 'BEGIN | Resolve Bootstrap Role'
   ansible.builtin.set_fact:
     __os_bootstrap_target_role__: >-
       {{
@@ -108,7 +108,7 @@
                   __os_bootstrap_detection_signal__ | default(''))
       }}
 
-- name: 'OS Bootstrap | Fail When OS Has No Route'
+- name: 'BEGIN | Fail When OS Has No Route'
   when: (__os_bootstrap_target_role__ | default('') | length) == 0
   ansible.builtin.fail:
     msg: >-
@@ -122,7 +122,7 @@
 # check would buy only a better message for the second case -- it names the missing file but not
 # the role -- at the cost of deciding where the role lives, which is the search ansible has
 # already done and this role has no business repeating.
-- name: 'OS Bootstrap | Run Selected Bootstrap Role'
+- name: 'PROCESS | Run The Selected Bootstrap Role'
   ansible.builtin.include_role:
     name: "{{ __os_bootstrap_target_role__ | default('') }}"
     tasks_from: 'bootstrap'
