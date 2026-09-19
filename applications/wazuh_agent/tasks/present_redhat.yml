@@ -289,7 +289,7 @@
 
     #region ------ [ Process: Enroll The Agent ] ---------------------------------------------- #
 
-    - name: 'PROCESS | Check Agent Enrollment Key'
+    - name: 'BEGIN | Read Whether The Agent Is Already Enrolled'
       register: '__wazuh_agent_client_keys__'
       ansible.builtin.stat:
         path: '/var/ossec/etc/client.keys'
@@ -354,7 +354,7 @@
 
     #region ------ [ End: Verify The Agent ] -------------------------------------------------- #
 
-    - name: 'END | Enable And Start Agent Service'
+    - name: 'PROCESS | Enable And Start The Agent Service'
       loop: "{{ config.services }}"
       loop_control:
         label: '{{ item.name }}'
@@ -363,7 +363,7 @@
         enabled: "{{ item.enabled }}"
         state: "{{ item.state }}"
 
-    - name: 'END | Flush Handlers'
+    - name: 'PROCESS | Flush The Pending Restart Handlers'
       ansible.builtin.meta: 'flush_handlers'
 
     # Retry while the service is briefly in "activating" — the wazuh-agent-config-changed

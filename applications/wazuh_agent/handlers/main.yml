@@ -5,8 +5,9 @@
   become: true
   # Reads the pre-config probe's register directly. A register is a host variable and IS visible
   # to a handler -- verified against ansible-core 2.21 on both paths: a successful probe is read,
-  # and a SKIPPED probe leaves the chain undefined so the default makes this false. The set_fact
-  # latch this replaced existed on the belief that a handler could not see it.
+  # and a skipped probe leaves a skipped-result dictionary whose nested service-state chain is
+  # undefined, which the default catches and makes this false. The set_fact latch this replaced
+  # existed on the belief that a handler could not see it.
   when: >-
     (__wazuh_agent_svc_pre__.status.ActiveState | default('inactive')) == 'active'
   ansible.builtin.systemd:

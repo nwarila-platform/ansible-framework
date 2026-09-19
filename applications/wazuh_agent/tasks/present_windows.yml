@@ -161,7 +161,7 @@
 
     #region ------ [ Process: Configure The Agent ] ------------------------------------------- #
 
-    - name: 'PROCESS | Record Whether WazuhSvc Was Running Before Config Ownership'
+    - name: 'BEGIN | Read Whether The Agent Was Running Before Configuration'
       register: '__wazuh_agent_win_svc_pre__'
       changed_when: false
       ansible.windows.win_service_info:
@@ -315,7 +315,7 @@
 
     #region ------ [ Process: Enroll The Agent ] ---------------------------------------------- #
 
-    - name: 'PROCESS | Check Agent Enrollment Key'
+    - name: 'BEGIN | Read Whether The Agent Is Already Enrolled'
       ansible.windows.win_stat:
         path: "{{ __win_client_keys__ }}"
       register: '__wazuh_agent_win_client_keys__'
@@ -348,13 +348,13 @@
             content: "{{ config.manager.enrollment_password }}"
             dest: "{{ __win_authd_pass__ }}"
 
-        - name: 'END | Ensure The Wazuh Agent Service Is Running And Automatic'
+        - name: 'PROCESS | Ensure The Agent Service Is Running And Automatic'
           ansible.windows.win_service:
             name: "{{ config.windows.service_name | string | trim }}"
             state: 'started'
             start_mode: 'auto'
 
-        - name: 'END | Apply Any Pending Restart Before Finishing'
+        - name: 'PROCESS | Apply Any Pending Restart Before Finishing'
           ansible.builtin.meta: 'flush_handlers'
 
         # A crash-looping WazuhSvc would otherwise pass green: win_service state=started only
