@@ -1,8 +1,9 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
-# Validates load-bearing domain_member configuration after the v3 loader merge, on the CONTROLLER,
+# Validates load-bearing domain_member configuration after the v3 loader merge, on the
+# CONTROLLER,
 # before anything touches the guest. The realm, the joining account and its password are the
 # estate's identity and arrive from the caller rather than from a default, so this is where a
 # missing or malformed one is caught — in a second, rather than part-way through a join that
@@ -13,8 +14,7 @@
 # Every guard is scoped to state=present. The clean path removes nothing and needs no inputs, so
 # requiring a realm to run it would fail a host for a contract it is not using.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 - name: 'VALIDATE | Require The Realm, The Account, And Its Password'
   when: (state | default('present') | string | lower | trim) == 'present'
 
@@ -40,8 +40,10 @@
   when: (state | default('present') | string | lower | trim) == 'present'
 
   vars:
-    __computer_ou__: "{{ domain_member_running.computer_ou | default('', true) | string | trim }}"
-    __timesync__: "{{ domain_member_running.timesync_source | default('', true) | string | trim }}"
+    __computer_ou__: >-
+      {{ domain_member_running.computer_ou | default('', true) | string | trim }}
+    __timesync__: >-
+      {{ domain_member_running.timesync_source | default('', true) | string | trim }}
 
   ansible.builtin.assert:
     fail_msg: >-
@@ -135,9 +137,12 @@
         is match('^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$')
 
 # The RedHat path does not implement name publication yet. The invariant applies there too --
-# sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which is
-# the tunnel on a split-network member and therefore the exact defect. Stated here so the contract
-# is honestly asymmetric rather than silently so: a RedHat caller that declares the key is told it
+# sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which
+# is
+# the tunnel on a split-network member and therefore the exact defect. Stated here so the
+# contract
+# is honestly asymmetric rather than silently so: a RedHat caller that declares the key is told
+# it
 # does nothing, instead of believing it did.
 - name: 'VALIDATE | Report That RedHat Does Not Publish A Declared Address Yet'
   when:

@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/vars/windows.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Windows-family overlay merged over domain_member_defaults by the v3 loader.
 #
@@ -10,11 +10,11 @@
 # they are properties of Windows rather than choices a site makes, so the task owns them. The
 # VALUES are here, because a site can legitimately hold a different posture.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 #region ------ [ Secure channel and machine account ] ----------------------------------------- #
 
-# The 'Domain member' policy family, written to Netlogon's parameters. Every one of these is about
+# The 'Domain member' policy family, written to Netlogon's parameters. Every one of these is
+# about
 # the membership itself rather than general hardening, which is why they live in this role: the
 # secure channel IS the domain membership's channel, and the machine account password IS the
 # credential the membership authenticates with.

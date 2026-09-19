@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/vars/redhat.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # RedHat-family overlay merged over domain_member_defaults by the v3 loader.
 #
@@ -9,8 +9,7 @@
 # duplicates any of that. What is left is the two commands END invokes to prove the result, and
 # the SSSD settings that carry the security posture the system role does not express.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 #region ------ [ Proof commands ] ------------------------------------------------------------- #
 
 # Absolute paths, because a command is invoked by absolute path and never resolved through PATH.
@@ -37,7 +36,7 @@ adcli_binary: '/usr/sbin/adcli'
 #   ad_machine_account_password_renewal_opts     'interval:initial_delay' in seconds for the
 #                                                renewal task.
 #   krb5_validate                                validate the TGT against the host keytab, which
-#                                                is what makes a spoofed KDC fail instead of pass.
+# is what makes a spoofed KDC fail instead of pass.
 sssd_custom_settings:
   - key: 'ad_maximum_machine_account_password_age'
     value: '30'

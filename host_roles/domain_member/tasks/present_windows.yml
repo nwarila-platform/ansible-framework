@@ -1,12 +1,13 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/present_windows.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Joins a Windows host to the declared realm, and holds the security posture a domain member is
 # supposed to hold.
 #
 # This is the mirror of present_redhat.yml: the same contract, the same three stages, the same
-# refusals, the same end state. What differs is only that RedHat hands the work to a vendor system
+# refusals, the same end state. What differs is only that RedHat hands the work to a vendor
+# system
 # role and Windows has none, so the steps that role performs are performed here instead --
 # the join, the encryption types, the machine account policy, the time source. Read the two files
 # side by side and the regions line up.
@@ -29,7 +30,8 @@
 # END prove membership rather than intent.
 #
 # RC4 IS NOT A KNOB: the Kerberos encryption types this role writes exclude DES and RC4, and no
-# playbook setting can re-admit them. The value and the argument for it are in the Kerberos region
+# playbook setting can re-admit them. The value and the argument for it are in the Kerberos
+# region
 # below, beside the write.
 #
 # The password arrives resolved from the caller and is handed to the join module as an argument,
@@ -37,7 +39,6 @@
 # What pipelining does and does not change about that is in the README.
 #
 # ============================================================================================= #
----
 #region ------ [ Begin: Join This Windows Host To The Realm ] --------------------------------- #
 
 - name: 'BEGIN | Read The Machine And Decide One Action'
@@ -45,7 +46,8 @@
   block:
 
     #region ------ [ Begin: Read The Current Domain Membership ] ------------------------------ #
-    # Only the one subset is gathered, so a play that already ran a full gather pays for this once
+    # Only the one subset is gathered, so a play that already ran a full gather pays for this
+    # once
     # more rather than paying for everything again. No changed_when: a facts module reports no
     # change because reading a machine changes nothing about it.
 
@@ -60,9 +62,12 @@
     # Skipped when a rejoin is forced, because that is exactly the operator saying "I know, leave
     # it and join the other one". Unforced, this does NOT duplicate the join module's own refusal
     # to switch domains, because that refusal is never reached: the join below is gated on a join
-    # being required, and a host already joined to something does not need one. Without this assert
-    # the join is simply skipped, the posture regions after it still write themselves onto a machine
-    # that belongs to another domain, and the run fails at END with a postcondition that reads like
+    # being required, and a host already joined to something does not need one. Without this
+    # assert
+    # the join is simply skipped, the posture regions after it still write themselves onto a
+    # machine
+    # that belongs to another domain, and the run fails at END with a postcondition that reads
+    # like
     # a broken join rather than a wrong declaration.
     #
     # Compared case-insensitively, because Windows reports the domain in whatever case the
@@ -70,7 +75,8 @@
 
     - name: 'BEGIN | Refuse A Host Already Joined To Another Domain'
       vars:
-        __current_domain__: "{{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}"
+        __current_domain__: >-
+          {{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}
         __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
       when: not (domain_member_running.force_rejoin | bool)
 
@@ -93,12 +99,15 @@
 
     #region ------ [ Begin: Test The Machine Account Credential ] ----------------------------- #
     # Membership and a working machine account are different facts, and this role has always
-    # decided on the first while proving the second. A host can report membership and still hold a
+    # decided on the first while proving the second. A host can report membership and still hold
+    # a
     # secret the directory no longer accepts -- observed 2026-08-27 on a replacement operating
     # system that joined against a computer object its predecessor had left behind: PartOfDomain
-    # true, the realm resolving, both controllers reachable, and Test-ComputerSecureChannel false.
+    # true, the realm resolving, both controllers reachable, and Test-ComputerSecureChannel
+    # false.
     # Nothing repaired it, because the join is gated on membership and membership was already
-    # true, so every converge skipped the join and then failed the proof. Reading the channel HERE
+    # true, so every converge skipped the join and then failed the proof. Reading the channel
+    # HERE
     # is what lets PROCESS act on it.
     #
     # Only when already joined: an unjoined host has no channel to test, and the join below is
@@ -194,8 +203,10 @@
     #region ------ [ Process: Join The Declared Realm ] --------------------------------------- #
     # The module owns the whole join -- the computer object and the secure channel -- so the role
     # hands it the contract and nothing else. An OU the caller left null is omitted rather than
-    # passed empty: the module reads an absent domain_ou_path as "the directory's default computers
-    # container", which is exactly what null means here, while an empty string would be a value it
+    # passed empty: the module reads an absent domain_ou_path as "the directory's default
+    # computers
+    # container", which is exactly what null means here, while an empty string would be a value
+    # it
     # would try to use.
     #
     # reboot is false and the restart is a task of its own, one region down. The module's own
@@ -203,7 +214,8 @@
     # separately, and gives the role no place to say why the machine went away. The module still
     # answers whether one is required, which is what that task acts on. No reboot bound is passed
     # to the module at all: the reboot it would bound is off, and the restart below carries its
-    # own. And no_log because the password is a task argument -- it costs the module's diffs at -v,
+    # own. And no_log because the password is a task argument -- it costs the module's diffs at
+    # -v,
     # but the registered result is still read below and END proves the outcome from the machine.
 
     - name: 'PROCESS | Join The Declared Realm'
@@ -224,10 +236,12 @@
     #region ------ [ Process: Restart To Complete The Join ] ---------------------------------- #
     # Gated on the module's own answer rather than on whether it changed anything: a join always
     # asks for a restart, and a converged host asks for none. A skipped join leaves no
-    # reboot_required at all, which defaults to false and skips this with it. Every option carries
+    # reboot_required at all, which defaults to false and skips this with it. Every option
+    # carries
     # the module's documented default, stated so an upgrade cannot move what this role relies on,
     # with two deliberate exceptions: msg is set because saying why the machine is going away is
-    # the whole point of having it; and boot_time_command is left alone because it is the module's
+    # the whole point of having it; and boot_time_command is left alone because it is the
+    # module's
     # own probe for "has the host returned" rather than a setting, so pinning it would freeze an
     # implementation we want to inherit fixes to.
 
@@ -244,11 +258,13 @@
     #endregion --- [ Process: Restart To Complete The Join ] ---------------------------------- #
 
     #region ------ [ Process: Hold The Domain Member Secure Channel ] ------------------------- #
-    # What ad_integration writes into sssd.conf for RedHat, Windows keeps in Netlogon's parameters.
+    # What ad_integration writes into sssd.conf for RedHat, Windows keeps in Netlogon's
+    # parameters.
     # Ungated, like the system role's own posture steps: this is state the role owns on every
     # converge, not an action that belongs to the join. A converged host reports no change. The
     # registry PATH is owned here rather than offered as a setting, because where Windows keeps
-    # this policy is a property of Windows and not a choice a site makes; the VALUES come from the
+    # this policy is a property of Windows and not a choice a site makes; the VALUES come from
+    # the
     # overlay, where a site can hold a different posture and see that it has.
 
     - name: 'PROCESS | Hold The Domain Member Secure Channel'
@@ -301,7 +317,8 @@
     # reverted -- a host this role previously pointed at a source keeps that source when the
     # setting goes back to null, exactly as the RedHat path leaves chrony where it put it. Moving
     # a host back to the hierarchy is a deliberate act, not the absence of one. The service reads
-    # these once at start, so both notify the restart rather than a condition a growing expression
+    # these once at start, so both notify the restart rather than a condition a growing
+    # expression
     # would have to test.
 
     - name: 'PROCESS | Name The Declared Time Source'
@@ -334,30 +351,35 @@
 
     #endregion --- [ Process: Point The Clock At The Declared Source ] ------------------------ #
 
-    #region ------ [ Process: Publish One Address, The One That Is Reached ] ------------------- #
+    #region ------ [ Process: Publish One Address, The One That Is Reached ] ------------------ #
     # A member publishes its own A record, and Windows publishes the addresses of every interface
     # whose registration flag is set. Registration is turned OFF everywhere except the one
     # interface that should publish, because the wrong record is the failure being fixed -- and a
     # host publishing two addresses is worse than one publishing the wrong one, since a resolver
     # hands out each in turn.
     #
-    # WHICH address is normally not worth asking about: a host with one route to the world has one
-    # answer, and asking every caller to restate it is ceremony. So the declaration is optional and
+    # WHICH address is normally not worth asking about: a host with one route to the world has
+    # one
+    # answer, and asking every caller to restate it is ceremony. So the declaration is optional
+    # and
     # the host is asked instead -- Find-NetRoute reports the source address Windows itself would
     # use, which settles metrics and multiple defaults the way the platform settles them rather
     # than by arithmetic repeated here.
     #
-    # It is asked, not trusted. Routing says how this host reaches the world; it is not evidence of
+    # It is asked, not trusted. Routing says how this host reaches the world; it is not evidence
+    # of
     # how anything reaches this host, and those differ on a host whose management path is not its
     # default route, or one whose tunnel carries the default. So a computed answer WARNS, naming
-    # what it chose, and END proves the published record either way. Declaring the address silences
+    # what it chose, and END proves the published record either way. Declaring the address
+    # silences
     # the warning and is the answer for any host whose networking is unusual.
     #
     # The anchor address is never contacted: Find-NetRoute is a routing question, and the address
     # exists only to mean "somewhere outside every local prefix".
     #
     # Addresses the platform excludes from registration stay excluded -- a cluster IP resource is
-    # brought online with SkipAsSource, and Windows does not publish those -- which is what lets an
+    # brought online with SkipAsSource, and Windows does not publish those -- which is what lets
+    # an
     # interface-wide flag satisfy a per-record contract on a cluster node.
 
     - name: 'PROCESS | Publish One Address, The One That Is Reached'
@@ -385,7 +407,8 @@
             $Address = $Route.IPAddress
           }
 
-          # Preferred excludes tentative, duplicate and deprecated addresses -- states in which an
+          # Preferred excludes tentative, duplicate and deprecated addresses -- states in which
+          # an
           # address exists but must not be used for anything new.
           $Holding = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
             Where-Object { $PSItem.IPAddress -eq $Address -and $PSItem.AddressState -eq 'Preferred' })
@@ -412,7 +435,9 @@
 
     - name: 'PROCESS | Say Which Address Was Chosen When Nobody Declared One'
       vars:
-        __chosen__: "{{ (__domain_member_registration__.output | default([], true) | first | default({}, true)) }}"
+        __chosen__: >-
+          {{ (__domain_member_registration__.output | default([], true) | first | default({},
+          true)) }}
       when: __chosen__.Computed | default(false) | bool
 
       ansible.builtin.debug:
@@ -424,7 +449,7 @@
           carries it. Declare the address to decide it here instead.
         verbosity: 0
 
-    #endregion --- [ Process: Publish One Address, The One That Is Reached ] ------------------- #
+    #endregion --- [ Process: Publish One Address, The One That Is Reached ] ------------------ #
 
 #endregion --- [ Process: Join This Windows Host To The Realm ] ------------------------------- #
 
@@ -432,9 +457,11 @@
 #region ------ [ Always: Apply Any Pending Restart ] ------------------------------------------ #
 # A converge that changed the time service's configuration and then failed before the handler
 # flushed would leave the service on its old source -- and the NEXT converge would write nothing,
-# because the values are already correct, so it would notify nothing and never restart either. The
+# because the values are already correct, so it would notify nothing and never restart either.
+# The
 # service would stay stale for good, under a run that reports success. An 'always' runs even when
-# the block above failed, and a handler that already ran is not run again, so a successful converge
+# the block above failed, and a handler that already ran is not run again, so a successful
+# converge
 # still restarts exactly once.
 
   # Begin the 'Always' block
@@ -466,14 +493,17 @@
     #endregion --- [ End: Re-Read The Domain Membership ] ------------------------------------- #
 
     #region ------ [ End: Prove The Declared Membership ] ------------------------------------- #
-    # A join module's report is its own opinion; the domain-role API is the machine's. The two come
+    # A join module's report is its own opinion; the domain-role API is the machine's. The two
+    # come
     # apart in the case this proof exists to catch: a join that succeeded against the
-    # directory but whose restart never happened, which leaves a machine that is a domain member in
+    # directory but whose restart never happened, which leaves a machine that is a domain member
+    # in
     # the directory and a workgroup member to everyone who uses it.
 
     - name: 'END | Prove The Machine Is A Member Of The Declared Realm'
       vars:
-        __current_domain__: "{{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}"
+        __current_domain__: >-
+          {{ ansible_facts.windows_domain | default('', true) | string | lower | trim }}
         __declared_realm__: "{{ domain_member_running.realm | string | lower | trim }}"
 
       ansible.builtin.assert:
@@ -496,10 +526,14 @@
     #endregion --- [ End: Prove The Declared Membership ] ------------------------------------- #
 
     #region ------ [ End: Prove The Machine Account Credential ] ------------------------------ #
-    # The mirror of the RedHat path's adcli testjoin, and the same argument for it: a machine that
-    # reports membership can still be unable to authenticate as itself -- a computer object deleted
-    # or reset in the directory leaves every local answer looking correct. Test-ComputerSecureChannel
-    # asks the domain controller using the machine's own credential, which is the only answer that
+    # The mirror of the RedHat path's adcli testjoin, and the same argument for it: a machine
+    # that
+    # reports membership can still be unable to authenticate as itself -- a computer object
+    # deleted
+    # or reset in the directory leaves every local answer looking correct.
+    # Test-ComputerSecureChannel
+    # asks the domain controller using the machine's own credential, which is the only answer
+    # that
     # means the membership actually works.
     #
     # No module exposes this, so it is the sanctioned escape hatch: one read-only cmdlet, no
@@ -546,19 +580,24 @@
     #endregion --- [ End: Prove The Machine Account Credential ] ------------------------------ #
 
     #region ------ [ End: Prove The Realm Publishes The Declared Address ] -------------------- #
-    # Setting the flags proves nothing. Windows registration fails SILENTLY to whoever set them --
+    # Setting the flags proves nothing. Windows registration fails SILENTLY to whoever set them
+    # --
     # the failure that produced this whole design was two entries in an event log behind a join
-    # that looked healthy -- so the only honest proof is the record itself, read back from a domain
+    # that looked healthy -- so the only honest proof is the record itself, read back from a
+    # domain
     # controller rather than from the host that claims to have written it.
     #
-    # Asking a DC directly, rather than resolving normally, is the point: a client can answer from
-    # its own cache or from a resolver that is not authoritative, and both would agree with a host
+    # Asking a DC directly, rather than resolving normally, is the point: a client can answer
+    # from
+    # its own cache or from a resolver that is not authoritative, and both would agree with a
+    # host
     # that published nothing. The DC comes from the realm's own SRV record, so nothing here names
     # one.
     #
     # This catches every cause at once and needs no guard per cause: a missing NRPT rule on a
     # tunnelled host, a realm that does not match, a policy overriding the flags, a secure-update
-    # refusal because some other principal owns the name. The bounded wait is because registration
+    # refusal because some other principal owns the name. The bounded wait is because
+    # registration
     # is asynchronous; the measured settling time was well inside it.
 
     - name: 'END | Read This Host Back From A Domain Controller'
@@ -571,7 +610,9 @@
         depth: 2
         error_action: 'stop'
         parameters:
-          Expected: "{{ (__domain_member_registration__.output | default([], true) | first | default({}, true)).Address | default('', true) }}"
+          Expected: >-
+            {{ (__domain_member_registration__.output | default([], true) | first | default({},
+            true)).Address | default('', true) }}
           Realm: "{{ domain_member_running.realm }}"
         remote_src: false
         script: |

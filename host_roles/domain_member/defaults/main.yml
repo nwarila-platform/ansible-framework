@@ -1,15 +1,17 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Lowest-precedence configuration for the domain_member role. The v3 loader merges the OS overlay
 # in vars/ over this map and publishes the result as 'domain_member_running'; tasks read only the
 # merged map, never these keys directly.
 #
 # ONE CONTRACT, TWO PLATFORMS. Every key below means the same thing on RedHat and on Windows and
-# produces the same end state. The RedHat path hands them to redhat.rhel_system_roles.ad_integration,
+# produces the same end state. The RedHat path hands them to
+# redhat.rhel_system_roles.ad_integration,
 # whose variable names these deliberately mirror; the Windows path implements the same semantics
-# against microsoft.ad and the registry. A key that could only ever mean something on one platform
+# against microsoft.ad and the registry. A key that could only ever mean something on one
+# platform
 # does not belong here -- it belongs in that platform's overlay, or nowhere.
 #
 # IDENTITY DOES NOT BELONG HERE. This role is a WRAPPER: the join itself is
@@ -26,13 +28,14 @@
 # pipeline's to know; they appear only in the caller's lookup call, never in this role.
 #
 # NOT OFFERED, deliberately: renaming the machine, and any way to re-admit RC4. A rename is a
-# separate change with its own consequences -- certificates, monitoring, DNS -- and nobody expects
-# a domain join to perform one. RC4 is excluded by the benchmark this org builds to, so a per-play
+# separate change with its own consequences -- certificates, monitoring, DNS -- and nobody
+# expects
+# a domain join to perform one. RC4 is excluded by the benchmark this org builds to, so a
+# per-play
 # setting for it would only ever be a way to fall out of compliance quietly; both platforms hold
 # that line in the way their platform expresses it, and neither reads a variable to decide.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 domain_member_defaults:
 
   #region ------ [ Identity: what to join, and as whom ] -------------------------------------- #
@@ -48,11 +51,15 @@ domain_member_defaults:
   user: ''
 
   # THE JOIN PASSWORD ITSELF, already resolved. A value and not a location: reading a credential
-  # out of S3 is the secret lookup's job, and the caller calls it -- which is why this is declared
-  # empty and validate.yml refuses a present run that omits it. The lookup takes the digest of the
-  # stored bytes as its second term, so a re-uploaded or truncated object fails at the read rather
+  # out of S3 is the secret lookup's job, and the caller calls it -- which is why this is
+  # declared
+  # empty and validate.yml refuses a present run that omits it. The lookup takes the digest of
+  # the
+  # stored bytes as its second term, so a re-uploaded or truncated object fails at the read
+  # rather
   # than as a wrong password at the directory, where the error names neither the object nor the
-  # upload. Rotating means moving the object and that digest together, in the caller, in one change.
+  # upload. Rotating means moving the object and that digest together, in the caller, in one
+  # change.
   #
   # This role never writes the value to a file. That is not the same as "it never touches disk":
   # with pipelining off -- Ansible's default, which this chassis leaves in place -- every module
@@ -70,7 +77,8 @@ domain_member_defaults:
   #
   # It applies when the object is CREATED. A machine that already has a computer object is not
   # moved by a converge, on either platform: moving objects between OUs changes which policy
-  # applies to them, and that is a directory operation rather than a side effect of running a role.
+  # applies to them, and that is a directory operation rather than a side effect of running a
+  # role.
   computer_ou: null
 
   # Leave the current realm and join again from scratch. False is the only safe default: a rejoin
@@ -93,20 +101,24 @@ domain_member_defaults:
   #
   # OPTIONAL, and normally left unset. A host with one route to the world has one answer, and
   # asking every caller to restate it is ceremony -- so an empty value means "ask the host", and
-  # the Windows path publishes the address it would use to reach a remote network, as the platform
+  # the Windows path publishes the address it would use to reach a remote network, as the
+  # platform
   # itself resolves that. The converge SAYS which address it chose, because routing describes how
   # this host reaches the world and is not evidence of how anything reaches this host.
   #
-  # DECLARE IT where those differ: a host whose management path is not its default route, one whose
+  # DECLARE IT where those differ: a host whose management path is not its default route, one
+  # whose
   # tunnel carries the default route, or an interface holding several usable addresses. Those are
   # the unusual cases, and stating the address is how they are settled.
   #
   # What must never come back is a rule derived from the realm's DNS suffix. The suffix is set by
-  # whatever hands out the network -- a VPN sets it on the tunnel adapter -- so a rule keyed on it
+  # whatever hands out the network -- a VPN sets it on the tunnel adapter -- so a rule keyed on
+  # it
   # selects the physical NIC on a cloud-only member and the tunnel on a member reaching the realm
   # across one, inverting between two environments that must behave identically.
   #
-  # The RedHat path does not implement this yet and says so in validate.yml. The INVARIANT applies
+  # The RedHat path does not implement this yet and says so in validate.yml. The INVARIANT
+  # applies
   # there equally -- sssd's dyndns_iface is the same idea, and its default (the interface that
   # reaches AD) reproduces exactly the defect this key exists to prevent -- so the key belongs to
   # the shared contract even while one platform's implementation is outstanding.
@@ -117,7 +129,8 @@ domain_member_defaults:
   #region ------ [ Security posture ] --------------------------------------------------------- #
 
   # The time source to synchronise the clock with. Kerberos rejects a ticket whose timestamp is
-  # outside the directory's tolerance -- five minutes by default -- so a joined host with a drifting
+  # outside the directory's tolerance -- five minutes by default -- so a joined host with a
+  # drifting
   # clock stops authenticating and reports a Kerberos error that names nothing about time.
   #
   # Null leaves the platform's own arrangement alone, which is the right default for both: a
