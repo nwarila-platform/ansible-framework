@@ -4,22 +4,17 @@
 #                                                                                               #
 #                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                       #
 #                                                                                               #
-# This is NOT the framework's shared application loader. That loader must never                 #
-# be copied here. Four concrete reasons, any one of them fatal:                                 #
-#   1. Its 'INIT | Creating Temporary Directory' step uses ansible.builtin.tempfile under       #
-#      'become: true' — a POSIX module, and sudo does not exist on a Windows target. Hard       #
-#      failure before any work happens.                                                         #
-#   2. Its 'INIT | Securing Temporary Directory' step sets selevel/serole/setype/seuser.        #
-#      SELinux is meaningless on Windows.                                                       #
-#   3. It derives its dispatch name as '<ansible_distribution|lower>_<major_version>'. On       #
-#      Windows ansible_distribution is Win32_OperatingSystem.Caption, so that evaluates to the  #
-#      literal string 'microsoft windows server 2025 datacenter_10'. Spaces are legal in a      #
-#      filename, but this role ships no task file with that generated name, so dispatch misses. #
-#   4. That miss then lands on the loader's 'fail' + 'ignore_errors: true' pair, i.e. the role  #
-#      prints an error and SILENTLY DOES NOTHING. Silent success is the worst possible failure  #
-#      mode for a bootstrap everything downstream depends on.                                   #
-# Application roles now use the Windows-safe shared loader. This bootstrap role still must not  #
-# use it: bootstrap has no ENV/state application contract and must repair transport first.      #
+# This is NOT the shared application loader, and that loader must not be copied here -- but     #
+# the reason is no longer the one this header used to give. The Linux-only v2.2 loader, which   #
+# staged with ansible.builtin.tempfile under become, labelled with SELinux, and derived a       #
+# space-containing dispatch name from ansible_distribution, was retained only in the            #
+# RedHat_Rocky_10 role and has been deleted. The current shared loader is Windows-safe: it      #
+# skips package facts on Windows, normalises the dispatch name, and guards every POSIX temp     #
+# and SELinux operation off Windows.                                                            #
+#                                                                                               #
+# What still holds is the CONTRACT. The loader resolves an ENV and a state for an               #
+# APPLICATION; a bootstrap has neither, and it must repair the transport before any remote      #
+# module runs. That is why this role keeps a named entry point and a loud guard.                #
 #                                                                                               #
 # WHY THIS FILE EXISTS AT ALL RATHER THAN BEING OMITTED: with no tasks/main.yml, ansible-core's #
 # role loader returns None for the 'tasks' entry point, the role runs ZERO tasks, and the play  #

@@ -4,13 +4,11 @@
 # MINIMUM requirements for the ansible-framework suite to run on a NEW Windows Server 2025      #
 # host. Called EXPLICITLY by the deploying playbook — never by a loader.                        #
 #                                                                                               #
-# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The framework's shared          #
-# application loader is Linux-only: it requires 'ENV',                                          #
-# escalates with become=sudo, stages with ansible.builtin.tempfile and labels with SELinux,     #
-# and derives its dispatch name from ansible_distribution — which on Windows is                 #
-# Win32_OperatingSystem.Caption, yielding the space-containing string                           #
-# 'microsoft windows server 2025 datacenter_10'. See tasks/main.yml for the guard that stands   #
-# in its place.                                                                                 #
+# THERE IS DELIBERATELY NO tasks/main.yml LOADER FOR THIS ROLE. The shared application loader   #
+# is Windows-safe, so the old objection -- that it was Linux-only -- no longer applies. It is   #
+# still wrong here: its contract is a state and an ENV, which describe application              #
+# convergence, not a one-shot repair, and it would run a remote module before this file has     #
+# flipped the shell. See tasks/main.yml for the guard that stands in its place.                 #
 #                                                                                               #
 # --- [ How To Call It ] ---------------------------------------------------------------------- #
 #   - name: 'Bootstrap | Windows Server 2025 minimum requirements'
