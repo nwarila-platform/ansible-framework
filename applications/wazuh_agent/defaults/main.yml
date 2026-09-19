@@ -13,8 +13,9 @@
 #     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
 #     consume the central wazuh-offline.tar.gz bundle.
 #   - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session
-#     the generic AWS module-option variables before invoking this role; see tasks/main.yml's ENV
-#     assertion. No standing instance access or deploy credential is required on a target.
+#     through the generic AWS module-option variables before invoking this role; see
+#     tasks/main.yml's ENV assertion. No standing instance access or deploy credential is
+#     required on a target.
 # ============================================================================================= #
 
 wazuh_agent_defaults:
