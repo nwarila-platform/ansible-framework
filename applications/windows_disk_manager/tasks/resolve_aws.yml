@@ -1,46 +1,46 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/resolve_aws.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # AWS `function`-tag disk resolver — the Windows sibling of linux_disk_manager's
 # tasks/resolve_aws.yml, with the SAME contract. Included by present_windows.yml BEFORE disk
 # facts are loaded, ONLY when platform is aws and at least one declared disk entry lacks a
-# literal `unique_id` (the caller's selectattr guard). Resolves each such entry's `function`
-# (an EBS volume's `Function` tag value, e.g. WSUSDB) to that ATTACHED volume's volume-id, so
-# the caller can materialize the missing `unique_id` from the disk whose NVMe serial equals
-# the volume-id (Nitro guarantees serial == volume-id without its hyphen).
+# literal `unique_id` (the caller's selectattr guard). Resolves each such entry's `function` (an
+# EBS volume's `Function` tag value, e.g. WSUSDB) to that ATTACHED volume's volume-id, so the
+# caller can materialize the missing `unique_id` from the disk whose NVMe serial equals the
+# volume-id (Nitro guarantees serial == volume-id without its hyphen).
 #
-# CONTROLLER-SIDE, ONE call per HOST (never per disk): amazon.aws.ec2_vol_info, filtered to
-# THIS host's own instance-id + attachment.status=attached and controller-delegated per this
+# CONTROLLER-SIDE, ONE call per HOST (never per disk): amazon.aws.ec2_vol_info, filtered to THIS
+# host's own instance-id + attachment.status=attached and controller-delegated per this
 # codebase's amazon.aws conventions. Deliberately NOT run_once: this call's result is
 # host-specific (each host's own attached volumes), not a single value shared across the play.
 #
 # The TARGET instance needs NO EBS/IAM permissions of its own — the describe runs under the
 # deploy identity's existing ec2:Describe* grant (see the product repo's
 # docs/reference/aws-iam/README.md). The instance-id comes from the target's own IMDSv2
-# (link-local, hop-limit-1 safe, no credential), never from inventory metadata that could
-# drift from the machine actually being configured.
-# =========================================================================================== #
+# (link-local, hop-limit-1 safe, no credential), never from inventory metadata that could drift
+# from the machine actually being configured.
+# ============================================================================================= #
 
-#region ------ [ Script ] -------------------------------------------------------------------- #
+#region ------ [ Begin: Resolve Declared Function Tags To Attached Volumes ] ------------------ #
 
 # The identity anchor: ask the MACHINE which instance it is, so the volume describe below can
 # never be scoped to a stale or mistyped inventory value. IMDSv2 only — the token PUT fails
 # closed on anything that is not this instance's own link-local metadata service.
 #
-# Retried for the same reason the describe below is retried: this address either answers or it does
-# not, and a host that cannot reach it for a moment is not a host with the wrong volumes. Measured
-# on a converged guest 2026-09-11: the token PUT failed once with a 21-second connect timeout while
-# every task around it succeeded, and that single failure ended a run that was otherwise correct --
-# this was the one call in the region with no second attempt.
+# Retried for the same reason the describe below is retried: this address either answers or it
+# does not, and a host that cannot reach it for a moment is not a host with the wrong volumes.
+# Measured on a converged guest 2026-09-11: the token PUT failed once with a 21-second connect
+# timeout while every task around it succeeded, and that single failure ended a run that was
+# otherwise correct -- this was the one call in the region with no second attempt.
 #
 # The per-attempt timeout is deliberately short. The endpoint is link-local: it answers in
 # milliseconds or it is not being reached at all, so a thirty-second wait only delays the retry
 # that would have fixed it.
-- name: 'BEGIN (aws) | Acquire IMDSv2 Session Token'
+- name: 'BEGIN | Acquire IMDSv2 Session Token'
   delay: 5
-  register: '__imds_token__'
+  register: '__windows_disk_manager_imds_token__'
   retries: 5
-  until: __imds_token__ is succeeded
+  until: __windows_disk_manager_imds_token__ is succeeded
 
   ansible.windows.win_uri:
     url: 'http://169.254.169.254/latest/api/token'
@@ -50,46 +50,44 @@
     return_content: true
     timeout: 10
 
-- name: 'BEGIN (aws) | Resolve This Instance Id From IMDSv2'
+- name: 'BEGIN | Resolve This Instance Id From IMDSv2'
   delay: 5
-  register: '__imds_instance_id__'
+  register: '__windows_disk_manager_instance_id__'
   retries: 5
-  until: __imds_instance_id__ is succeeded
+  until: __windows_disk_manager_instance_id__ is succeeded
 
   ansible.windows.win_uri:
     url: 'http://169.254.169.254/latest/meta-data/instance-id'
     method: 'GET'
     headers:
-      X-aws-ec2-metadata-token: "{{ __imds_token__.content }}"
+      X-aws-ec2-metadata-token: "{{ __windows_disk_manager_imds_token__.content }}"
     return_content: true
     timeout: 10
-
-- name: 'BEGIN (aws) | Publish Resolved Instance Id'
-  ansible.builtin.set_fact:
-    __instance_id__: "{{ __imds_instance_id__.content | trim }}"
 
 # ONE describe call for the whole host — every declared `function` on this host resolves from
 # this single response, never a per-disk API call. Retries cover post-apply describe
 # eventual-consistency: a volume attached moments ago by Terraform may not yet be visible to
 # DescribeVolumes on the first attempt.
-- name: 'BEGIN (aws) | Describe Attached EBS Volumes For This Instance'
+- name: 'BEGIN | Describe Attached EBS Volumes For This Instance'
   delegate_to: 'localhost'
   become: false
   no_log: true
-  register: '__aws_vol_info__'
+  register: '__windows_disk_manager_attached_volumes__'
   retries: 5
   delay: 10
   until: >-
-    (__declared_functions__
-    | difference(__aws_vol_info__.volumes | default([], true) | selectattr('tags')
-    | selectattr('tags.Function', 'defined') | map(attribute='tags.Function') | list)
-    | length) == 0
+    (__declared_functions__ | difference(__windows_disk_manager_attached_volumes__.volumes |
+    default([], true) | selectattr('tags') | selectattr('tags.Function', 'defined') |
+    map(attribute='tags.Function') | list) | length) == 0
   vars:
-    # Run boto3 under the SAME interpreter that runs ansible-playbook (the controller venv,
-    # which already has boto3/botocore) — mirroring every other delegate_to: localhost site in
-    # this codebase (see linux_disk_manager/tasks/resolve_aws.yml).
+    # Run boto3 under the SAME interpreter that runs ansible-playbook (the controller venv, which
+    # already has boto3/botocore) — mirroring every other delegate_to: localhost site in this
+    # codebase (see linux_disk_manager/tasks/resolve_aws.yml).
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
-    __declared_functions__: "{{ config.disks | selectattr('unique_id', 'undefined') | map(attribute='function') | list }}"
+    __instance_id__: "{{ __windows_disk_manager_instance_id__.content | trim }}"
+    __declared_functions__: >-
+      {{ config.disks | selectattr('unique_id', 'undefined')
+      | map(attribute='function') | list }}
   amazon.aws.ec2_vol_info:
     region: "{{ AWS_DEFAULT_REGION | default(omit, true) }}"
     access_key: "{{ AWS_ACCESS_KEY_ID | default(omit, true) }}"
@@ -101,29 +99,30 @@
 
 # NEGATIVE PROOF, per declared-function entry: exactly one ATTACHED volume may carry this
 # Function tag. The zero-match case normally terminates at the describe task's retry gate; this
-# assert prevents a multiple match from silently resolving to the WRONG disk and remains
-# defense in depth for zero matches. A volume-id/Function-tag pairing is ordinary
-# infrastructure metadata, so this assert can enumerate it outside the no_log describe task.
-- name: 'BEGIN (aws) | Assert Exactly One Attached Volume Per Declared Function'
+# assert prevents a multiple match from silently resolving to the WRONG disk and remains defense
+# in depth for zero matches. A volume-id/Function-tag pairing is ordinary infrastructure
+# metadata, so this assert can enumerate it outside the no_log describe task.
+- name: 'BEGIN | Assert Exactly One Attached Volume Per Declared Function'
   loop: "{{ config.disks | selectattr('unique_id', 'undefined') | list }}"
   loop_control:
-    loop_var: 'disk'
-    label: "{{ disk.function }}"
+    loop_var: '__disk__'
+    label: "{{ __disk__.function }}"
   vars:
+    __instance_id__: "{{ __windows_disk_manager_instance_id__.content | trim }}"
     __matches__: >-
-      {{ __aws_vol_info__.volumes | selectattr('tags')
+      {{ __windows_disk_manager_attached_volumes__.volumes | selectattr('tags')
       | selectattr('tags.Function', 'defined')
-      | selectattr('tags.Function', 'equalto', disk.function) | list }}
+      | selectattr('tags.Function', 'equalto', __disk__.function) | list }}
   ansible.builtin.assert:
     that:
       - __matches__ | length == 1
     fail_msg: >-
-      Expected exactly one ATTACHED EBS volume tagged Function={{ disk.function }} on instance
-      {{ __instance_id__ }}; found {{ __matches__ | length }}. Attached volumes on this
-      instance: {% for v in __aws_vol_info__.volumes %}{{ v.id }} (Function={{
-      v.tags.Function | default('<untagged>', true) }}){% if not loop.last %}, {% endif %}{% endfor
-      %}. Fix the intended volume's `tags.Function` value so exactly one attached
-      volume carries `Function={{ disk.function }}`.
+      Expected exactly one ATTACHED EBS volume tagged Function={{ __disk__.function }} on
+      instance {{ __instance_id__ }}; found {{ __matches__ | length }}. Attached volumes on this
+      instance: {% for v in __windows_disk_manager_attached_volumes__.volumes %}{{ v.id }}
+      (Function={{ v.tags.Function | default('<untagged>', true) }}){% if not loop.last %}, {%
+      endif %}{% endfor %}. Fix the intended volume's `tags.Function` value so exactly one
+      attached volume carries `Function={{ __disk__.function }}`.
     quiet: true
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Begin: Resolve Declared Function Tags To Attached Volumes ] ------------------ #
