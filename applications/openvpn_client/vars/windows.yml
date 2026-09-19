@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/vars/windows.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Windows-family overlay merged over openvpn_client_defaults by the v3 loader.
 #
@@ -11,8 +11,7 @@
 # them -- but the defaults below are read from the installer's own source (msi.wxs) rather than
 # guessed, and a site that changes one is describing a different package.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 #region ------ [ Where the MSI puts things ] -------------------------------------------------- #
 
 # The client binary. Its version RESOURCE is what the install decision reads: OpenVPN stamps
@@ -36,15 +35,15 @@ install:
 
 #region ------ [ The automatic service ] ------------------------------------------------------ #
 
-# The service that runs config-auto. The MSI registers it DISABLED and never started
-# (msi.wxs, ServiceInstall Start="disabled"), so installing the client alone connects nothing --
-# the role holds it on.
+# The service that runs config-auto. The MSI registers it DISABLED and never started (msi.wxs,
+# ServiceInstall Start="disabled"), so installing the client alone connects nothing -- the role
+# holds it on.
 service_name: 'OpenVPNService'
 
-# The virtual account the MSI registers the service under (msi.wxs,
-# Account="NT SERVICE\OpenVPNService"). It is HELD rather than inherited: this is the identity the
-# profile's permissions admit, and a service moved to any other account would look healthy and
-# open nothing. A virtual account carries no password, so none is ever supplied.
+# The virtual account the MSI registers the service under (msi.wxs, Account="NT
+# SERVICE\OpenVPNService"). It is HELD rather than inherited: this is the identity the profile's
+# permissions admit, and a service moved to any other account would look healthy and open
+# nothing. A virtual account carries no password, so none is ever supplied.
 service_account: 'NT SERVICE\OpenVPNService'
 
 #endregion --- [ The automatic service ] ------------------------------------------------------ #
@@ -52,10 +51,10 @@ service_account: 'NT SERVICE\OpenVPNService'
 #region ------ [ The tunnel adapter ] --------------------------------------------------------- #
 
 # How this role recognises the adapter it created, so it can keep that adapter's address out of
-# the realm's DNS. Matched on the DRIVER's own description rather than the connection name, because
-# the connection name is renameable by anyone and the description comes from the driver the install
-# region selects (ADDLOCAL=...,Drivers.OvpnDco): the data channel offload adapter is the only one
-# this role installs, so 'OpenVPN*' names it and nothing else.
+# the realm's DNS. Matched on the DRIVER's own description rather than the connection name,
+# because the connection name is renameable by anyone and the description comes from the driver
+# the install region selects (ADDLOCAL=...,Drivers.OvpnDco): the data channel offload adapter is
+# the only one this role installs, so 'OpenVPN*' names it and nothing else.
 adapter_description_match: 'OpenVPN*'
 
 #endregion --- [ The tunnel adapter ] --------------------------------------------------------- #
@@ -69,10 +68,10 @@ adapter_description_match: 'OpenVPN*'
 # the machine still reads back the same one.
 #
 # A DACL ONLY -- no owner or group section. Set-FileAcl.ps1 reads and writes exactly
-# AccessControlSections::Access, so the owner, the group and any SACL are deliberately left alone,
-# and it compares what it wrote against what Windows reads back with a CASE-SENSITIVE test. A
-# descriptor carrying an 'O:'/'G:' prefix is rejected by the script's own parameter validation
-# before it is ever applied.
+# AccessControlSections::Access, so the owner, the group and any SACL are deliberately left
+# alone, and it compares what it wrote against what Windows reads back with a CASE-SENSITIVE
+# test. A descriptor carrying an 'O:'/'G:' prefix is rejected by the script's own parameter
+# validation before it is ever applied.
 #
 # Read it left to right:
 #   D:PAI       the DACL is Protected (inheritance from config-auto is SEVERED) and
@@ -90,9 +89,9 @@ adapter_description_match: 'OpenVPN*'
 # S-1-5-80-<the SHA-1 of the UPPERCASED service name in UTF-16LE, taken as five little-endian
 # uint32s>. The value above is that computation for 'OPENVPNSERVICE'. It is written as a literal
 # SID because SDDL has no two-letter abbreviation for a service account, and it is stated here
-# rather than resolved on the host because the descriptor must be comparable before it is applied.
-# Verify it on any host that carries the service with: sc.exe showsid OpenVPNService
-profile_sddl: >-
-  D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-3750127322-3829920079-842246558-474445854-3948885660)
+# rather than resolved on the host because the descriptor must be comparable before it is
+# applied. Verify it on any host that carries the service with: sc.exe showsid OpenVPNService
+profile_sddl: "D:PAI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;S-1-5-80-3750127322-\
+  3829920079-842246558-474445854-3948885660)"
 
 #endregion --- [ The profile's permissions ] -------------------------------------------------- #
