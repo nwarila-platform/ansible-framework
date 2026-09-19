@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Validates the merged running config on the CONTROLLER, before anything touches the guest.
 #
@@ -14,8 +14,7 @@
 # literally named '-apprepo'. That fails inside an S3 call, minutes later, as a bucket-not-found
 # on a name no operator ever wrote. Catching it here costs a second and names the real cause.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 
 - name: 'VALIDATE | Require The Deploying Account Id'
   when: (state | default('present') | string | lower | trim) == 'present'
