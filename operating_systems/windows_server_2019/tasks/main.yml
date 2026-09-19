@@ -1,0 +1,40 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/main.yml'                                       | Version 1.0.0  #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#                                                                                               #
+#                        THIS ROLE HAS NO GENERIC ENTRY POINT — BY DESIGN                       #
+#                                                                                               #
+# This is NOT the shared application loader, and that loader must not be copied here -- but     #
+# the reason is no longer the one this header used to give. The Linux-only v2.2 loader, which   #
+# staged with ansible.builtin.tempfile under become, labelled with SELinux, and derived a       #
+# space-containing dispatch name from ansible_distribution, was retained only in the            #
+# RedHat_Rocky_10 role and has been deleted. The current shared loader is Windows-safe: it      #
+# skips package facts on Windows, normalises the dispatch name, and guards every POSIX temp     #
+# and SELinux operation off Windows.                                                            #
+#                                                                                               #
+# What still holds is the CONTRACT. The loader resolves an ENV and a state for an               #
+# APPLICATION; a bootstrap has neither, and it must repair the transport before any remote      #
+# module runs. That is why this role keeps a named entry point and a loud guard.                #
+#                                                                                               #
+# WHY THIS FILE EXISTS AT ALL RATHER THAN BEING OMITTED: with no tasks/main.yml, ansible-core's #
+# role loader returns None for the 'tasks' entry point, the role runs ZERO tasks, and the play  #
+# REPORTS SUCCESS. Omitting the file converts a caller's mistake into a silent no-op. This      #
+# turns it into a loud, self-documenting failure instead.                                       #
+#                                                                                               #
+# The named bootstrap entry remains the only supported path for this role.                      #
+# ============================================================================================= #
+
+#region ------ [ Process: Refuse The Generic Entry Point ] ------------------------------------ #
+
+- name: 'PROCESS | Refuse The Generic Entry Point'
+  ansible.builtin.fail:
+    msg: >-
+      The role 'windows_server_2019' has no generic entry point. Call one of its named task
+      files explicitly, e.g.
+      "ansible.builtin.include_role: { name: 'windows_server_2019', tasks_from: 'bootstrap' }".
+      tasks/bootstrap.yml establishes the minimum requirements for the ansible-framework suite
+      to run on a new Windows Server 2019 host; see the header of that file for the full call
+      contract (notably: gather_facts must be false, and no 'vars:' may be passed to the
+      include).
+
+#endregion --- [ Process: Refuse The Generic Entry Point ] ------------------------------------ #

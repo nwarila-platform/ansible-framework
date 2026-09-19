@@ -1,0 +1,31 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/main.yml'                                                         #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Role metadata for redhat_rocky_9. Description-only: this file does NOT enforce an argument    #
+# spec. The role is entered by name with tasks_from, and each entry file states its own         #
+# contract in its header.                                                                       #
+# ============================================================================================= #
+
+galaxy_info:
+
+  role_name: 'redhat_rocky_9'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Minimum requirements for the ansible-framework suite on a new RHEL or Rocky Linux 9
+    host: a writable remote-tmp base, python3.12 and a boto3-capable virtualenv. Carries no
+    STIG hardening entry point; the RHEL 8 role's is release-specific and is not ported.
+
+  license: 'MIT'
+  min_ansible_version: '2.21'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '9'
+
+  galaxy_tags:
+    - 'bootstrap'
+    - 'stig'
+
+dependencies: []
