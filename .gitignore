@@ -319,8 +319,19 @@
 !/operating_systems/*/tests/inventory
 
 !/utilities/os_bootstrap/
+!/utilities/os_bootstrap/defaults/
+!/utilities/os_bootstrap/files/
+!/utilities/os_bootstrap/handlers/
+!/utilities/os_bootstrap/library/
+!/utilities/os_bootstrap/lookup_plugins/
+!/utilities/os_bootstrap/meta/
+!/utilities/os_bootstrap/module_utils/
+!/utilities/os_bootstrap/molecule/
 !/utilities/os_bootstrap/tasks/
+!/utilities/os_bootstrap/templates/
+!/utilities/os_bootstrap/tests/
 !/utilities/os_bootstrap/vars/
+!/utilities/*/*/.gitkeep
 
 # Ansible runtime artifacts
 *.retry

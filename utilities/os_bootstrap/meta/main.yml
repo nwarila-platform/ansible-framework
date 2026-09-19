@@ -1,0 +1,47 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/main.yml'                                                         #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Role metadata for os_bootstrap. Description-only (style guide 8): NOT an enforcing            #
+# argument spec.                                                                                #
+#                                                                                               #
+# The role dispatches and converges nothing, so it declares no dependencies: the role it        #
+# selects is included at run time by name, which a static dependency cannot express.            #
+# ============================================================================================= #
+galaxy_info:
+
+  role_name: 'os_bootstrap'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Selects and runs the bootstrap role for each host. Detects the operating system from
+    facts already gathered, from the EC2 platform, or from the connection, falling back to a
+    single gather only when nothing else answers, then includes that OS role's bootstrap
+    entry point by bare name through roles_path. Routes on OS family rather than
+    distribution or release, because the selected role owns strict release validation and
+    must reject an unsupported one itself. Converges nothing of its own.
+
+  license: 'MIT'
+  min_ansible_version: '2.21'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+        - '10'
+    - name: 'Windows'
+      versions:
+        - '2016'
+        - '2019'
+        - '2022'
+        - '2025'
+
+  galaxy_tags:
+    - 'bootstrap'
+    - 'dispatch'
+    - 'osfamily'
+    - 'provisioning'
+
+allow_duplicates: false
+
+dependencies: []

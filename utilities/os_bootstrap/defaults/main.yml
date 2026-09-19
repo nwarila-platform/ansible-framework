@@ -1,0 +1,14 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml'                                                     #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Lowest-precedence configuration for os_bootstrap. Deliberately EMPTY of values.               #
+#                                                                                               #
+# This role takes nothing from a caller. It reads the host to decide which operating            #
+# system it is looking at, then includes that OS role's bootstrap entry point. The one          #
+# thing it does consult -- the family-to-role map -- is a property of which roles exist         #
+# in this repository, not a choice a play makes, so it lives in vars/main.yml where the         #
+# loader cannot be overridden by an inventory that happens to name the same key.                #
+#                                                                                               #
+# The file exists for role-skeleton parity and as the home for any future caller-facing         #
+# default.                                                                                      #
+# ============================================================================================= #
