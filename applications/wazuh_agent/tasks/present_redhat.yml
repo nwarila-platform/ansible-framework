@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/present_redhat.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # RHEL 8 / state=present - installs the Wazuh agent from a standalone RPM in S3 and enrolls
 # it to the Wazuh manager.
 #
@@ -12,11 +12,11 @@
 #
 # This role is for endpoint hosts only. Do not install wazuh-agent on a host that also runs
 # wazuh-manager; the manager owns /var/ossec and provides local monitoring behavior.
-# =========================================================================================== #
+# ============================================================================================= #
 
-#region ------ [ Script ] -------------------------------------------------------------------- #
+#region ------ [ Process: Install The Wazuh Agent On The RedHat Family ] ---------------------- #
 
-- name: 'INFO | Entering OS Tasks (present_redhat - wazuh_agent)'
+- name: 'PROCESS | Install The Wazuh Agent On The RedHat Family'
   vars:
     # The manager is an explicit role input. The shared role does not infer consumer inventory
     # topology; tasks/validate.yml requires this value before OS dispatch.
@@ -40,9 +40,9 @@
   become: true
   block:
 
-    #region ------ [ Initialization ] -------------------------------------------------------- #
+    #region ------ [ Begin: Read The Host And Guard The Inputs ] ------------------------------ #
 
-    #region ------ [ Initialization: Input Guards ] ------------------------------------------ #
+    #region ------ [ Begin: Guard The Inputs ] ------------------------------------------------ #
 
     - name: 'BEGIN | Assert Agent Role Is Not Running On A Manager Host'
       vars:
@@ -85,13 +85,13 @@
           for the manager's anti-impersonation binding.
         quiet: true
 
-    #endregion --- [ Initialization: Input Guards ] ------------------------------------------ #
+    #endregion --- [ Begin: Guard The Inputs ] ------------------------------------------------ #
 
-    #endregion --- [ Initialization ] -------------------------------------------------------- #
+    #endregion --- [ Begin: Read The Host And Guard The Inputs ] ------------------------------ #
 
-    #region ------ [ Main ] ------------------------------------------------------------------ #
+    #region ------ [ Process: Install And Configure The Agent ] ------------------------------- #
 
-    #region ------ [ Main: Host Preparation ] ------------------------------------------------ #
+    #region ------ [ Process: Prepare The Host ] ---------------------------------------------- #
 
     - name: 'PROCESS | Install Side-Deps'
       when: (config.side_deps | default([]) | length) > 0
@@ -100,9 +100,9 @@
         state: 'present'
         disablerepo: 'epel'
 
-    #endregion --- [ Main: Host Preparation ] ------------------------------------------------ #
+    #endregion --- [ Process: Prepare The Host ] ---------------------------------------------- #
 
-    #region ------ [ Main: S3 Staging ] ------------------------------------------------------ #
+    #region ------ [ Process: Stage The Artefact ] -------------------------------------------- #
 
     # AWS creds and region are passed as module-args (access_key/secret_key/region)
     # to amazon.aws.s3_object so they never enter the target's shell environment; this
@@ -112,7 +112,7 @@
     # bootstrap venv (Python 3.12) because the current amazon.aws collection's boto3
     # floor is above what RHEL 8 platform-python (3.6) can install. Every other task
     # in the role uses platform-python — see ansible.cfg's interpreter_python note.
-    - name: 'S3 | Fetch Wazuh Agent RPM From S3 To Target Temp Dir'
+    - name: 'PROCESS | Fetch Wazuh Agent RPM From S3 To Target Temp Dir'
       no_log: true
       changed_when: false
       vars:
@@ -135,16 +135,16 @@
 
     # Trust-on-first-use: the SHA256 in the per-env overlay is the operator's
     # PR-reviewed known-good hash. Mismatch = S3 object was tampered with, so abort install.
-    - name: 'S3 | Verify Downloaded Agent RPM Matches Trusted SHA256'
-      register: '__agent_rpm_verify__'
-      failed_when: (__agent_rpm_verify__.stat.checksum | lower) != (config.s3.agent_rpm_sha256 | lower)
+    - name: 'BEGIN | Verify Downloaded Agent RPM Matches Trusted SHA256'
+      register: '__wazuh_agent_rpm_verify__'
+      failed_when: (__wazuh_agent_rpm_verify__.stat.checksum | lower) != (config.s3.agent_rpm_sha256 | lower)
       ansible.builtin.stat:
         path: "{{ __agent_rpm_path__ }}"
         checksum_algorithm: 'sha256'
 
-    #endregion --- [ Main: S3 Staging ] ------------------------------------------------------ #
+    #endregion --- [ Process: Stage The Artefact ] -------------------------------------------- #
 
-    #region ------ [ Main: Package Installation ] ------------------------------------------- #
+    #region ------ [ Process: Install The Package ] ------------------------------------------- #
 
     - name: 'PROCESS | Install Wazuh RPM Signing Key'
       ansible.builtin.copy:
@@ -154,12 +154,12 @@
         group: 'root'
         mode: '0644'
 
-    - name: 'PROCESS | Import Wazuh GPG Signing Key Into rpmdb'
+    - name: 'PROCESS | Import The Wazuh Signing Key Into The RPM Database'
       ansible.builtin.rpm_key:
         key: '/etc/pki/rpm-gpg/GPG-KEY-WAZUH'
         state: 'present'
 
-    - name: 'PROCESS | Install wazuh-agent RPM'
+    - name: 'PROCESS | Install The Wazuh Agent Package'
       environment:
         WAZUH_MANAGER: "{{ __manager_host__ }}"
         WAZUH_AGENT_NAME: "{{ __agent_name__ }}"
@@ -169,19 +169,20 @@
         allow_downgrade: true
         disable_gpg_check: false
 
-    - name: 'PROCESS | Lock Wazuh Service Accounts (Non-Interactive Per Nessus Allowlist)'
+    - name: 'PROCESS | Lock The Wazuh Service Accounts'
       loop: "{{ config.stig.local_users }}"
+      loop_control: { label: '{{ item }}' }
       ansible.builtin.user:
         name: "{{ item }}"
         shell: '/sbin/nologin'
         password_lock: true
 
-    #endregion --- [ Main: Package Installation ] ------------------------------------------- #
+    #endregion --- [ Process: Install The Package ] ------------------------------------------- #
 
-    #region ------ [ Main: Agent Configuration ] -------------------------------------------- #
+    #region ------ [ Process: Configure The Agent ] ------------------------------------------- #
 
-    - name: 'PROCESS | Record Whether wazuh-agent Was Running Before Config Ownership'
-      register: '__agent_svc_pre__'
+    - name: 'BEGIN | Read Whether The Agent Was Running Before Configuration'
+      register: '__wazuh_agent_svc_pre__'
       changed_when: false
       ansible.builtin.systemd:
         name: 'wazuh-agent'
@@ -191,7 +192,7 @@
     - name: 'PROCESS | Latch Pre-Config Service State For The Restart Handler'
       ansible.builtin.set_fact:
         wazuh_agent_svc_was_running: >-
-          {{ (__agent_svc_pre__.status.ActiveState | default('inactive')) == 'active' }}
+          {{ (__wazuh_agent_svc_pre__.status.ActiveState | default('inactive')) == 'active' }}
 
     # Scope this edit to the first <client><server> block. Other single-line tags, such
     # as <client><enrollment><port>1515</port>, must not be touched during config drift.
@@ -199,14 +200,14 @@
     # refusal plus its <=10s key-reload lag. Verified at wazuh/wazuh v4.14.5:
     # src/client-agent/start_agent.c:131-183, src/remoted/secure.c:488-497,647-663; the knobs are
     # parsed as <server> children by src/config/client-config.c:262-280.
-    - name: 'BEGIN | Read Agent ossec.conf For Manager Block Ownership Guard'
-      register: '__ossec_conf_pre__'
+    - name: 'BEGIN | Read The Agent Configuration For The Manager Block Guard'
+      register: '__wazuh_agent_ossec_conf_pre__'
       ansible.builtin.slurp:
         src: '/var/ossec/etc/ossec.conf'
 
-    - name: 'BEGIN | Assert Exactly One <client><server> Block In ossec.conf'
+    - name: 'BEGIN | Require Exactly One Manager Server Block'
       vars:
-        __server_block_count__: "{{ (__ossec_conf_pre__.content | b64decode) | regex_findall('(?ms)^\\s*<client>\\s*<server>.*?</server>') | length }}"
+        __server_block_count__: "{{ (__wazuh_agent_ossec_conf_pre__.content | b64decode) | regex_findall('(?ms)^\\s*<client>\\s*<server>.*?</server>') | length }}"
       ansible.builtin.assert:
         that:
           - __server_block_count__ | int == 1
@@ -232,14 +233,14 @@
     # blockinfile's per-line insertbefore search silently lands on the LAST </syscheck> match.
     # Guard the first insertion against duplicate or commented-out vendor stanzas; once markers
     # exist, blockinfile locates them directly and ignores insertbefore.
-    - name: 'BEGIN | Read Agent ossec.conf For FIM Insertion-Point Guard'
-      register: '__ossec_conf__'
+    - name: 'BEGIN | Read The Agent Configuration For The FIM Insertion Guard'
+      register: '__wazuh_agent_ossec_conf__'
       ansible.builtin.slurp:
         src: '/var/ossec/etc/ossec.conf'
 
-    - name: 'BEGIN | Assert Exactly One </syscheck> Closing Tag In ossec.conf'
+    - name: 'BEGIN | Require Exactly One Syscheck Closing Tag'
       vars:
-        __syscheck_close_count__: "{{ (__ossec_conf__.content | b64decode) | regex_findall('(?m)^\\s*</syscheck>') | length }}"
+        __syscheck_close_count__: "{{ (__wazuh_agent_ossec_conf__.content | b64decode) | regex_findall('(?m)^\\s*</syscheck>') | length }}"
       ansible.builtin.assert:
         that:
           - __syscheck_close_count__ | int == 1
@@ -252,6 +253,7 @@
 
     - name: 'PROCESS | Ensure Real-Time Watched Directories Exist'
       loop: "{{ config.fim.realtime_paths | default([]) }}"
+      loop_control: { label: '{{ item }}' }
       ansible.builtin.file:
         path: "{{ item }}"
         state: 'directory'
@@ -279,12 +281,12 @@
               <directories realtime="yes" check_all="yes">{{ path }}</directories>
           {% endfor %}
 
-    #endregion --- [ Main: Agent Configuration ] -------------------------------------------- #
+    #endregion --- [ Process: Configure The Agent ] ------------------------------------------- #
 
-    #region ------ [ Main: Enrollment ] ------------------------------------------------------ #
+    #region ------ [ Process: Enroll The Agent ] ---------------------------------------------- #
 
     - name: 'PROCESS | Check Agent Enrollment Key'
-      register: '__client_keys__'
+      register: '__wazuh_agent_client_keys__'
       ansible.builtin.stat:
         path: '/var/ossec/etc/client.keys'
 
@@ -299,11 +301,11 @@
     # "-P: use the specified password instead of searching for it at authd.pass"). The
     # `always` block removes the file afterward so no shared enrollment secret is stranded
     # on the endpoint, whether enrollment succeeded or failed.
-    - name: 'PROCESS | Enroll Agent With Manager (authd.pass, no argv secret)'
-      when: not (__client_keys__.stat.exists | default(false)) or (__client_keys__.stat.size | default(0) | int) == 0
+    - name: 'PROCESS | Enroll The Agent With The Manager'
+      when: not (__wazuh_agent_client_keys__.stat.exists | default(false)) or (__wazuh_agent_client_keys__.stat.size | default(0) | int) == 0
       block:
 
-        - name: 'PROCESS | Stage Enrollment Password File (authd.pass)'
+        - name: 'PROCESS | Stage The Enrollment Password File'
           when: (config.manager.enrollment_password | default('') | length) > 0
           no_log: true
           ansible.builtin.copy:
@@ -313,7 +315,7 @@
             group: 'wazuh'
             mode: '0640'
 
-        - name: 'PROCESS | Run agent-auth (reads authd.pass; no -P on argv)'
+        - name: 'PROCESS | Run The Agent Enrolment Client'
           changed_when: true
           ansible.builtin.command:
             argv:
@@ -329,22 +331,22 @@
 
       always:
 
-        - name: 'PROCESS | Remove Staged authd.pass (no stranded enrollment secret)'
+        - name: 'PROCESS | Remove The Staged Enrollment Password File'
           when: (config.manager.enrollment_password | default('') | length) > 0
           ansible.builtin.file:
             path: '/var/ossec/etc/authd.pass'
             state: 'absent'
 
-    - name: 'PROCESS | Remove Any Stranded authd.pass (Cross-Run Cleanup, Unconditional)'
+    - name: 'PROCESS | Remove Any Stranded Enrollment Password File'
       ansible.builtin.file:
         path: '/var/ossec/etc/authd.pass'
         state: 'absent'
 
-    #endregion --- [ Main: Enrollment ] ------------------------------------------------------ #
+    #endregion --- [ Process: Enroll The Agent ] ---------------------------------------------- #
 
-    #endregion --- [ Main ] ------------------------------------------------------------------ #
+    #endregion --- [ Process: Install And Configure The Agent ] ------------------------------- #
 
-    #region ------ [ Validation ] ------------------------------------------------------------ #
+    #region ------ [ End: Verify The Agent ] -------------------------------------------------- #
 
     - name: 'END | Enable And Start Agent Service'
       loop: "{{ config.services }}"
@@ -364,11 +366,11 @@
     # not "reloading". Without the retry this races with restart completion and fails on that
     # transient state.
     - name: 'END | Verify Agent Service Is Active'
-      register: '__agent_active__'
+      register: '__wazuh_agent_active__'
       changed_when: false
       retries: 15
       delay: 2
-      until: (__agent_active__.status.ActiveState | default('')) == 'active'
+      until: (__wazuh_agent_active__.status.ActiveState | default('')) == 'active'
       ansible.builtin.systemd:
         name: 'wazuh-agent'
 
@@ -376,12 +378,12 @@
     # Linux's wazuh-agentd.state filename differs from Windows by design, not by typo.
     - name: 'END | Read Agent Connection State File'
       become: true
-      register: '__agent_state__'
+      register: '__wazuh_agent_state__'
       changed_when: false
       ignore_errors: true
       retries: 30
       delay: 10
-      until: (__agent_state__.stdout | default('') | trim) == 'connected'
+      until: (__wazuh_agent_state__.stdout | default('') | trim) == 'connected'
       args:
         executable: '/bin/bash'
       ansible.builtin.shell: |
@@ -401,12 +403,12 @@
     - name: 'END | Verify Agent Is CONNECTED To The Manager'
       ansible.builtin.assert:
         that:
-          - (__agent_state__.stdout | default('') | trim) == 'connected'
+          - (__wazuh_agent_state__.stdout | default('') | trim) == 'connected'
         quiet: true
         fail_msg: >-
           Agent service is active (previous task) but never reached status='connected' in
           /var/ossec/var/run/wazuh-agentd.state (last read:
-          '{{ (__agent_state__.stdout | default('')) | trim }}'). Diagnose the reconnect path on
+          '{{ (__wazuh_agent_state__.stdout | default('')) | trim }}'). Diagnose the reconnect path on
           the manager in /var/ossec/logs/ossec.log: discriminate "Agent key already in use" from
           "Decrypt the message fail" and ENC_IP_ERROR. A transient connection-overtake/key-reload
           refusal should self-heal in <= ~90s inside this agent's 120s retry runway. If it does
@@ -415,6 +417,6 @@
           weaken authd force-replacement policy to make a duplicate enrollment pass.
         success_msg: 'Agent is connected to the manager (status=connected).'
 
-    #endregion --- [ Validation ] ------------------------------------------------------------ #
+    #endregion --- [ End: Verify The Agent ] -------------------------------------------------- #
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Process: Install The Wazuh Agent On The RedHat Family ] ---------------------- #

@@ -1,7 +1,6 @@
----
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # Defaults for wazuh_agent. Lowest-precedence layer; the loader merges env overlays and user
 # overrides on top of this dict.
 #
@@ -16,14 +15,14 @@
 #   - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session through
 #     the generic AWS module-option variables before invoking this role; see tasks/main.yml's ENV
 #     assertion. No standing instance access or deploy credential is required on a target.
-# =========================================================================================== #
+# ============================================================================================= #
 
 wazuh_agent_defaults:
 
   # S3 source for the agent RPM lives in the per-env overlay at `vars/redhat_<env>.yml`.
   # Per-env overlays must supply: s3.bucket, s3.agent_rpm_key, s3.agent_rpm_sha256.
 
-  #region ------ [ Manager / enrollment ] ------------------------------------------------------- #
+  #region ------ [ Manager / enrollment ] ----------------------------------------------------- #
   manager:
     # Required for state=present; intentionally empty so validation rejects an omitted endpoint.
     host: ''
@@ -45,22 +44,22 @@ wazuh_agent_defaults:
   # Explicit endpoint IPv4 address for `agent-auth -I`. Empty means "use ansible_host
   # if ansible_host is already an IPv4 address"; DNS names are rejected before enrollment.
   agent_ip: ''
-  #endregion --- [ Manager / enrollment ] ------------------------------------------------------- #
+  #endregion --- [ Manager / enrollment ] ----------------------------------------------------- #
 
-  #region ------ [ Services ] ------------------------------------------------------------------- #
+  #region ------ [ Services ] ----------------------------------------------------------------- #
   services:
     - { name: 'wazuh-agent', enabled: true, state: 'started' }
-  #endregion --- [ Services ] ------------------------------------------------------------------- #
+  #endregion --- [ Services ] ----------------------------------------------------------------- #
 
-  #region ------ [ File Integrity Monitoring ] -------------------------------------------------- #
+  #region ------ [ File Integrity Monitoring ] ------------------------------------------------ #
   # Real-time paths managed by this role in the agent's ossec.conf. The vendor default monitors
   # /etc on a 12-hour schedule; declaring it here also enables immediate change events.
   fim:
     realtime_paths:
       - '/etc'
-  #endregion --- [ File Integrity Monitoring ] -------------------------------------------------- #
+  #endregion --- [ File Integrity Monitoring ] ------------------------------------------------ #
 
-  #region ------ [ Windows agent (native win_* path) ] ----------------------------------------- #
+  #region ------ [ Windows agent (native win_* path) ] ---------------------------------------- #
   # Consumed only when the shared loader dispatches to tasks/present_windows.yml. The agent MSI
   # comes from S3 exactly like the Linux RPM — the pinned key + sha256 live in
   # vars/windows_<env>.yml. Because a Windows target can't run boto3, present_windows.yml
@@ -78,18 +77,18 @@ wazuh_agent_defaults:
     # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.
     fim_realtime_paths:
       - 'C:\Windows\System32\drivers\etc'
-  #endregion --- [ Windows agent (native win_* path) ] ----------------------------------------- #
+  #endregion --- [ Windows agent (native win_* path) ] ---------------------------------------- #
 
-  #region ------ [ Side-deps ] ------------------------------------------------------------------ #
+  #region ------ [ Side-deps ] ---------------------------------------------------------------- #
   # boto3/botocore are provided by the bootstrap venv (/opt/ansible/venv); no longer pulled
   # via pip on the agent host. gzip/tar are not needed because the agent role downloads a
   # single RPM, not a tarball. Per-env additions may be supplied via vars/redhat_<env>.yml;
   # the list is replaced wholesale (`list_merge='replace'`), not merged.
   side_deps: []
-  #endregion --- [ Side-deps ] ------------------------------------------------------------------ #
+  #endregion --- [ Side-deps ] ---------------------------------------------------------------- #
 
-  #region ------ [ STIG ] ----------------------------------------------------------------------- #
+  #region ------ [ STIG ] --------------------------------------------------------------------- #
   stig:
     local_users:
       - 'wazuh'
-  #endregion --- [ STIG ] ----------------------------------------------------------------------- #
+  #endregion --- [ STIG ] --------------------------------------------------------------------- #

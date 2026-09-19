@@ -1,4 +1,3 @@
----
 # Handlers for wazuh_agent.
 
 - name: 'Wazuh agent config changed'

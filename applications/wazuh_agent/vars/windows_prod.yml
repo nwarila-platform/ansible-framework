@@ -1,4 +1,3 @@
----
 # Per-env overlay for the WINDOWS agent path, ENV=prod. Fill in the real MSI key + sha256 for
 # this environment (see windows_dev.yml for the shape and the bump procedure).
 #
