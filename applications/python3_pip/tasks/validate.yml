@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # Config-contract validation, auto-discovered and run ONCE by the shared loader's
 # 'INIT | Validating Merged Configuration' hook — immediately after defaults -> overlays ->
 # overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
@@ -36,11 +36,11 @@
 # with `templates: {}` does NOT clear seeded entries — the loader's recursive combine
 # treats an empty mapping as a no-op — so emptiness here means a deliberately empty
 # fully-supplied override dict, and emptiness alone is not asserted.
-# =========================================================================================== #
+# ============================================================================================= #
 
-#region ------ [ Merged-seed contract guards ] ------------------------------------------------- #
+#region ------ [ Begin: Guard The Merged Seed Contract ] -------------------------------------- #
 
-- name: 'BEGIN | Assert Merged Config Carries The Dispatch Contract'
+- name: 'VALIDATE | Assert The Merged Config Carries The Dispatch Contract'
   when:
     - (state | default('present') | string | lower | trim) in ['present', 'absent']
     - (ansible_facts.os_family | lower) != 'windows'
@@ -75,7 +75,7 @@
       {% endif %}
     quiet: true
 
-- name: 'BEGIN | Assert Self-Upgrade Shape'
+- name: 'VALIDATE | Assert The Self-Upgrade Shape'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | lower) != 'windows'
@@ -91,4 +91,4 @@
       loudly instead of letting a miswritten disable attempt upgrade pip unpinned.
     quiet: true
 
-#endregion --- [ Merged-seed contract guards ] ------------------------------------------------- #
+#endregion --- [ Begin: Guard The Merged Seed Contract ] -------------------------------------- #

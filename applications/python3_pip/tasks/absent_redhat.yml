@@ -1,33 +1,33 @@
-# =========================================================================================== #
-# File: '{{ role_path }}/tasks/absent_redhat.yml'                                             #
-# --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for the RedHat family — state: absent.                                #
-#                                                                                             #
-# Execution order:                                                                            #
-#   0. Preflight: verify ansible.builtin.dnf prerequisites are met                           #
-#   1. Remove the python3-pip package via dnf                                                 #
-#   2. Remove configuration files deployed by state: present                                  #
-#                                                                                             #
-# This file is included by the shared role loader (tasks/main.yml) which passes the          #
-# merged running configuration as 'config'.                                                   #
-# =========================================================================================== #
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/absent_redhat.yml'                                               #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# OS-specific task file for the RedHat family — state: absent.                                  #
+#                                                                                               #
+# Execution order:                                                                              #
+#   0. Preflight: verify ansible.builtin.dnf prerequisites are met                              #
+#   1. Remove the python3-pip package via dnf                                                   #
+#   2. Remove configuration files deployed by state: present                                    #
+#                                                                                               #
+# This file is included by the shared role loader (tasks/main.yml) which passes the             #
+# merged running configuration as 'config'.                                                     #
+# ============================================================================================= #
 
-#region ------ [ Script ] ------------------------------------------------------------------- #
+#region ------ [ Process: Remove Python3 Pip On The RedHat Family ] --------------------------- #
 
-- name: 'INFO | Entering OS Tasks (absent_redhat)'
+- name: 'PROCESS | Remove Python3 Pip On The RedHat Family'
 
   block:
 
-    #region ------ [ Preflight ] --------------------------------------------------------------- #
+    #region ------ [ Begin: Confirm The Package Manager Prerequisites ] ----------------------- #
 
-    - name: 'INFO | Entering Preflight Stage'
+    - name: 'BEGIN | Confirm The Package Manager Prerequisites'
       block:
 
-        #region ------ [ Preflight: Checking Installed Packages ] --------------------------------- #
+        #region ------ [ Begin: Check The Installed Packages ] -------------------------------- #
 
         # ansible.builtin.dnf requires python3-dnf Python bindings even for removal.
         # ansible_facts.packages is populated by the shared loader before this file is included.
-        - name: 'PREFLIGHT | Verify Required Packages Are Installed'
+        - name: 'BEGIN | Require The Package Manager Bindings'
           ansible.builtin.assert:
             that:
               - "'python3-dnf' in ansible_facts.packages"
@@ -37,22 +37,22 @@
                 dnf install -y python3-dnf
             quiet: true
 
-        #endregion --- [ Preflight: Checking Installed Packages ] --------------------------------- #
+        #endregion --- [ Begin: Check The Installed Packages ] -------------------------------- #
 
-    #endregion --- [ Preflight ] --------------------------------------------------------------- #
+    #endregion --- [ Begin: Confirm The Package Manager Prerequisites ] ----------------------- #
 
-    #region ------ [ Main ] -------------------------------------------------------------------- #
+    #region ------ [ Process: Remove The Package And Its Configuration ] ---------------------- #
 
-    - name: 'INFO | Entering Main Stage'
+    - name: 'PROCESS | Remove The Package And Its Configuration'
       become: true
       block:
 
-        #region ------ [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+        #region ------ [ Process: Remove The Python3 Pip Package ] ---------------------------- #
 
         # Remove python3-pip via dnf. Only parameters relevant to removal are passed;
         # install-only parameters (best, bugfix, cacheonly, security, etc.) are omitted.
         # autoremove is respected from config to optionally remove orphaned dependencies.
-        - name: "MAIN | Removing the 'Python3-pip' Package"
+        - name: 'PROCESS | Remove The Python3 Pip Package'
           when: ansible_facts.os_family in config.package_manager
           vars:
             __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
@@ -68,23 +68,24 @@
             name: "{{ __package__.name }}"
             state: 'absent'
 
-        #endregion --- [ MAIN: Removing the 'Python3-pip' Package ] --------------------------------- #
+        #endregion --- [ Process: Remove The Python3 Pip Package ] ---------------------------- #
 
-        #region ------ [ MAIN: Removing Configuration Files ] --------------------------------------- #
+        #region ------ [ Process: Remove The Configuration Files ] ---------------------------- #
 
         # Remove all configuration files deployed by state: present. Loops over the same
         # config.templates dict used during installation so the set of files removed matches
         # exactly what was deployed. Idempotent — missing files are silently skipped.
-        - name: 'MAIN | Remove Configuration Files'
-          loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
-          loop_control: { loop_var: '__template__' }
+        - name: 'PROCESS | Remove The Configuration Files'
+          loop: >-
+            {{ config.templates | default({}) | dict2items | map(attribute='value') | list }}
+          loop_control: { label: '{{ __template__ }}', loop_var: '__template__' }
 
           ansible.builtin.file:
             path: "{{ __template__.file.path }}"
             state: 'absent'
 
-        #endregion --- [ MAIN: Removing Configuration Files ] --------------------------------------- #
+        #endregion --- [ Process: Remove The Configuration Files ] ---------------------------- #
 
-    #endregion --- [ Main ] -------------------------------------------------------------------- #
+    #endregion --- [ Process: Remove The Package And Its Configuration ] ---------------------- #
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Process: Remove Python3 Pip On The RedHat Family ] --------------------------- #

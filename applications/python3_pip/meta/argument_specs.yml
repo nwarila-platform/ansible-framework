@@ -1,10 +1,10 @@
-# =========================================================================================== #
-# File: '{{ role_path }}/meta/argument_specs.yml'                                           #
-# --- [ Description ] ----------------------------------------------------------------------- #
-# Formal input specification for python3_pip. Validated by Ansible at role entry             #
-# (ansible-core 2.11+). Documents all caller-facing variables with types, choices,           #
-# defaults, and descriptions.                                                                 #
-# =========================================================================================== #
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/argument_specs.yml'                                               #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Formal input specification for python3_pip. Validated by Ansible at role entry                #
+# (ansible-core 2.11+). Documents all caller-facing variables with types, choices,              #
+# defaults, and descriptions.                                                                   #
+# ============================================================================================= #
 
 argument_specs:
 
