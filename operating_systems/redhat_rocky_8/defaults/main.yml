@@ -1,16 +1,16 @@
-# =========================================================================================== #
-# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
-# --- [ Description ] ----------------------------------------------------------------------- #
-# Overridable inputs for 'tasks/bootstrap.yml'.                                               #
-#                                                                                             #
-# WHY FLAT, PREFIXED KEYS: the framework's shared application loader expects a                 #
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0  #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Overridable inputs for 'tasks/bootstrap.yml'.                                                 #
+#                                                                                               #
+# WHY FLAT, PREFIXED KEYS: the framework's shared application loader expects a                  #
 # '<role_name>_defaults' dict, but bootstrap.yml is called directly with include_role or        #
 # import_role + tasks_from 'bootstrap'. The generic tasks/main.yml entry is a loud guard        #
 # because applying that loader's ENV contract and pre-bootstrap remote work would be wrong      #
 # for first deployment. A named role entry still loads this file and vars/main.yml, so flat     #
 # role-default keys are always in scope and override cleanly from group_vars / host_vars /      #
 # extra-vars at ordinary defaults precedence.                                                   #
-# =========================================================================================== #
+# ============================================================================================= #
 
 #region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
 
@@ -101,7 +101,8 @@ rhel8_bootstrap_manage_hostname: false
 # product's '/opt/wazuh-deploy/.tmp' when run under secure-wazuh's ansible/ansible.cfg.
 rhel8_bootstrap_remote_tmp_base: >-
   {{ ansible_remote_tmp
-     | default(lookup('ansible.builtin.config', 'remote_tmp', plugin_type='shell', plugin_name='sh')) }}
+     | default(lookup('ansible.builtin.config', 'remote_tmp',
+     plugin_type='shell', plugin_name='sh')) }}
 
 #endregion --- [ Ansible Remote-Tmp Base ] ---------------------------------------------------- #
 
