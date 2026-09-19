@@ -86,15 +86,17 @@ ansible-playbook -i inventory.yml site.yml -e ENV=dev   # a consumer play that l
   `/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol<id>` exists); non-Nitro (Xen) instances
   do not produce this by-id name. Function-tag resolution also requires controller-side AWS
   credentials with permission to describe attached volumes; the target needs no EBS/IAM grant.
-- Toolchain: the role's target-side tasks are ordinary modules and pin no interpreter. Its one
-  controller-delegated task does: `tasks/resolve_aws.yml` sets
+- Toolchain: controller ansible-core `>=2.21`, the fleet baseline this role declares in
+  `meta/main.yml`; the framework's own lint toolchain is the same version
+  (`requirements-dev.txt`). The role's target-side tasks are ordinary modules and pin no
+  interpreter — its one controller-delegated task does: `tasks/resolve_aws.yml` sets
   `ansible_python_interpreter: "{{ ansible_playbook_python }}"` so boto3 runs under the same
-  interpreter as `ansible-playbook`. On RHEL 8 the stock target interpreter is platform-python
-  3.6, which ansible-core 2.17 and later cannot use on a target; the RHEL/Rocky 8 bootstrap role
-  that `utilities/os_bootstrap` routes the RedHat family to installs `/usr/bin/python3.12`.
-  Installing it is not selecting it. Core 2.21's default `auto` discovery probes `python3.12`
-  ahead of `/usr/bin/python3`, so a run that discovers the interpreter after the bootstrap will
-  usually find it on its own; a run that discovered one before the bootstrap will not. Nothing in
-  the framework sets `ansible_python_interpreter` run-wide, so set it in the play to be certain.
-  `community.general <8` / `ansible.posix <2` are pinned in the root `requirements.yml`, and the
-  framework's own lint toolchain is ansible-core 2.21 (`requirements-dev.txt`).
+  interpreter as `ansible-playbook`. On the target, RHEL 8's platform-python is 3.6, which 2.21
+  will not run a module under — it needs 3.9 or newer — so the managed node must run the
+  `/usr/bin/python3.12` that the RHEL/Rocky 8 bootstrap role installs, the RedHat family entry
+  `utilities/os_bootstrap` dispatches to. Installing it is not selecting it. Core 2.21's default
+  `auto` discovery probes `python3.12` ahead of `/usr/bin/python3`, so a run that discovers the
+  interpreter after the bootstrap will usually find it on its own; a run that discovered one
+  before the bootstrap will not. Nothing in the framework sets `ansible_python_interpreter`
+  run-wide, so set it in the play to be certain. Collections are pinned exactly in the root
+  `requirements.yml`: `community.general 7.5.9` and `ansible.posix 1.6.2`.

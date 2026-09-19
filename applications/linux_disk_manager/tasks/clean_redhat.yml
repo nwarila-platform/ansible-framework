@@ -1,11 +1,13 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/clean_redhat.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
-# RHEL-family / state=clean - no-op. This role owns no cache/staging artifacts; the loader's
-# temp dir auto-cleans at the end of every role run. Disk state is NEVER torn down here — a
-# 'clean' must never unmount or wipe a data volume.
-# =========================================================================================== #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# RHEL-family / state=clean - no-op. This role owns no cache/staging artifacts; the loader's temp
+# dir auto-cleans at the end of every role run. Disk state is NEVER torn down here — a 'clean'
+# must never unmount or wipe a data volume.
+# ============================================================================================= #
 
-- name: 'INFO | Entering OS Tasks (clean_redhat - linux_disk_manager)'
+- name: 'END | Report That Clean Has No Artefacts To Remove'
   ansible.builtin.debug:
-    msg: 'No staging artifacts to clean; the loader temp dir is removed automatically after each role run.'
+    msg: >-
+      No staging artifacts to clean; the loader temp dir is removed automatically after each
+      role run.
