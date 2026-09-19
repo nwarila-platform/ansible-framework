@@ -84,11 +84,17 @@
 # inventory already knows which image it launched. A host variable is the only override that
 # arrives early enough to matter and does not become a role parameter, which this role's callers
 # are told never to pass.
+# The inventory hint is LOWER-CASED before it is used. Role directories are snake_case, but the
+# hint is hand-written in an inventory and two consumers still spell it 'Windows_Server_2022' from
+# when the directories were CamelCase. Normalising here keeps those inventories working without a
+# coordinated cross-repo merge, and a hand-supplied hostvar is exactly the input that should not be
+# case-sensitive. It does NOT make a wrong name succeed: an unmapped or misspelled value still
+# resolves to a role that does not exist and fails at the route guard below.
 - name: 'OS Bootstrap | Resolve Bootstrap Role'
   ansible.builtin.set_fact:
     __os_bootstrap_target_role__: >-
       {{
-        (os_bootstrap_role | default('', true) | string | trim)
+        (os_bootstrap_role | default('', true) | string | trim | lower)
         or
         (os_bootstrap_role_map | default({})).get(
           __os_bootstrap_detected_os__ | default(''),

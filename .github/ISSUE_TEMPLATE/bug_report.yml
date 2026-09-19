@@ -77,7 +77,7 @@ body:
     id: role
     attributes:
       label: Role or component affected
-      placeholder: "e.g. python3_pip, RedHat_Rocky_8, tasks/main.yml loader"
+      placeholder: "e.g. python3_pip, redhat_rocky_8, tasks/main.yml loader"
     validations:
       required: false
 

@@ -87,9 +87,9 @@ modified.
 
 | Role              | Description                                          | Status      |
 |-------------------|------------------------------------------------------|-------------|
-| `RedHat_Rocky_8`  | RHEL / Rocky Linux 8 bootstrap and STIG hardening    | In Progress |
-| `Windows_Server_2022` | Windows Server 2022 bootstrap                  | In Progress |
-| `Windows_Server_2025` | Windows Server 2025 bootstrap                  | In Progress |
+| `redhat_rocky_8`  | RHEL / Rocky Linux 8 bootstrap and STIG hardening    | In Progress |
+| `windows_server_2022` | Windows Server 2022 bootstrap                  | In Progress |
+| `windows_server_2025` | Windows Server 2025 bootstrap                  | In Progress |
 
 ### Utilities
 
@@ -176,7 +176,7 @@ Scope:  role name or 'framework'
 
 ```
 feat(python3_pip): add Debian apt task file
-fix(RedHat_Rocky_8): correct Python venv version comparison
+fix(redhat_rocky_8): correct Python venv version comparison
 chore(ci): pin ansible-lint to 25.2.0
 ```
 

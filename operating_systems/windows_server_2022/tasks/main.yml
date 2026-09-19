@@ -13,7 +13,7 @@
 #      SELinux is meaningless on Windows.                                                     #
 #   3. It derives its dispatch name as '<ansible_distribution|lower>_<major_version>'. On      #
 #      Windows ansible_distribution is Win32_OperatingSystem.Caption, so that evaluates to the #
-#      literal string 'microsoft windows server 2025 datacenter_10'. Spaces are legal in a      #
+#      literal string 'microsoft windows server 2022 datacenter_10'. Spaces are legal in a      #
 #      filename, but this role ships no task file with that generated name, so dispatch misses.#
 #   4. That miss then lands on the loader's 'fail' + 'ignore_errors: true' pair, i.e. the role #
 #      prints an error and SILENTLY DOES NOTHING. Silent success is the worst possible failure #
@@ -34,11 +34,11 @@
 - name: 'INFO | Unsupported Entry Point'
   ansible.builtin.fail:
     msg: >-
-      The role 'Windows_Server_2025' has no generic entry point. Call one of its named task
+      The role 'windows_server_2022' has no generic entry point. Call one of its named task
       files explicitly, e.g.
-      "ansible.builtin.include_role: { name: 'Windows_Server_2025', tasks_from: 'bootstrap' }".
+      "ansible.builtin.include_role: { name: 'windows_server_2022', tasks_from: 'bootstrap' }".
       tasks/bootstrap.yml establishes the minimum requirements for the ansible-framework suite
-      to run on a new Windows Server 2025 host; see the header of that file for the full call
+      to run on a new Windows Server 2022 host; see the header of that file for the full call
       contract (notably: gather_facts must be false, and no 'vars:' may be passed to the
       include).
 

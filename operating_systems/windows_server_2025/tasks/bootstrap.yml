@@ -19,12 +19,12 @@
 #     tasks:
 #       - name: 'Bootstrap | Windows Server 2025'
 #         ansible.builtin.include_role:
-#           name: 'Windows_Server_2025'
+#           name: 'windows_server_2025'
 #           tasks_from: 'bootstrap'
 #
 #   * 'operating_systems' must be on roles_path (the framework's ansible.cfg declares it; a
 #     consuming product whose ansible.cfg overwrites that must re-add it), or use the path form
-#     'name: "{{ playbook_dir }}/../operating_systems/Windows_Server_2025"'.
+#     'name: "{{ playbook_dir }}/../operating_systems/windows_server_2025"'.
 #   * EXACTLY ONE invocation, BEFORE every other play against the Windows group. The omission
 #     bug already shipped once: a deployment path reached the agent stage without this having
 #     run, and the first file push died on a cmd-ism ("Parameter format not correct").
@@ -271,7 +271,7 @@
               - (ansible_facts.os_product_type | default('') | string) in ['server', 'domain_controller']
               - (__os_build__ | int) == 26100
             fail_msg: >-
-              The role 'Windows_Server_2025' is intended for Windows Server 2025
+              The role 'windows_server_2025' is intended for Windows Server 2025
               (NT 10.0 build 26100) hosts only. Detected:
               {{ ansible_facts.distribution | default('<unreported: needs an elevated token>', true) }}
               version {{ ansible_facts.distribution_version | default('<unknown>', true) }},

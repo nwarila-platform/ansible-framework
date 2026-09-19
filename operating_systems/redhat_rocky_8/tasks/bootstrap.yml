@@ -17,13 +17,13 @@
 #     tasks:
 #       - name: 'Bootstrap | RHEL/Rocky 8'
 #         ansible.builtin.include_role:
-#           name: 'RedHat_Rocky_8'
+#           name: 'redhat_rocky_8'
 #           tasks_from: 'bootstrap'
 #
 #   * 'operating_systems' must be on roles_path. The framework's own ansible.cfg declares
 #     'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product whose ansible.cfg
 #     overwrites it during composition must re-add the entry, or use the path form
-#     'name: "{{ playbook_dir }}/../operating_systems/RedHat_Rocky_8"'.
+#     'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
 #   * HOST SELECTION IS THE CALLER'S JOB. The product play this was promoted from selected
 #     'all:!wazuh_agents_windows', with this reasoning, preserved verbatim:
 #         "Exclude Windows endpoints: /opt/ansible/venv is a Linux (RHEL) boto3-on-target
@@ -116,7 +116,7 @@
               - (ansible_facts.distribution | string) in rhel8_bootstrap_distributions
               - (ansible_facts.distribution_major_version | int) == (rhel8_bootstrap_os_major | int)
             fail_msg: >-
-              The role 'RedHat_Rocky_8' is intended for RHEL 8 and Rocky Linux 8 hosts only.
+              The role 'redhat_rocky_8' is intended for RHEL 8 and Rocky Linux 8 hosts only.
               Detected: {{ ansible_facts.distribution | default('?') }}
               {{ ansible_facts.distribution_version | default('?') }}
               (family {{ ansible_facts.os_family | default('?') }},

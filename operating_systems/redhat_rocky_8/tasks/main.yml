@@ -19,9 +19,9 @@
 - name: 'INFO | Unsupported Entry Point'
   ansible.builtin.fail:
     msg: >-
-      The role 'RedHat_Rocky_8' has no generic entry point. Call its named bootstrap task file
+      The role 'redhat_rocky_8' has no generic entry point. Call its named bootstrap task file
       explicitly, e.g.
-      "ansible.builtin.include_role: { name: 'RedHat_Rocky_8', tasks_from: 'bootstrap' }".
+      "ansible.builtin.include_role: { name: 'redhat_rocky_8', tasks_from: 'bootstrap' }".
       tasks/bootstrap.yml establishes the minimum requirements for the ansible-framework suite
       to run on a new RHEL or Rocky Linux 8 host; see that file's header for the full call
       contract.
