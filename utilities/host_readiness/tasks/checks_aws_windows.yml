@@ -17,14 +17,55 @@
 # ============================================================================================= #
 ---
 
-- name: 'Host Readiness | Wait For EC2Launch Provisioning To Complete'
-  become: false
-  changed_when: false
-  check_mode: false
+# EC2Launch persists the last boot's verdict, so a transient user-data failure can outlive its
+# cause. User data may also be required on every boot, which only the caller can rule out. Leave
+# the ordinary failure intact, and rescue it only when the persisted stages and that caller's
+# explicit policy agree that no required provisioning work is being hidden.
+- name: 'Host Readiness | Resolve EC2Launch Provisioning Verdict'
+  block:
+    - name: 'Host Readiness | Wait For EC2Launch Provisioning To Complete'
+      become: false
+      changed_when: false
+      check_mode: false
+      register: '__host_readiness_ec2launch_status__'
 
-  ansible.builtin.raw: >-
-    powershell -NoProfile -Command
-    "& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b"
+      ansible.builtin.raw: >-
+        powershell -NoProfile -Command
+        "& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b"
+
+  rescue:
+    - name: 'Host Readiness | Distinguish The Failed EC2Launch Stage'
+      block:
+        - name: 'Host Readiness | Check EC2Launch Stages Other Than User Data'
+          become: false
+          changed_when: false
+          check_mode: false
+
+          ansible.builtin.raw: >-
+            powershell -NoProfile -Command
+            "if ((Get-Content 'C:\ProgramData\Amazon\EC2Launch\state\previous-state.json' -Raw |
+            ConvertFrom-Json).state | Where-Object -Property stage -NE -Value postReadyUserData |
+            Where-Object -Property status -NE -Value success) { exit 1 } else { exit 0 }"
+
+      rescue:
+        - name: 'Host Readiness | Reject An EC2Launch Provisioning Failure'
+          ansible.builtin.fail:
+            msg: >-
+              '{{ inventory_hostname }}' failed EC2Launch provisioning in sysprepSpecialize, boot,
+              network, preReady, or postReady, or its persisted state could not be read. See
+              'C:\ProgramData\Amazon\EC2Launch\log\agent.log' for the failed task and its error.
+
+    - name: 'Host Readiness | Require Permission To Waive The User Data Failure'
+      ansible.builtin.assert:
+        fail_msg: >-
+          '{{ inventory_hostname }}' failed EC2Launch stage postReadyUserData. The other provisioning
+          stages succeeded, but per-boot user data may still be required. See
+          'C:\ProgramData\Amazon\EC2Launch\log\agent.log' for the error, and set
+          host_readiness_allow_ec2launch_user_data_failure only when this host requires no per-boot
+          user data.
+        quiet: true
+        that:
+          - host_readiness_allow_ec2launch_user_data_failure | bool
 
 # EC2Launch reporting 'complete' is not the same as the machine having finished starting. Measured
 # on a Server 2025 image, 2026-09-11: the blocking status call returned in one second and the

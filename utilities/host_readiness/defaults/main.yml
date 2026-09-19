@@ -1,9 +1,8 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
 # --- [ Description ] ------------------------------------------------------------------------ #
-# Bounds, not behaviour: how long the role may wait, never what it waits for. They live here
-# rather than in vars/ so a play can raise them for a slow first boot -- role vars outrank play
-# vars, defaults do not.
+# Caller-controlled readiness policy. These values live here rather than in vars/ so a play can
+# adapt the role to its boot contract -- role vars outrank play vars, defaults do not.
 #
 # The two multiply: the wait runs for at most attempts x (pause + however long a refused
 # connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which covers
@@ -22,3 +21,8 @@ host_readiness_pause_seconds: 15
 # inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most platforms
 # have no precondition beyond answering, and saying so by omission is cheaper than a stub per pair.
 host_readiness_platform: ''
+
+# EC2Launch evaluates user data on every boot, so a failed postReadyUserData stage is not generally
+# stale. Only a caller that requires no per-boot user data can safely waive that isolated verdict;
+# keeping the default strict preserves every provisioning failure as fatal.
+host_readiness_allow_ec2launch_user_data_failure: false
