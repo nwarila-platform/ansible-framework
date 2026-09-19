@@ -76,9 +76,14 @@
     # has already passed that check.
 
     - name: 'BEGIN | Assert Agent Enrollment IP Is An IPv4 Address'
+      vars:
+        # One dotted-quad octet. Built once so the assert below stays inside the column limit
+        # without splitting the pattern across lines, which would embed whitespace in it.
+        __octet__: '(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})'
+
       ansible.builtin.assert:
         that:
-          - __agent_ip__ is match('^((25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$')
+          - __agent_ip__ is match('^(' ~ __octet__ ~ '\.){3}' ~ __octet__ ~ '$')
         fail_msg: >-
           agent-auth -I requires an endpoint IPv4 address. Set wazuh_agent.agent_ip,
           or set ansible_host to the endpoint's IPv4 address; DNS names are not safe
@@ -137,7 +142,9 @@
     # PR-reviewed known-good hash. Mismatch = S3 object was tampered with, so abort install.
     - name: 'BEGIN | Verify Downloaded Agent RPM Matches Trusted SHA256'
       register: '__wazuh_agent_rpm_verify__'
-      failed_when: (__wazuh_agent_rpm_verify__.stat.checksum | lower) != (config.s3.agent_rpm_sha256 | lower)
+      failed_when: >-
+        (__wazuh_agent_rpm_verify__.stat.checksum | lower)
+        != (config.s3.agent_rpm_sha256 | lower)
       ansible.builtin.stat:
         path: "{{ __agent_rpm_path__ }}"
         checksum_algorithm: 'sha256'
@@ -187,13 +194,6 @@
       ansible.builtin.systemd:
         name: 'wazuh-agent'
 
-    # JUSTIFIED R3 set_fact exception: a handler consumes this latch, and handlers cannot see
-    # block/task vars.
-    - name: 'PROCESS | Latch Pre-Config Service State For The Restart Handler'
-      ansible.builtin.set_fact:
-        wazuh_agent_svc_was_running: >-
-          {{ (__wazuh_agent_svc_pre__.status.ActiveState | default('inactive')) == 'active' }}
-
     # Scope this edit to the first <client><server> block. Other single-line tags, such
     # as <client><enrollment><port>1515</port>, must not be touched during config drift.
     # Reconnect runway invariant: 12 * 10s = 120s exceeds remoted's 60s connection-overtake
@@ -207,7 +207,9 @@
 
     - name: 'BEGIN | Require Exactly One Manager Server Block'
       vars:
-        __server_block_count__: "{{ (__wazuh_agent_ossec_conf_pre__.content | b64decode) | regex_findall('(?ms)^\\s*<client>\\s*<server>.*?</server>') | length }}"
+        __server_block_count__: >-
+          {{ (__wazuh_agent_ossec_conf_pre__.content | b64decode) |
+          regex_findall('(?ms)^\s*<client>\s*<server>.*?</server>') | length }}
       ansible.builtin.assert:
         that:
           - __server_block_count__ | int == 1
@@ -240,7 +242,9 @@
 
     - name: 'BEGIN | Require Exactly One Syscheck Closing Tag'
       vars:
-        __syscheck_close_count__: "{{ (__wazuh_agent_ossec_conf__.content | b64decode) | regex_findall('(?m)^\\s*</syscheck>') | length }}"
+        __syscheck_close_count__: >-
+          {{ (__wazuh_agent_ossec_conf__.content | b64decode) |
+          regex_findall('(?m)^\s*</syscheck>') | length }}
       ansible.builtin.assert:
         that:
           - __syscheck_close_count__ | int == 1
@@ -302,7 +306,9 @@
     # `always` block removes the file afterward so no shared enrollment secret is stranded
     # on the endpoint, whether enrollment succeeded or failed.
     - name: 'PROCESS | Enroll The Agent With The Manager'
-      when: not (__wazuh_agent_client_keys__.stat.exists | default(false)) or (__wazuh_agent_client_keys__.stat.size | default(0) | int) == 0
+      when: >-
+        not (__wazuh_agent_client_keys__.stat.exists | default(false)) or
+        (__wazuh_agent_client_keys__.stat.size | default(0) | int) == 0
       block:
 
         - name: 'PROCESS | Stage The Enrollment Password File'
@@ -408,11 +414,13 @@
         fail_msg: >-
           Agent service is active (previous task) but never reached status='connected' in
           /var/ossec/var/run/wazuh-agentd.state (last read:
-          '{{ (__wazuh_agent_state__.stdout | default('')) | trim }}'). Diagnose the reconnect path on
+          '{{ (__wazuh_agent_state__.stdout | default('')) | trim }}'). Diagnose the reconnect
+          path on
           the manager in /var/ossec/logs/ossec.log: discriminate "Agent key already in use" from
           "Decrypt the message fail" and ENC_IP_ERROR. A transient connection-overtake/key-reload
           refusal should self-heal in <= ~90s inside this agent's 120s retry runway. If it does
-          not, check for a restart-within-runway regression and verify the persisted manager/agent
+          not, check for a restart-within-runway regression and verify the persisted
+          manager/agent
           keys and enrolled source IP still agree. Keep this CONNECTED gate load-bearing; do not
           weaken authd force-replacement policy to make a duplicate enrollment pass.
         success_msg: 'Agent is connected to the manager (status=connected).'

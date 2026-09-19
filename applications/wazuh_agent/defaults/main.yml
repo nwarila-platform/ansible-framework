@@ -12,7 +12,7 @@
 #   - The Wazuh agent RPM is uploaded to S3 at `s3://<bucket>/applications/wazuh-agent/`
 #     (see `vars/redhat_<env>.yml`). The agent role downloads ONLY that RPM; it does not
 #     consume the central wazuh-offline.tar.gz bundle.
-#   - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session through
+# - The consumer propagates `ENV` (uppercase) and supplies a scoped artifact-read session through
 #     the generic AWS module-option variables before invoking this role; see tasks/main.yml's ENV
 #     assertion. No standing instance access or deploy credential is required on a target.
 # ============================================================================================= #
@@ -72,7 +72,8 @@ wazuh_agent_defaults:
     # Written by the agent's own state thread (src/client-agent/state.c write_state(), Windows
     # branch: "%s.state" with __local_name -- ARGV0="wazuh-agent" in src/win32/win_agent.c --
     # relative to the service's working directory, which is this install directory). The
-    # END (win) connection-verify gate in tasks/present_windows.yml polls this for status='connected'.
+    # END (win) connection-verify gate in tasks/present_windows.yml polls this for
+    # status='connected'.
     state_file: 'C:\Program Files (x86)\ossec-agent\wazuh-agent.state'
     # Windows real-time FIM directories (C:\...); separate from the Linux fim.realtime_paths.
     fim_realtime_paths:

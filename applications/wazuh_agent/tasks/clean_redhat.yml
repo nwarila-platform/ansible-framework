@@ -6,4 +6,6 @@
 
 - name: 'PROCESS | Clean The Wazuh Agent On The RedHat Family'
   ansible.builtin.debug:
-    msg: 'No staging artifacts to clean; the loader temp dir is removed automatically after each role run.'
+    msg: >-
+      No staging artifacts to clean; the loader temp dir is removed automatically after each
+      role run.

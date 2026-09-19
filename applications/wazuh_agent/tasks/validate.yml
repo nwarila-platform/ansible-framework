@@ -11,8 +11,10 @@
 # assert is therefore scoped to state=present and is a deliberate no-op otherwise (a bare
 # `-e state=clean` run must not be blocked on an input it never reads).
 #
-# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but validation
-# belongs in one hook. A malformed merged input now fails at loader INIT before staging or installer
+# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but
+# validation
+# belongs in one hook. A malformed merged input now fails at loader INIT before staging or
+# installer
 # work begins.
 # ============================================================================================= #
 
@@ -47,7 +49,8 @@
     __effective_names__: >-
       {%- set out = [] -%}
       {%- for h in ansible_play_hosts_all -%}
-        {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
+        {%- set merged = hostvars[h].wazuh_agent_running
+             | default(hostvars[h].config | default({}, true), true) -%}
         {%- set explicit = merged.agent_name | default('') | string | trim -%}
         {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
       {%- endfor -%}
