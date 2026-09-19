@@ -10,6 +10,130 @@
 #region ------ [ Process: Manage The Declared Disks On Windows ] ------------------------------ #
 
 - name: 'PROCESS | Manage The Declared Disks On Windows'
+  vars:
+    # Derived here rather than latched with set_fact. FACT-01 keeps a role's working values out
+    # of the host's fact namespace, where a set_fact outlives this play and can be read by the
+    # next role to run. Both lists are pure functions of facts this file has already gathered, so
+    # there is nothing to latch.
+    #
+    # Each reads a REGISTERED snapshot, not ansible_facts. That distinction is load-bearing: the
+    # disk facts are deliberately re-read mid-block, after the online/writable fixup, and a block
+    # var referring to ansible_facts would be evaluated lazily at each use and so would silently
+    # mean the pre-fixup facts in one task and the post-fixup facts in the next. Reading the
+    # register pins each list to the same snapshot the set_fact captured.
+    #
+    # The key is 'ansible_facts.ansible_disks', not 'ansible_facts.disks'. win_disk_facts returns
+    # ansible_facts: { ansible_disks: [...] }, and ansible-core strips the 'ansible_' prefix when
+    # it merges that into the ansible_facts dict -- which is why the tasks below read
+    # ansible_facts.disks. A REGISTERED result keeps the raw key the module returned. Reading
+    # .disks off the register yields undefined, the default([], true) turns it into an empty
+    # list, and the role then provisions nothing while reporting success.
+
+    # ONE declaration list in which every entry carries a unique_id -- literal entries verbatim,
+    # function entries filled from the serial-matched disk's OBSERVED UniqueId (the same
+    # storage-subsystem value every downstream Get-Disk/win_disk_facts comparison uses).
+    # Everything below loops this, never config.disks, so the two identity modes converge here.
+    # Built from the FIRST facts load, which is what the materialisation ran against.
+    __declared_disks__: >-
+      {%- set facts = (__windows_disk_manager_disk_facts__.ansible_facts.ansible_disks
+        | default([], true)) -%}
+      {%- set volumes = (__windows_disk_manager_attached_volumes__.volumes
+        | default([], true)) -%}
+      {%- set resolved = namespace(items=[]) -%}
+      {%- for entry in config.disks -%}
+        {%- set volume_id = volumes
+          | selectattr('tags') | selectattr('tags.Function', 'defined')
+          | selectattr('tags.Function', 'equalto', entry.function | default(''))
+          | map(attribute='id') | first | default('') -%}
+        {%- set expected_serial = volume_id | replace('-', '') -%}
+        {%- set serial_matches = facts
+          | selectattr('serial_number', 'defined')
+          | selectattr('serial_number', 'match',
+            '(?i)' ~ (expected_serial | default('\\A(?!x)x', true)))
+          | list -%}
+        {%- set resolved_id = entry.unique_id
+          | default(serial_matches | map(attribute='unique_id') | first | default('')) -%}
+        {%- set resolved.items = resolved.items
+          + [entry | combine({'unique_id': resolved_id | trim})] -%}
+      {%- endfor -%}
+      {{ resolved.items }}
+
+    # Physical-disk facts carry volumes below partitions, not at the disk's top level. Classify
+    # each resolved disk from positively observed facts. Cluster ownership wins first because
+    # attach identity is already proven above; all later disk state belongs to the cluster. Built
+    # from the RELOADED facts, which is what the classification ran against.
+    __resolved_disks__: >-
+      {%- set facts = (__windows_disk_manager_disk_facts_reloaded__.ansible_facts.ansible_disks
+        | default([], true)) -%}
+      {%- set built = namespace(items=[]) -%}
+      {%- for entry in __declared_disks__ -%}
+        {%- set matches = facts
+          | selectattr('unique_id', 'defined')
+          | selectattr('unique_id', 'equalto', entry.unique_id)
+          | list -%}
+        {%- set matched = matches | first -%}
+        {%- set enumerated = 'partitions' in matched -%} {%- set parts = namespace(items=[]) -%}
+        {%- if enumerated -%}
+        {%- for partition in matched.partitions | default([], true) -%}
+        {%- if (partition.type | default('', true) | string) != 'Reserved' -%}
+        {%- set parts.items = parts.items + [partition] -%}
+        {%- endif -%}
+        {%- endfor -%}
+        {%- endif -%} {%- set vols = namespace(items=[]) -%}
+        {%- set all_parts_have_volumes = namespace(value=true) -%}
+        {%- for partition in parts.items -%}
+        {%- if 'volumes' in partition -%}
+        {%- set vols.items = vols.items + (partition.volumes | default([], true)) -%}
+        {%- else -%}
+        {%- set all_parts_have_volumes.value = false -%}
+        {%- endif -%}
+        {%- endfor -%} {%- set observed = namespace(items=[]) -%}
+        {%- set all_vols_observed = namespace(value=true) -%} {%- for volume in vols.items -%}
+        {%- if 'type' in volume and volume.type is not none -%}
+        {%- set observed.items = observed.items + [volume] -%}
+        {%- else -%}
+        {%- set all_vols_observed.value = false -%}
+        {%- endif -%}
+        {%- endfor -%} {%- set fsvols = namespace(items=[]) -%}
+        {%- set ours = namespace(value=false) -%} {%- for volume in observed.items -%}
+        {%- if (volume.type | string | trim | length) > 0 -%}
+        {%- set fsvols.items = fsvols.items + [volume] -%}
+        {%- if (volume.type | string | upper) == 'NTFS'
+        and (volume.label | default('', true) | string | lower)
+        == (entry.label | string | lower) -%}
+        {%- set ours.value = true -%}
+        {%- endif -%}
+        {%- endif -%}
+        {%- endfor -%} {%- set classification = namespace(value='foreign') -%}
+        {%- if matched.clustered | default(false) | bool -%}
+        {%- set classification.value = 'clustered' -%}
+        {%- elif ours.value -%}
+        {%- set classification.value = 'ours' -%}
+        {%- elif (matched.partition_style | default('', true) | string | upper)
+        == 'RAW' -%}
+        {%- set classification.value = 'blank' -%}
+        {%- elif (matched.partition_style | default('', true) | string | upper)
+        == 'GPT'
+        and enumerated
+        and (fsvols.items | length) == 0
+        and (
+        (parts.items | length) == 0
+        or (
+        all_parts_have_volumes.value
+        and all_vols_observed.value
+        and (observed.items | length) > 0
+        )
+        ) -%}
+        {%- set classification.value = 'unfmtd' -%}
+        {%- endif -%}
+        {%- set built.items = built.items + [{
+          'disk': entry,
+          'matched_disk': matched,
+          'classification': classification.value,
+          'drive_letter': (entry.drive_letter | regex_search('^[A-Za-z]') | upper)
+        }] -%}
+      {%- endfor -%}
+      {{ built.items }}
   block:
 
     # The role pulls the facts it needs itself (plays run gather_facts: false): the vendor
@@ -76,6 +200,8 @@
 
     - name: 'BEGIN | Load Disk, Partition And Volume Facts'
       when: (config.disks | length) > 0
+      register: '__windows_disk_manager_disk_facts__'
+
       community.windows.win_disk_facts:
         filter:
           - 'physical_disk'
@@ -116,43 +242,6 @@
           | default('unknown') }}, serial={{ attached.serial_number | default('unknown')
           }}{%- if not loop.last %}; {% endif %}{% endfor %}.
         quiet: true
-
-    # Materialize ONE declaration list in which every entry carries a unique_id — literal entries
-    # verbatim, function entries filled from the serial-matched disk's OBSERVED UniqueId (the
-    # same storage-subsystem value every downstream Get-Disk/win_disk_facts comparison uses).
-    # Everything below this point loops __declared_disks__, never config.disks, so the two
-    # identity modes converge here.
-    - name: 'BEGIN | Reset Materialized Disk Declarations'
-      when: (config.disks | length) > 0
-      ansible.builtin.set_fact:
-        __declared_disks__: []
-
-    - name: 'BEGIN | Materialize Declared Disk Identities'
-      when: (config.disks | length) > 0
-      loop: "{{ config.disks }}"
-      loop_control:
-        loop_var: '__disk__'
-        label: "{{ __disk__.unique_id | default(__disk__.function) }}"
-      vars:
-        __volume_id__: >-
-          {{ (__windows_disk_manager_attached_volumes__.volumes | default([], true) |
-          selectattr('tags') | selectattr('tags.Function', 'defined') |
-          selectattr('tags.Function', 'equalto', __disk__.function | default('')) |
-          map(attribute='id') | first | default('')) }}
-        __expected_serial__: "{{ __volume_id__ | replace('-', '') }}"
-        __serial_matches__: >-
-          {{ ansible_facts.disks
-          | selectattr('serial_number', 'defined')
-          | selectattr('serial_number', 'match',
-          '(?i)' ~ (__expected_serial__ | default('\\A(?!x)x', true)))
-          | list }}
-        __resolved_unique_id__: >-
-          {{ __disk__.unique_id | default(__serial_matches__ | map(attribute='unique_id') | first
-          | default('')) }}
-      ansible.builtin.set_fact:
-        __declared_disks__: >-
-          {{ (__declared_disks__ | default([]))
-          + [__disk__ | combine({'unique_id': (__resolved_unique_id__ | trim)})] }}
 
     - name: 'BEGIN | Assert Declared Disks Are Attached'
       when: (config.disks | length) > 0
@@ -214,6 +303,8 @@
 
     - name: 'BEGIN | Re-load Disk Facts After Online/Writable Fixup'
       when: (config.disks | length) > 0
+      register: '__windows_disk_manager_disk_facts_reloaded__'
+
       community.windows.win_disk_facts:
         filter:
           - 'physical_disk'
@@ -221,99 +312,6 @@
           - 'volumes'
 
     #region ------ [ Process: Classify Disk State And Guard Against Foreign Layouts ] --------- #
-
-    # Physical-disk facts carry volumes below partitions, not at the disk's top level. Classify
-    # each resolved disk from positively observed facts. Cluster ownership wins first because
-    # attach identity is already proven above; all later disk state belongs to the cluster.
-    - name: 'PROCESS | Reset The Resolved Disk State'
-      when: (config.disks | length) > 0
-      ansible.builtin.set_fact:
-        __resolved_disks__: []
-
-    - name: 'PROCESS | Resolve Declared Disks And Classify Observed State'
-      when: (config.disks | length) > 0
-      loop: "{{ __declared_disks__ | default([]) }}"
-      loop_control:
-        loop_var: '__disk__'
-        label: "{{ __disk__.unique_id }}"
-      vars:
-        __matches__: >-
-          {{ ansible_facts.disks
-          | selectattr('unique_id', 'defined')
-          | selectattr('unique_id', 'equalto', __disk__.unique_id)
-          | list }}
-        __matched_disk__: "{{ __matches__ | first }}"
-        __classification_json__: >-
-          {%- set enumerated = 'partitions' in __matched_disk__ -%}
-          {%- set parts = namespace(items=[]) -%}
-          {%- if enumerated -%}
-            {%- for partition in __matched_disk__.partitions | default([], true) -%}
-              {%- if (partition.type | default('', true) | string) != 'Reserved' -%}
-                {%- set parts.items = parts.items + [partition] -%}
-              {%- endif -%}
-            {%- endfor -%}
-          {%- endif -%}
-          {%- set vols = namespace(items=[]) -%}
-          {%- set all_parts_have_volumes = namespace(value=true) -%}
-          {%- for partition in parts.items -%}
-            {%- if 'volumes' in partition -%}
-              {%- set vols.items = vols.items + (partition.volumes | default([], true)) -%}
-            {%- else -%}
-              {%- set all_parts_have_volumes.value = false -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {%- set observed = namespace(items=[]) -%}
-          {%- set all_vols_observed = namespace(value=true) -%}
-          {%- for volume in vols.items -%}
-            {%- if 'type' in volume and volume.type is not none -%}
-              {%- set observed.items = observed.items + [volume] -%}
-            {%- else -%}
-              {%- set all_vols_observed.value = false -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {%- set fsvols = namespace(items=[]) -%}
-          {%- set ours = namespace(value=false) -%}
-          {%- for volume in observed.items -%}
-            {%- if (volume.type | string | trim | length) > 0 -%}
-              {%- set fsvols.items = fsvols.items + [volume] -%}
-              {%- if (volume.type | string | upper) == 'NTFS'
-                and (volume.label | default('', true) | string | lower)
-                == (__disk__.label | string | lower) -%}
-                {%- set ours.value = true -%}
-              {%- endif -%}
-            {%- endif -%}
-          {%- endfor -%}
-          {%- set classification = namespace(value='foreign') -%}
-          {%- if __matched_disk__.clustered | default(false) | bool -%}
-            {%- set classification.value = 'clustered' -%}
-          {%- elif ours.value -%}
-            {%- set classification.value = 'ours' -%}
-          {%- elif (__matched_disk__.partition_style | default('', true) | string | upper)
-              == 'RAW' -%}
-            {%- set classification.value = 'blank' -%}
-          {%- elif (__matched_disk__.partition_style | default('', true) | string | upper)
-              == 'GPT'
-              and enumerated
-              and (fsvols.items | length) == 0
-              and (
-                (parts.items | length) == 0
-                or (
-                  all_parts_have_volumes.value
-                  and all_vols_observed.value
-                  and (observed.items | length) > 0
-                )
-              ) -%}
-            {%- set classification.value = 'unfmtd' -%}
-          {%- endif -%}
-          {{ classification.value | to_json }}
-      ansible.builtin.set_fact:
-        __resolved_disks__: >-
-          {{ (__resolved_disks__ | default([])) + [{
-            'disk': __disk__,
-            'matched_disk': __matched_disk__,
-            'classification': (__classification_json__ | from_json),
-            'drive_letter': (__disk__.drive_letter | regex_search('^[A-Za-z]') | upper)
-          }] }}
 
     # A failure in this read-only loop stops the play before any provisioning task is entered, so
     # one foreign declared disk refuses provisioning for the entire declaration set.
