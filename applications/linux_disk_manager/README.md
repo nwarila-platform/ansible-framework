@@ -45,6 +45,9 @@ Defaults live under `linux_disk_manager_defaults` (`defaults/main.yml`) and merg
 `vars/<family>[_<env>].yml` overlays plus the playbook's `linux_disk_manager:` override dict
 into `linux_disk_manager_running` (exposed to task files as `config`).
 
+The lifecycle state is the play-level `state` variable (`present`, or `clean` as a supported
+no-op), not a key of the `linux_disk_manager:` dictionary; a `state` key there has no effect.
+
 Declare these in the `linux_disk_manager:` override dict:
 
 | key | Required | Default | Purpose |
@@ -83,5 +86,15 @@ ansible-playbook -i inventory.yml site.yml -e ENV=dev   # a consumer play that l
   `/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol<id>` exists); non-Nitro (Xen) instances
   do not produce this by-id name. Function-tag resolution also requires controller-side AWS
   credentials with permission to describe attached volumes; the target needs no EBS/IAM grant.
-- Toolchain: RHEL 8 targets run platform-python 3.6 → controller ansible-core `>=2.16,<2.17`
-  with `community.general <8` / `ansible.posix <2` (pinned in the root `requirements.yml`).
+- Toolchain: the role's target-side tasks are ordinary modules and pin no interpreter. Its one
+  controller-delegated task does: `tasks/resolve_aws.yml` sets
+  `ansible_python_interpreter: "{{ ansible_playbook_python }}"` so boto3 runs under the same
+  interpreter as `ansible-playbook`. On RHEL 8 the stock target interpreter is platform-python
+  3.6, which ansible-core 2.17 and later cannot use on a target; the RHEL/Rocky 8 bootstrap role
+  that `utilities/os_bootstrap` routes the RedHat family to installs `/usr/bin/python3.12`.
+  Installing it is not selecting it. Core 2.21's default `auto` discovery probes `python3.12`
+  ahead of `/usr/bin/python3`, so a run that discovers the interpreter after the bootstrap will
+  usually find it on its own; a run that discovered one before the bootstrap will not. Nothing in
+  the framework sets `ansible_python_interpreter` run-wide, so set it in the play to be certain.
+  `community.general <8` / `ansible.posix <2` are pinned in the root `requirements.yml`, and the
+  framework's own lint toolchain is ansible-core 2.21 (`requirements-dev.txt`).

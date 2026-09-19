@@ -49,10 +49,12 @@ offline: true
 # -----------------------------------------------------------------------------
 # Loop Variable Prefix
 # -----------------------------------------------------------------------------
-# Enforce the __dunder__ naming convention for loop variables to prevent
-# variable shadowing. Matches the pattern used throughout this framework.
+# Deliberately not set. ansible-lint's loop-var-prefix rule fires only for
+# files it attributes to a role under roles/; this repository's namespaces
+# (applications/, host_roles/, operating_systems/, utilities/) are never
+# attributed, so the option enforced nothing here (measured 2026-09-11: 25
+# loop variables outside the pattern, zero findings).
 # -----------------------------------------------------------------------------
-loop_var_prefix: ^__.*__$
 
 # -----------------------------------------------------------------------------
 # Mock Roles

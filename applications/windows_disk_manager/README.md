@@ -14,6 +14,9 @@ is converged and left unchanged.
 Defaults live under `windows_disk_manager_defaults` and merge through the framework shared
 loader with OS overlays and the playbook's `windows_disk_manager:` override dictionary.
 
+The lifecycle state is the play-level `state` variable (`present`, or `clean` as a supported
+no-op), not a key of the `windows_disk_manager:` dictionary; a `state` key there has no effect.
+
 | key | Required | Default | Purpose |
 |-----|----------|---------|---------|
 | `platform` | Yes | `''` | `vmware` or `aws`. Proxmox is not accepted until its Windows identity path is measured. |

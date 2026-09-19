@@ -16,10 +16,6 @@
 # =========================================================================================== #
 windows_disk_manager_defaults:
 
-  #region ------ [ Lifecycle ] ------------------------------------------------------------------ #
-  state: 'present'
-  #endregion --- [ Lifecycle ] ------------------------------------------------------------------ #
-
   #region ------ [ Platform targeting ] --------------------------------------------------------- #
   # Declared infrastructure platform (vmware | aws). REQUIRED in the windows_disk_manager:
   # override dict; no default is safe. Proxmox is intentionally excluded until its Windows

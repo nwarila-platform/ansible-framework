@@ -1,7 +1,7 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/absent_redhat_rocky.yml'                                       #
+# File: '{{ role_path }}/tasks/absent_redhat.yml'                                             #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for Rocky Linux — state: absent.                                      #
+# OS-specific task file for the RedHat family — state: absent.                                #
 #                                                                                             #
 # Execution order:                                                                            #
 #   0. Preflight: verify ansible.builtin.dnf prerequisites are met                           #
@@ -14,7 +14,7 @@
 
 #region ------ [ Script ] ------------------------------------------------------------------- #
 
-- name: 'INFO | Entering OS Tasks (absent_redhat_rocky)'
+- name: 'INFO | Entering OS Tasks (absent_redhat)'
 
   block:
 

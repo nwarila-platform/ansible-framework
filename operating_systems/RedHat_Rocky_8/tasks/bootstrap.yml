@@ -181,8 +181,8 @@
         # The reference's 'vars: { python3_pip: { ignore_errors: true } }' is also dropped:
         # python3_pip consumes 'ignore_errors' nowhere in its tasks/, defaults/ or meta/, so it
         # was an INERT key merged into that role's running config, not the Ansible keyword.
-        # loop_var uses the __dunder__ form the framework's .ansible-lint mandates
-        # (loop_var_prefix: ^__.*__$); the reference's bare 'role' would fail that gate.
+        # loop_var keeps the framework's __dunder__ loop-variable convention; the reference's
+        # bare 'role' could collide with an outer loop variable.
         - name: 'MAIN | Loading Prerequisite Role(s)'
           loop: "{{ rhel8_bootstrap_prerequisite_roles }}"
           loop_control: { loop_var: '__prerequisite_role__' }

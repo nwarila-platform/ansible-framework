@@ -45,10 +45,6 @@ in a separate play, so consumers that split agent deployment across plays must e
 agent-name uniqueness themselves. Keeping all endpoint deployment in one mixed play lets the
 normal Windows-safe loader provide the complete host set to this guard.
 
-`tasks_from: main_windows` remains as a deprecated forwarding alias for the shared loader so existing
-callers receive the same behavior. New callers should use the normal role entry point. The alias
-will be removed in loader v4.0.0.
-
 ## Single-manager scope
 
 This role deliberately accepts and renders exactly one manager endpoint. This is a limitation of
@@ -73,6 +69,10 @@ s3:
   agent_rpm_key:    'applications/wazuh-agent/wazuh-agent-4.14.5-1.x86_64.rpm'
   agent_rpm_sha256: '<sha256sum of the uploaded RPM>'
 ```
+
+The `prod` and `test` overlays ship `CHANGE_ME` in the digest fields on purpose: an operator fills
+them per environment, and until then the digest check fails closed rather than installing an
+unverified package.
 
 ## S3 Python deps
 

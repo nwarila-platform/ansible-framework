@@ -1,7 +1,7 @@
 # =========================================================================================== #
-# File: '{{ role_path }}/tasks/absent_debian_ubuntu.yml'                                      #
+# File: '{{ role_path }}/tasks/absent_debian.yml'                                             #
 # --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for Ubuntu — state: absent.                                           #
+# OS-specific task file for the Debian family — state: absent.                                #
 #                                                                                             #
 # Execution order:                                                                            #
 #   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #
@@ -14,7 +14,7 @@
 
 #region ------ [ Script ] ------------------------------------------------------------------- #
 
-- name: 'INFO | Entering OS Tasks (absent_debian_ubuntu)'
+- name: 'INFO | Entering OS Tasks (absent_debian)'
 
   block:
 
