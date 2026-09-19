@@ -59,9 +59,11 @@ galaxy_info:
     Takes the join password as a resolved value from the caller, then joins: RedHat hands the
     whole contract to redhat.rhel_system_roles.ad_integration,
     and Windows performs the same work against microsoft.ad and the registry. Refuses a host
-    already joined elsewhere unless a rejoin is forced, excludes DES and RC4 from Kerberos on both
+    already joined elsewhere unless a rejoin is forced, excludes DES and RC4 from Kerberos on
+    both
     platforms with no way to re-admit them, holds the machine-account and secure-channel posture,
-    and proves membership and the machine-account credential from the machine rather than from the
+    and proves membership and the machine-account credential from the machine rather than from
+    the
     join tool's report.
 
   license: 'MIT'

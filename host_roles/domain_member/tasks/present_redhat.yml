@@ -183,7 +183,8 @@
   become: true
   vars:
     __timesync_declared__: >-
-      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
+      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0
+      }}
 
   # Begin The 'Process' Block
   block:
@@ -391,8 +392,10 @@
           '{{ inventory_hostname }}' is configured for '{{ domain_member_running.realm }}' but
           cannot authenticate to it with its own machine account:
           {{ __domain_member_testjoin__.stderr | default('', true) | trim
-          | default(__domain_member_testjoin__.msg | default('adcli testjoin failed', true), true) }}.
-          If that names a missing command, the realm client is incomplete; otherwise the membership
+          | default(__domain_member_testjoin__.msg | default('adcli testjoin failed', true),
+          true) }}.
+          If that names a missing command, the realm client is incomplete; otherwise the
+          membership
           exists on disk only and the computer object was most likely removed or reset in the
           directory, which domain_member.force_rejoin rebuilds.
         quiet: true

@@ -83,11 +83,14 @@
       ansible.builtin.assert:
         fail_msg: >-
           '{{ inventory_hostname }}' is already a member of '{{ __current_domain__ }}', but this
-          play declares '{{ __declared_realm__ }}'. Refusing to re-point the machine: the computer
+          play declares '{{ __declared_realm__ }}'. Refusing to re-point the machine: the
+          computer
           object in '{{ __current_domain__ }}' would be abandoned along with every access granted
           through its group memberships, and nothing in this role puts that back. Correct
-          domain_member.realm, or set domain_member.force_rejoin to leave deliberately -- but note
-          that the leave authenticates to '{{ __current_domain__ }}' with the account declared for
+          domain_member.realm, or set domain_member.force_rejoin to leave deliberately -- but
+          note
+          that the leave authenticates to '{{ __current_domain__ }}' with the account declared
+          for
           '{{ __declared_realm__ }}', so a move between unrelated domains needs an account both
           will accept.
         quiet: true
@@ -149,7 +152,8 @@
       {{ (not (__currently_joined__ | bool)) or (__credential_broken__ | bool)
          or (domain_member_running.force_rejoin | bool) }}
     __timesync_declared__: >-
-      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
+      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0
+      }}
 
   # Begin The 'Process' Block
   block:
@@ -298,11 +302,17 @@
     # it clears the future-encryption-types bits the benchmark requires.
 
     - name: 'PROCESS | Hold The Kerberos Encryption Types'
+      vars:
+        # Held in a var only because the literal exceeds the column limit and a registry path
+        # cannot be folded -- a folded scalar joins its lines with a space.
+        __kerberos_parameters_key__: >-
+          HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters
+
       ansible.windows.win_regedit:
         data: 0x7ffffff8
         delete_key: true
         name: 'SupportedEncryptionTypes'
-        path: 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Kerberos\Parameters'
+        path: '{{ __kerberos_parameters_key__ }}'
         state: 'present'
         type: 'dword'
 
@@ -399,10 +409,12 @@
 
           If ([System.String]::IsNullOrWhiteSpace($Address)) {
             $Computed = $true
-            $Route = Find-NetRoute -RemoteIPAddress '198.51.100.1' -ErrorAction SilentlyContinue |
+            $Route = Find-NetRoute -RemoteIPAddress '198.51.100.1' `
+              -ErrorAction SilentlyContinue |
               Where-Object { $PSItem.IPAddress } | Select-Object -First 1
             If (-not $Route) {
-              Throw 'This host has no route to a remote address, so it cannot be asked which of its addresses is reached. Declare domain_member.registration_address.'
+              Throw ('This host has no route to a remote address, so it cannot be asked ' +
+                'which of its addresses is reached. Declare domain_member.registration_address.')
             }
             $Address = $Route.IPAddress
           }
@@ -411,16 +423,21 @@
           # an
           # address exists but must not be used for anything new.
           $Holding = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop |
-            Where-Object { $PSItem.IPAddress -eq $Address -and $PSItem.AddressState -eq 'Preferred' })
+            Where-Object {
+              $PSItem.IPAddress -eq $Address -and $PSItem.AddressState -eq 'Preferred'
+            })
           If ($Holding.Count -ne 1) {
-            Throw ("The registration address {0} is on {1} interfaces in the Preferred state; it must be on exactly one. Declare domain_member.registration_address to say which address this host is reached at." -f $Address, $Holding.Count)
+            Throw (("The registration address {0} is on {1} interfaces in the Preferred " +
+              "state; it must be on exactly one. Declare domain_member.registration_address " +
+              "to say which address this host is reached at.") -f $Address, $Holding.Count)
           }
           $Wanted = $Holding[0].InterfaceIndex
 
           ForEach ($Client In Get-DnsClient) {
             $Should = ($Client.InterfaceIndex -eq $Wanted)
             If ($Client.RegisterThisConnectionsAddress -ne $Should) {
-              Set-DnsClient -InterfaceIndex $Client.InterfaceIndex -RegisterThisConnectionsAddress $Should
+              Set-DnsClient -InterfaceIndex $Client.InterfaceIndex `
+                -RegisterThisConnectionsAddress $Should
               $Ansible.Changed = $true
             }
           }
@@ -444,7 +461,8 @@
         msg: >-
           No domain_member.registration_address was declared, so '{{ inventory_hostname }}' will
           publish {{ __chosen__.Address | default('(unknown)', true) }} -- the address this host
-          uses to reach the world. That is the right answer for a host with one route out, and the
+          uses to reach the world. That is the right answer for a host with one route out, and
+          the
           WRONG one for a host whose management path is not its default route, or whose tunnel
           carries it. Declare the address to decide it here instead.
         verbosity: 0
@@ -510,12 +528,14 @@
         fail_msg: >-
           {% if ansible_check_mode %}
           A domain join cannot be completed in check mode: the restart that finishes it does not
-          run under --check, so this host cannot be proven a member of '{{ __declared_realm__ }}'.
+          run under --check, so this host cannot be proven a member of '{{ __declared_realm__
+          }}'.
           Run without --check to join.
           {% else %}
           '{{ inventory_hostname }}' is not a member of '{{ __declared_realm__ }}'. The machine
           reports domain member={{ ansible_facts.windows_domain_member | default(false) }},
-          domain='{{ __current_domain__ }}'. A join that reported success and a machine that is not
+          domain='{{ __current_domain__ }}'. A join that reported success and a machine that is
+          not
           a member means the restart completing it did not happen.
           {% endif %}
         quiet: true
@@ -567,7 +587,8 @@
     - name: 'END | Prove The Machine Account Credential Works'
       ansible.builtin.assert:
         fail_msg: >-
-          '{{ inventory_hostname }}' reports membership of '{{ domain_member_running.realm }}' but
+          '{{ inventory_hostname }}' reports membership of '{{ domain_member_running.realm }}'
+          but
           could not prove it with its own machine account:
           {{ __domain_member_secure_channel__.error | default([], true) | map(attribute='output')
           | list | join('; ') | trim | default('the check returned false', true) }}.
@@ -575,7 +596,9 @@
           where the credential is the problem, domain_member.force_rejoin rebuilds it.
         quiet: true
         that:
-          - __domain_member_secure_channel__.output | default([], true) | first | default(false) | bool
+          - >-
+            __domain_member_secure_channel__.output
+            | default([], true) | first | default(false) | bool
 
     #endregion --- [ End: Prove The Machine Account Credential ] ------------------------------ #
 
@@ -618,7 +641,8 @@
         script: |
           [CmdletBinding(SupportsShouldProcess)]
           Param([System.String]$Expected, [System.String]$Realm)
-          $Controller = (Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.{0}' -f $Realm) -Type SRV -ErrorAction Stop |
+          $Controller = (Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.{0}' -f $Realm) `
+            -Type SRV -ErrorAction Stop |
             Where-Object { $PSItem.NameTarget } | Select-Object -First 1).NameTarget
           $Name = '{0}.{1}' -f $env:COMPUTERNAME, $Realm
 
@@ -629,24 +653,31 @@
           # replaced, and would fail a converge that was seconds from being correct.
           $Deadline = (Get-Date).AddSeconds(90)
           Do {
-            $Answer = @(Resolve-DnsName -Name $Name -Type A -Server $Controller -DnsOnly -ErrorAction SilentlyContinue |
-              Where-Object { $PSItem.Type -eq 'A' } | ForEach-Object { $PSItem.IPAddress } | Sort-Object -Unique)
+            $Answer = @(Resolve-DnsName -Name $Name -Type A -Server $Controller `
+              -DnsOnly -ErrorAction SilentlyContinue |
+              Where-Object { $PSItem.Type -eq 'A' } |
+              ForEach-Object { $PSItem.IPAddress } | Sort-Object -Unique)
             If ($Answer.Count -eq 1 -and $Answer[0] -eq $Expected) { Break }
             Start-Sleep -Seconds 5
           } While ((Get-Date) -lt $Deadline)
 
           $Ansible.Changed = $false
-          [PSCustomObject]@{ Controller = $Controller; Expected = $Expected; Name = $Name; Addresses = @($Answer) }
+          [PSCustomObject]@{
+            Controller = $Controller; Expected = $Expected
+            Name = $Name; Addresses = @($Answer)
+          }
 
     # ----------------------------------------------------------------------------------------- #
 
     - name: 'END | Prove The Realm Publishes This Host At The Address It Chose'
       vars:
         __expected__: >-
-          {{ (__domain_member_registration__.output | default([], true) | first | default({}, true)).Address
+          {{ (__domain_member_registration__.output | default([], true) | first | default({},
+          true)).Address
              | default('', true) }}
         __published__: >-
-          {{ (__domain_member_published__.output | default([], true) | first | default({}, true)).Addresses
+          {{ (__domain_member_published__.output | default([], true) | first | default({},
+          true)).Addresses
              | default([], true) }}
 
       ansible.builtin.assert:
@@ -655,9 +686,12 @@
           realm does not publish it at '{{ __expected__ }}'. A domain controller answers
           {{ __published__ | default([], true) | join(', ') | default('nothing', true) }}.
           A host that publishes nothing reached a domain controller that would not accept its
-          update -- on a tunnelled host, most often because no policy rule points the realm at the
-          directory's own servers, and on any host because another principal already owns the name.
-          A host publishing some other address, or more than one, has another interface registering.
+          update -- on a tunnelled host, most often because no policy rule points the realm at
+          the
+          directory's own servers, and on any host because another principal already owns the
+          name.
+          A host publishing some other address, or more than one, has another interface
+          registering.
         quiet: true
         that:
           - __published__ | default([], true) | length == 1
