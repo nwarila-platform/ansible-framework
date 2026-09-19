@@ -1,17 +1,17 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
-# Config-contract validation, auto-discovered and run ONCE by the shared loader's
-# 'INIT | Validating Merged Configuration' hook after configuration merging and before an
-# OS-specific task file. Receives the fully merged config as 'config'.
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Config-contract validation, auto-discovered and run ONCE by the shared loader's 'INIT |
+# Validating Merged Configuration' hook after configuration merging and before an OS-specific
+# task file. Receives the fully merged config as 'config'.
 #
-# STATE SCOPE: the loader runs this file for every state. Every guard is deliberately scoped
-# to state=present so state=clean remains a supported no-op with the default empty platform.
-# =========================================================================================== #
+# STATE SCOPE: the loader runs this file for every state. Every guard is deliberately scoped to
+# state=present so state=clean remains a supported no-op with the default empty platform.
+# ============================================================================================= #
 
-#region ------ [ Platform guard ] ------------------------------------------------------------- #
+#region ------ [ Begin: Guard The Platform Declaration ] -------------------------------------- #
 
-- name: 'BEGIN | Assert Platform Is Declared And Supported'
+- name: 'VALIDATE | Assert Platform Is Declared And Supported'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __platform__: "{{ config.platform | default('') | string | trim }}"
@@ -26,14 +26,14 @@
       intentionally unsupported until its Windows disk-identity path has been measured.
     quiet: true
 
-#endregion --- [ Platform guard ] ------------------------------------------------------------- #
+#endregion --- [ Begin: Guard The Platform Declaration ] -------------------------------------- #
 
-#region ------ [ Disk contract guards ] ------------------------------------------------------ #
+#region ------ [ Begin: Guard The Disk Contract ] --------------------------------------------- #
 
-# Declaring both identities is SILENT-WRONG: the provider treats `unique_id` as authoritative
-# and would silently ignore `function`, so a stale literal could target a different disk than
-# the tag names (same guard class as linux_disk_manager).
-- name: 'BEGIN | Reject Ambiguous Disk Identity Declarations'
+# Declaring both identities is SILENT-WRONG: the provider treats `unique_id` as authoritative and
+# would silently ignore `function`, so a stale literal could target a different disk than the tag
+# names (same guard class as linux_disk_manager).
+- name: 'VALIDATE | Reject Ambiguous Disk Identity Declarations'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __disks__: "{{ config.disks | default([], true) }}"
@@ -51,74 +51,76 @@
 
 # The grammar check must precede canonicalization. A first-character-only transform would
 # otherwise silently accept malformed values such as Data, D::, D\, or D:\path.
-- name: 'BEGIN | Assert Drive Letter Grammar'
+- name: 'VALIDATE | Assert Drive Letter Grammar'
   when: (state | default('present') | string | lower | trim) == 'present'
   loop: "{{ config.disks | default([], true) }}"
   loop_control:
-    loop_var: 'disk'
-    label: "{{ disk.drive_letter | default('<missing>') }}"
+    loop_var: '__disk__'
+    label: "{{ __disk__.drive_letter | default('<missing>') }}"
   ansible.builtin.assert:
     that:
-      - disk.drive_letter is defined
-      - (disk.drive_letter | string) is match('^[A-Za-z](?::\\\\?)?$')
+      - __disk__.drive_letter is defined
+      - (__disk__.drive_letter | string) is match('^[A-Za-z](?::\\\\?)?$')
     fail_msg: >-
       windows_disk_manager.disks drive_letter
-      '{{ disk.drive_letter | default('<missing>') }}' is invalid. Use one ASCII letter with
+      '{{ __disk__.drive_letter | default('<missing>') }}' is invalid. Use one ASCII letter with
       an optional colon and an optional single backslash after the colon (for example D, D:,
       or D:\).
     quiet: true
 
 # Validate labels before disk mutation because win_format otherwise rejects an invalid NTFS
 # volume label only after the disk has been brought online, initialized, and partitioned.
-- name: 'BEGIN | Assert Volume Label Grammar'
+- name: 'VALIDATE | Assert Volume Label Grammar'
   when: (state | default('present') | string | lower | trim) == 'present'
   loop: "{{ config.disks | default([], true) }}"
   loop_control:
-    loop_var: 'disk'
-    label: "{{ disk.drive_letter | default('<missing>') }}"
+    loop_var: '__disk__'
+    label: "{{ __disk__.drive_letter | default('<missing>') }}"
   ansible.builtin.assert:
     that:
-      - disk.label is defined
-      - disk.label is string
-      - (disk.label | trim | length) >= 1
-      - (disk.label | trim | length) <= 32
+      - __disk__.label is defined
+      - __disk__.label is string
+      - (__disk__.label | trim | length) >= 1
+      - (__disk__.label | trim | length) <= 32
     fail_msg: >-
       windows_disk_manager.disks entry for drive_letter
-      '{{ disk.drive_letter | default('<missing>') }}' has an invalid label. Label must be a
+      '{{ __disk__.drive_letter | default('<missing>') }}' has an invalid label. Label must be a
       string whose trimmed length is between 1 and 32 characters (the NTFS volume-label limit).
     quiet: true
 
 # Validate classic NTFS cluster sizes before mutation; larger newer-Windows sizes are unmeasured
 # for the role's standard NTFS data volumes and are rejected fail-closed.
-- name: 'BEGIN | Assert Allocation Unit Is A Valid NTFS Cluster Size'
+- name: 'VALIDATE | Assert Allocation Unit Is A Valid NTFS Cluster Size'
   when: (state | default('present') | string | lower | trim) == 'present'
   loop: "{{ config.disks | default([], true) }}"
   loop_control:
-    loop_var: 'disk'
-    label: "{{ disk.drive_letter | default('<missing>') }}"
+    loop_var: '__disk__'
+    label: "{{ __disk__.drive_letter | default('<missing>') }}"
   ansible.builtin.assert:
     that:
       - >-
-        disk.allocation_unit is not defined or
-        (disk.allocation_unit | string) is match('^[0-9]+$')
+        __disk__.allocation_unit is not defined or
+        (__disk__.allocation_unit | string) is match('^[0-9]+$')
       - >-
-        disk.allocation_unit is not defined or
-        (disk.allocation_unit | int) in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+        __disk__.allocation_unit is not defined or
+        (__disk__.allocation_unit | int) in [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
     fail_msg: >-
       windows_disk_manager.disks entry for drive_letter
-      '{{ disk.drive_letter | default('<missing>') }}' has invalid allocation_unit
-      '{{ disk.allocation_unit | default('<missing>') }}'. Accepted NTFS cluster sizes are
+      '{{ __disk__.drive_letter | default('<missing>') }}' has invalid allocation_unit
+      '{{ __disk__.allocation_unit | default('<missing>') }}'. Accepted NTFS cluster sizes are
       512, 1024, 2048, 4096, 8192, 16384, 32768, and 65536 bytes.
     quiet: true
 
 # Drive letters are canonicalized only after the grammar guard: accepted forms all reduce to
 # their first character uppercased (D, d, D:, d:, D:\, and d:\ all become D).
-- name: 'BEGIN | Reject Duplicate Disk Identities And Drive Letters'
+- name: 'VALIDATE | Reject Duplicate Disk Identities And Drive Letters'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __disks__: "{{ config.disks | default([], true) }}"
-    __unique_ids__: "{{ __disks__ | selectattr('unique_id', 'defined') | map(attribute='unique_id') | list }}"
-    __functions__: "{{ __disks__ | selectattr('function', 'defined') | map(attribute='function') | list }}"
+    __unique_ids__: >-
+      {{ __disks__ | selectattr('unique_id', 'defined') | map(attribute='unique_id') | list }}
+    __functions__: >-
+      {{ __disks__ | selectattr('function', 'defined') | map(attribute='function') | list }}
     __drive_letters__: >-
       {{ __disks__ | map(attribute='drive_letter', default='') |
       map('regex_search', '^[A-Za-z]') | map('upper') | list }}
@@ -134,4 +136,4 @@
       {{ __drive_letters__ }}.
     quiet: true
 
-#endregion --- [ Disk contract guards ] ------------------------------------------------------ #
+#endregion --- [ Begin: Guard The Disk Contract ] --------------------------------------------- #

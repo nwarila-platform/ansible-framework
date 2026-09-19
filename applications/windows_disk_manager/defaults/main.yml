@@ -1,10 +1,9 @@
----
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
-# Lowest-precedence configuration for the windows_disk_manager role, merged by the shared
-# loader into 'windows_disk_manager_running' (defaults -> OS overlays -> playbook
+# Lowest-precedence configuration for the windows_disk_manager role, merged by the shared loader
+# into 'windows_disk_manager_running' (defaults -> OS overlays -> playbook
 # 'windows_disk_manager:' override dict). Task files receive the merged result as 'config'.
 #
 # WHAT THIS ROLE IS
@@ -13,41 +12,39 @@
 #   online/writable and provisioned only from recognized blank or unformatted states. Once
 #   Failover Clustering owns a disk, preparation is complete and the role leaves it unchanged.
 #
-# =========================================================================================== #
+# ============================================================================================= #
 windows_disk_manager_defaults:
 
-  #region ------ [ Platform targeting ] --------------------------------------------------------- #
+  #region ------ [ Platform targeting ] ------------------------------------------------------- #
   # Declared infrastructure platform (vmware | aws). REQUIRED in the windows_disk_manager:
   # override dict; no default is safe. Proxmox is intentionally excluded until its Windows
   # disk-identity path has been measured.
   platform: ''
-  #endregion --- [ Platform targeting ] --------------------------------------------------------- #
+  #endregion --- [ Platform targeting ] ------------------------------------------------------- #
 
-  #region ------ [ Managed disks ] -------------------------------------------------------------- #
-  # Declared disks to manage. Empty by default. Each entry declares EXACTLY ONE of
-  # unique_id / function (tasks/validate.yml rejects the silent-wrong BOTH case at loader
-  # INIT):
+  #region ------ [ Managed disks ] ------------------------------------------------------------ #
+  # Declared disks to manage. Empty by default. Each entry declares EXACTLY ONE of unique_id /
+  # function (tasks/validate.yml rejects the silent-wrong BOTH case at loader INIT):
   #
   #   - unique_id:       Whole-disk identity as Windows reports it ('eui.<hex>' on VMware);
   #                      required on vmware.
-  #     function:        AWS ONLY (the non-AWS path fails loudly without `unique_id`).
-  #                      The EBS volume's `Function` tag value (e.g. 'WSUSDB') — an
-  #                      alternative to a literal `unique_id` for a target whose EBS
-  #                      volume-id is only known at apply time (Terraform assigns it, not
-  #                      CI/CD). Resolved by tasks/resolve_aws.yml: ONE controller-side
-  #                      describe per host maps the tag to its attached volume-id, and the
-  #                      physical disk is matched via the Nitro guarantee that the NVMe
-  #                      serial equals the volume-id without its hyphen. Same contract as
-  #                      linux_disk_manager's resolver.
+  #     function:        AWS ONLY (the non-AWS path fails loudly without `unique_id`). The EBS
+  #                      volume's `Function` tag value (e.g. 'WSUSDB') — an alternative to a
+  #                      literal `unique_id` for a target whose EBS volume-id is only known at
+  #                      apply time (Terraform assigns it, not CI/CD). Resolved by
+  #                      tasks/resolve_aws.yml: ONE controller-side describe per host maps the
+  #                      tag to its attached volume-id, and the physical disk is matched via the
+  #                      Nitro guarantee that the NVMe serial equals the volume-id without its
+  #                      hyphen. Same contract as linux_disk_manager's resolver.
   #     drive_letter:    One ASCII letter with optional colon and optional backslash after the
   #                      colon: D, D:, or D:\ (case-insensitive).
   #     label:           NTFS volume label.
   #     allocation_unit: Allocation-unit size in bytes (default 4096).
   #     fstype:          Reserved/ignored; this role currently provisions NTFS only.
   #
-  # Literal unique_id values are trusted configuration; a resolved function becomes one at
-  # run time. A resolved disk is provisioned only when positively classified as RAW/blank or
+  # Literal unique_id values are trusted configuration; a resolved function becomes one at run
+  # time. A resolved disk is provisioned only when positively classified as RAW/blank or
   # GPT/unformatted, skipped when an NTFS volume has the declared label case-insensitively,
   # treated as converged when cluster-owned, and otherwise refused as foreign.
   disks: []
-  #endregion --- [ Managed disks ] -------------------------------------------------------------- #
+  #endregion --- [ Managed disks ] ------------------------------------------------------------ #
