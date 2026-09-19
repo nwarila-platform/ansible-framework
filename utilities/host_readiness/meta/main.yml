@@ -1,0 +1,49 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/main.yml'                                                         #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Role metadata for host_readiness. Description-only (style guide 8): NOT an enforcing          #
+# argument spec. The role's own guards live with the tasks that need them.                      #
+#                                                                                               #
+# This role waits, and on AWS Windows restarts the host once where Windows owes a restart.      #
+# It installs nothing and owns no other host state, so it declares no dependencies and no       #
+# collections beyond what the controller already has.                                           #
+# ============================================================================================= #
+galaxy_info:
+
+  role_name: 'host_readiness'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Waits until a host will answer, and proves it is finished. Proves the transport is usable
+    before os_bootstrap is called to repair it, then runs the precondition for the platform it
+    is on and the operating system it is running, because a host that answers is reachable but
+    not necessarily finished -- a cloud image can still be provisioning behind a working shell.
+    On AWS Windows it will restart the host once if Windows owes a restart, then wait for it
+    to come back settled.
+
+  license: 'MIT'
+  min_ansible_version: '2.21'
+
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+        - '10'
+    - name: 'Windows'
+      versions:
+        - '2016'
+        - '2019'
+        - '2022'
+        - '2025'
+
+  galaxy_tags:
+    - 'bootstrap'
+    - 'connectivity'
+    - 'preflight'
+    - 'readiness'
+    - 'wait'
+
+allow_duplicates: false
+
+dependencies: []

@@ -1,32 +1,34 @@
 # ============================================================================================= #
-# File: '{{ role_path }}/defaults/main.yml'                                    | Version 1.0.0 #
-# --- [ Description ] ------------------------------------------------------------------------ #
-# Bounds, not behaviour: how long the role may wait, never what it waits for -- with one exception,
-# below, for a host that must not be restarted by a converge. They live here rather than in vars/ so
-# a play can change them -- role vars outrank play vars, defaults do not.
+# File: '{{ role_path }}/defaults/main.yml' | Version 1.0.0                                     #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Bounds, not behaviour: how long the role may wait, never what it waits for -- with one
+# exception, below, for a host that must not be restarted by a converge. They live here rather
+# than in vars/ so a play can change them -- role vars outrank play vars, defaults do not.
 #
 # The two multiply: the wait runs for at most attempts x (pause + however long a refused
-# connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which covers
-# a Windows first boot.
+# connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which
+# covers a Windows first boot.
 # ============================================================================================= #
----
 host_readiness_attempts: 60
 host_readiness_pause_seconds: 15
 
-# The infrastructure platform this host runs on. Empty means DETECT it -- the role reads the SMBIOS
-# system vendor over raw, which is not a module and not a network call, so it is safe at the one
-# moment neither of those would be. Declaring it here skips that probe and is the right choice
-# wherever the precondition is load-bearing, because an undetected platform skips it silently.
+# The infrastructure platform this host runs on. Empty means DETECT it -- the role reads the
+# SMBIOS system vendor over raw, which is not a module and not a network call, so it is safe at
+# the one moment neither of those would be. Declaring it here skips that probe and is the right
+# choice wherever the precondition is load-bearing, because an undetected platform
+# skips it silently.
 #
 # A non-empty value selects tasks/checks_<platform>_<os>.yml, where <os> comes from the same
-# inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most platforms
-# have no precondition beyond answering, and saying so by omission is cheaper than a stub per pair.
+# inventory hint os_bootstrap dispatches on. A pair with no file is not an error -- most
+# platforms have no precondition beyond answering, and saying so by omission is cheaper than a
+# stub per pair.
 host_readiness_platform: ''
 
-# Whether a Windows host that owes a restart is restarted, once, before it is configured. Owed means
-# a servicing mark left with the Windows Modules Installer stopped, or the Windows Update reboot
-# flag: nothing clears either but a restart, so waiting on them only fails the run. On by default,
-# because a host being built should be restarted and the run carried on. Turn it off where a
-# converge must never restart the machine -- a live cluster node, say, where several owing a restart
-# at once would all restart together -- and the role then stops and says the restart is owed.
+# Whether a Windows host that owes a restart is restarted, once, before it is configured. Owed
+# means a servicing mark left with the Windows Modules Installer stopped, or the Windows Update
+# reboot flag: nothing clears either but a restart, so waiting on them only fails the run. On by
+# default, because a host being built should be restarted and the run carried on. Turn it off
+# where a converge must never restart the machine -- a live cluster node, say, where several
+# owing a restart at once would all restart together -- and the role then stops and says the
+# restart is owed.
 host_readiness_restart_when_owed: true
