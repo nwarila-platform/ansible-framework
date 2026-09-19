@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.2.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.9...v0.2.0) (2026-09-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operating_systems:** give the OS roles snake_case directory names ([#102](https://github.com/nwarila-platform/ansible-framework/issues/102))
+* **operating_systems:** delete the Rocky 9 and 10 scaffolds ([#101](https://github.com/nwarila-platform/ansible-framework/issues/101))
+
+### Features
+
+* **host_readiness:** restart a Windows host once when it owes a restart ([#99](https://github.com/nwarila-platform/ansible-framework/issues/99)) ([a98df47](https://github.com/nwarila-platform/ansible-framework/commit/a98df47c5258a23a875da8263ed76396c3f1f051))
+* **operating_systems:** add the 2019, 2016, Rocky 9 and Rocky 10 roles ([#105](https://github.com/nwarila-platform/ansible-framework/issues/105)) ([ed4692a](https://github.com/nwarila-platform/ansible-framework/commit/ed4692a70a657be6bacca515d0b039197d0efccc))
+
+
+### Bug Fixes
+
+* **framework:** correct dispatch, dead keys, inert options and stale docs ([#100](https://github.com/nwarila-platform/ansible-framework/issues/100)) ([926a756](https://github.com/nwarila-platform/ansible-framework/commit/926a756c6e6e03d5eacddc4ca32a33a4576d04e2))
+* **host_readiness:** a servicing session in progress is not a restart pending ([#96](https://github.com/nwarila-platform/ansible-framework/issues/96)) ([9b18f26](https://github.com/nwarila-platform/ansible-framework/commit/9b18f26c132c1f12d8ebdfc8daaba4c71d9b60c4))
+
+
+### Code Refactoring
+
+* **framework:** conform python3_pip, wazuh_agent and domain_member ([#104](https://github.com/nwarila-platform/ansible-framework/issues/104)) ([409a8a1](https://github.com/nwarila-platform/ansible-framework/commit/409a8a11d7687615e5bfa1c63bc93a2d4084f5f9))
+* **host_readiness:** conform the role and give it a scaffold ([#108](https://github.com/nwarila-platform/ansible-framework/issues/108)) ([441a40d](https://github.com/nwarila-platform/ansible-framework/commit/441a40dacd332a8e31627655049c3c7fe0a000ff))
+* **linux_disk_manager:** take the role to zero findings ([#111](https://github.com/nwarila-platform/ansible-framework/issues/111)) ([345c3cf](https://github.com/nwarila-platform/ansible-framework/commit/345c3cf7422289a6704c4a270ee32d2056b3477b))
+* **openvpn_client:** take the role to zero findings ([#106](https://github.com/nwarila-platform/ansible-framework/issues/106)) ([43e6d3d](https://github.com/nwarila-platform/ansible-framework/commit/43e6d3d28f1615b1884f44a9622e3b87fd694d8a))
+* **operating_systems:** give the OS roles snake_case directory names ([#102](https://github.com/nwarila-platform/ansible-framework/issues/102)) ([62ad23a](https://github.com/nwarila-platform/ansible-framework/commit/62ad23a2f9c88a7b39be2745d780dca4efce2973))
+* **operating_systems:** take the OS role bootstraps to zero findings ([#103](https://github.com/nwarila-platform/ansible-framework/issues/103)) ([5f407e9](https://github.com/nwarila-platform/ansible-framework/commit/5f407e92f16c45f466b974950515ad4725ffd883))
+* **os_bootstrap:** take the role to zero findings ([#110](https://github.com/nwarila-platform/ansible-framework/issues/110)) ([466ad7f](https://github.com/nwarila-platform/ansible-framework/commit/466ad7f0c3a9b2218947a71ae8afccee3d21fd37))
+* **remote_client:** take the role to zero findings ([#109](https://github.com/nwarila-platform/ansible-framework/issues/109)) ([21909be](https://github.com/nwarila-platform/ansible-framework/commit/21909be8965e7274ccccc0e53f04b80150938c44))
+* **windows_disk_manager:** derive the disk lists instead of latching them ([#107](https://github.com/nwarila-platform/ansible-framework/issues/107)) ([e5a798d](https://github.com/nwarila-platform/ansible-framework/commit/e5a798d9024e1d5406b96e657ec3ae14ab1b1851))
+
+
+### Miscellaneous
+
+* **operating_systems:** delete the Rocky 9 and 10 scaffolds ([#101](https://github.com/nwarila-platform/ansible-framework/issues/101)) ([9cba8b9](https://github.com/nwarila-platform/ansible-framework/commit/9cba8b9fd2de233a0f18031c6035175f278dba52))
+
 ## [0.1.9](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.8...v0.1.9) (2026-09-12)
 
 
