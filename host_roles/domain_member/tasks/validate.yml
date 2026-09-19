@@ -1,28 +1,33 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
-# Validates load-bearing domain_member configuration after the v3 loader merge, on the CONTROLLER,
-# before anything touches the guest. The realm, the joining account and its password are the
-# estate's identity and arrive from the caller rather than from a default, so this is where a
-# missing or malformed one is caught — in a second, rather than part-way through a join that
-# leaves a half-configured machine and an orphaned computer object behind.
+# Validates load-bearing domain_member configuration after the v3 loader merge, on the
+# CONTROLLER, before anything touches the guest. The realm, the joining account and its password
+# are the estate's identity and arrive from the caller rather than from a default, so this is
+# where a missing or malformed one is caught — in a second, rather than part-way through a join
+# that leaves a half-configured machine and an orphaned computer object behind.
 #
 # meta/main.yml describes these inputs; this file is what enforces them.
 #
 # Every guard is scoped to state=present. The clean path removes nothing and needs no inputs, so
 # requiring a realm to run it would fail a host for a contract it is not using.
 #
-# =========================================================================================== #
----
+# ============================================================================================= #
 - name: 'VALIDATE | Require The Realm, The Account, And Its Password'
+  vars:
+    # One DNS label, held as a part so the realm pattern stays inside the column limit without
+    # splitting the literal across lines, which would embed whitespace in it.
+    __label__: '[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
+
   when: (state | default('present') | string | lower | trim) == 'present'
 
   ansible.builtin.assert:
     fail_msg: >-
       Refusing to join: the identity contract is incomplete. The playbook must supply
       domain_member.realm as the DNS name of the realm ('corp.example.com', not the NetBIOS short
-      name), domain_member.user as an account permitted to create or reuse this machine's computer
+      name), domain_member.user as an account permitted to create or reuse this machine's
+      computer
       object, and domain_member.password as that account's password, already resolved to a
       string. It is a value rather than a location because reading a credential out of S3 is the
       secret lookup's job and the caller calls it -- pass the digest as the lookup's second
@@ -31,7 +36,7 @@
     quiet: true
     that:
       - domain_member_running.realm | default('', true) | string | trim
-        is match('^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?([.][A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$')
+        is match('^' ~ __label__ ~ '([.]' ~ __label__ ~ ')+$')
       - domain_member_running.user | default('', true) | string | trim | length > 0
       - domain_member_running.password | default('', true) is string
       - domain_member_running.password | default('', true) | trim | length > 0
@@ -40,12 +45,15 @@
   when: (state | default('present') | string | lower | trim) == 'present'
 
   vars:
-    __computer_ou__: "{{ domain_member_running.computer_ou | default('', true) | string | trim }}"
-    __timesync__: "{{ domain_member_running.timesync_source | default('', true) | string | trim }}"
+    __computer_ou__: >-
+      {{ domain_member_running.computer_ou | default('', true) | string | trim }}
+    __timesync__: >-
+      {{ domain_member_running.timesync_source | default('', true) | string | trim }}
 
   ansible.builtin.assert:
     fail_msg: >-
-      Refusing to join: the join contract is malformed. computer_ou, when declared, must be an LDAP
+      Refusing to join: the join contract is malformed. computer_ou, when declared, must be an
+      LDAP
       distinguished name such as 'OU=Servers,DC=corp,DC=example,DC=com' — DN values containing
       escaped commas are not supported. timesync_source, when declared, must be a host name or
       address. force_rejoin is a boolean, which a string that merely looks like one is not. Leave
@@ -76,13 +84,17 @@
     fail_msg: >-
       Refusing to join: the RedHat overlay is incomplete. realm_binary and adcli_binary must be
       absolute paths, and not because a wrong one merely fails at exec — it never reaches exec. A
-      path that does not resolve makes BEGIN's stat report absent, skips the realm read, and leaves
+      path that does not resolve makes BEGIN's stat report absent, skips the realm read, and
+      leaves
       the refuse-if-joined-elsewhere guard looking at an empty list, so a host already joined
-      somewhere else sails past the one refusal this role exists to make. sssd_custom_settings must
-      be a list of key/value pairs -- the shape the system role writes into sssd.conf -- and it must
+      somewhere else sails past the one refusal this role exists to make. sssd_custom_settings
+      must
+      be a list of key/value pairs -- the shape the system role writes into sssd.conf -- and it
+      must
       still carry all three machine-account settings: ad_maximum_machine_account_password_age,
       ad_machine_account_password_renewal_opts and krb5_validate. A caller override REPLACES this
-      list rather than extending it, so declaring one unrelated setting silently drops the posture
+      list rather than extending it, so declaring one unrelated setting silently drops the
+      posture
       this role exists to hold, and every membership proof still passes.
     quiet: true
     that:
@@ -106,9 +118,11 @@
     fail_msg: >-
       Refusing to join: the Windows overlay is incomplete. secure_channel must be a non-empty map
       of registry value names to whole numbers — the Domain member policy family this role writes
-      to Netlogon — and workgroup_name must name somewhere for a forced rejoin to park the machine
+      to Netlogon — and workgroup_name must name somewhere for a forced rejoin to park the
+      machine
       between leaving the realm and joining it again. The Kerberos encryption types are not
-      validated because they are not configurable: the task writes the benchmark's value directly.
+      validated because they are not configurable: the task writes the benchmark's value
+      directly.
     quiet: true
     that:
       - domain_member_running.secure_channel is mapping
@@ -118,6 +132,10 @@
       - domain_member_running.workgroup_name | default('', true) | string | trim | length > 0
 
 - name: 'VALIDATE | Require A Usable Address When One Is Declared'
+  vars:
+    # One dotted-quad octet, for the same reason as __label__ above.
+    __octet__: '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])'
+
   when:
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | lower) == 'windows'
@@ -132,13 +150,13 @@
     quiet: true
     that:
       - domain_member_running.registration_address | string | trim
-        is match('^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$')
+        is match('^(' ~ __octet__ ~ '\.){3}' ~ __octet__ ~ '$')
 
 # The RedHat path does not implement name publication yet. The invariant applies there too --
-# sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which is
-# the tunnel on a split-network member and therefore the exact defect. Stated here so the contract
-# is honestly asymmetric rather than silently so: a RedHat caller that declares the key is told it
-# does nothing, instead of believing it did.
+# sssd's dyndns_iface is the same idea, and its default is the interface that reaches AD, which
+# is the tunnel on a split-network member and therefore the exact defect. Stated here so the
+# contract is honestly asymmetric rather than silently so: a RedHat caller that declares the key
+# is told it does nothing, instead of believing it did.
 - name: 'VALIDATE | Report That RedHat Does Not Publish A Declared Address Yet'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
@@ -148,6 +166,7 @@
   ansible.builtin.debug:
     msg: >-
       domain_member.registration_address is declared but this platform does not implement it. The
-      host will publish whatever its resolver configuration leads it to publish. Remove the key, or
+      host will publish whatever its resolver configuration leads it to publish. Remove the key,
+      or
       accept that it has no effect here until the RedHat implementation lands.
     verbosity: 0

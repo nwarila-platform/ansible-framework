@@ -63,6 +63,8 @@
 !/applications/python3_pip/
 !/applications/s3_artifact_delivery/
 !/applications/wazuh_agent/
+!/applications/wazuh_agent/tests/.gitkeep
+!/applications/wazuh_agent/tests/
 !/applications/*/*.md
 !/applications/openvpn_client/defaults/
 !/applications/openvpn_client/files/

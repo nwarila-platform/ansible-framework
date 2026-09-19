@@ -1,7 +1,6 @@
----
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/vars/redhat_prod.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # Per-env overlay loaded by the generic role loader when os_family=redhat AND ENV=prod.
 # Replace every remaining CHANGE_ME placeholder with the real prod-env value before selecting
 # this overlay with `ENV=prod`.
@@ -14,7 +13,7 @@
 # (Previously this and test carried an env-suffixed `CHANGE_ME-ansible-prod`/`-test` shape that
 # contradicted dev's non-suffixed `<account-id>-ansible` and the IAM `*-ansible` wildcard;
 # normalized to the one convention.)
-# =========================================================================================== #
+# ============================================================================================= #
 
 s3:
   bucket: '<account-id>-ansible'

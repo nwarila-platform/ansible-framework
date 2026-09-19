@@ -1,9 +1,9 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/clean_redhat.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
-# state=clean is a supported no-op. The role stages nothing on the guest: the join is performed by
-# the system role, the password arrives resolved from the caller and is handed over as a
+# state=clean is a supported no-op. The role stages nothing on the guest: the join is performed
+# by the system role, the password arrives resolved from the caller and is handed over as a
 # variable, and nothing is downloaded to the target. There is therefore nothing to remove, and
 # this path says so rather than inventing work.
 #
@@ -14,7 +14,6 @@
 # join happen together and the host is never left without one.
 #
 # ============================================================================================= #
----
 
 #region ------ [ Process: Report There Is Nothing To Remove ] --------------------------------- #
 

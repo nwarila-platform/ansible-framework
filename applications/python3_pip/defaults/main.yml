@@ -1,6 +1,6 @@
 python3_pip_defaults:
 
-  #region ------ [ Package Manager ] ------------------------------------------------------------- #
+  #region ------ [ Package Manager ] ---------------------------------------------------------- #
   package_manager:
 
     'RedHat':
@@ -58,17 +58,17 @@ python3_pip_defaults:
       update_cache_retry_max_delay: 12
       upgrade: 'no'
 
-  #endregion --- [ Package Manager ] ------------------------------------------------------------- #
+  #endregion --- [ Package Manager ] ---------------------------------------------------------- #
 
-  #region ------ [ Self Upgrade ] ---------------------------------------------------------------- #
+  #region ------ [ Self Upgrade ] ------------------------------------------------------------- #
 
   self_upgrade:
     enabled: true
     version: 'latest'
 
-  #endregion --- [ Self Upgrade ] ---------------------------------------------------------------- #
+  #endregion --- [ Self Upgrade ] ------------------------------------------------------------- #
 
-  #region ------ [ Templates ] ------------------------------------------------------------------- #
+  #region ------ [ Templates ] ---------------------------------------------------------------- #
   templates:
 
     '/etc/pip.conf':
@@ -90,18 +90,31 @@ python3_pip_defaults:
         # cache_dir:
         # cert:
         # client_cert:
-          disable_pip_version_check: true       # Deviates from pip default (false) — managed by Ansible; prevents version info leak to PyPI
-          exists_action: 'abort'                # Deviates from pip default (switch) — safest; never silently overwrite existing paths
-          keyring_provider: 'subprocess'        # Deviates from pip default (auto) — process isolation for credential lookups
+          # Deviates from pip default (false) — managed by Ansible; prevents version info leak to
+          # PyPI
+          disable_pip_version_check: true
+          # Deviates from pip default (switch) — safest; never silently overwrite existing paths
+          exists_action: 'abort'
+          # Deviates from pip default (auto) — process isolation for credential lookups
+          keyring_provider: 'subprocess'
         # log:
           no_cache_dir: false
-          no_color: true                        # Deviates from pip default (false) — prevents terminal escape sequence injection in logs
-          no_input: true                        # Deviates from pip default (false) — prevents hanging on prompts in automated environments
+          # Deviates from pip default (false) — prevents terminal escape sequence injection in
+          # logs
+          no_color: true
+          # Deviates from pip default (false) — prevents hanging on prompts in automated
+          # environments
+          no_input: true
         # proxy:
-          require_virtualenv: false             # Cannot be true — Ansible pip tasks run system-wide
-          resume_retries: 3                     # Deviates from pip default (5) — limits repeated connections to potentially compromised endpoints
-          retries: 3                            # Deviates from pip default (5) — fewer retries reduces exposure window
-          timeout: 30                           # Deviates from pip default (15) — generous enough to avoid SSL-bypass workarounds
+          # Cannot be true — Ansible pip tasks run system-wide
+          require_virtualenv: false
+          # Deviates from pip default (5) — limits repeated connections to potentially
+          # compromised endpoints
+          resume_retries: 3
+          # Deviates from pip default (5) — fewer retries reduces exposure window
+          retries: 3
+          # Deviates from pip default (15) — generous enough to avoid SSL-bypass workarounds
+          timeout: 30
         # trusted_host: []
         # use_deprecated: []
         # use_feature: []
@@ -123,9 +136,13 @@ python3_pip_defaults:
           no_index: false
           no_warn_conflicts: false
           no_warn_script_location: false
-          only_binary: ':all:'                  # Deviates from pip default (empty) — CRITICAL; prevents setup.py code execution during install
+          # Deviates from pip default (empty) — CRITICAL; prevents setup.py code execution during
+          # install
+          only_binary: ':all:'
           pre: false
-          prefer_binary: true                   # Deviates from pip default (false) — defense-in-depth; prefer wheels over source distributions
+          # Deviates from pip default (false) — defense-in-depth; prefer wheels over source
+          # distributions
+          prefer_binary: true
         # prefix:
           progress_bar: 'auto'
         # report:
@@ -149,14 +166,17 @@ python3_pip_defaults:
         # only_binary: []
         # platform: []
           pre: false
-          prefer_binary: true                   # Deviates from pip default (false) — prefer wheels over source distributions
+          # Deviates from pip default (false) — prefer wheels over source distributions
+          prefer_binary: true
           progress_bar: 'auto'
         # python_version:
           require_hashes: false
         # src:
 
         freeze:
-          all: true                             # Deviates from pip default (false) — pin bootstrap packages (pip/setuptools) for reproducibility
+          # Deviates from pip default (false) — pin bootstrap packages (pip/setuptools) for
+          # reproducibility
+          all: true
         # exclude: []
         # exclude_editable: false
         # requirement: []
@@ -184,10 +204,11 @@ python3_pip_defaults:
           no_deps: false
         # only_binary: []
           pre: false
-          prefer_binary: true                   # Deviates from pip default (false) — prefer wheels over source distributions
+          # Deviates from pip default (false) — prefer wheels over source distributions
+          prefer_binary: true
           progress_bar: 'auto'
           require_hashes: false
         # src:
         # wheel_dir:
 
-  #endregion --- [ Templates ] ------------------------------------------------------------------- #
+  #endregion --- [ Templates ] ---------------------------------------------------------------- #

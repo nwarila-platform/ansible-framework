@@ -1,6 +1,6 @@
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/tasks/validate.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # Config-contract validation, auto-discovered and run ONCE by the shared loader's
 # 'INIT | Validating Merged Configuration' hook -- immediately after defaults -> overlays ->
 # overrides are merged, and BEFORE any OS-specific task file runs. Receives the fully merged
@@ -11,12 +11,12 @@
 # assert is therefore scoped to state=present and is a deliberate no-op otherwise (a bare
 # `-e state=clean` run must not be blocked on an input it never reads).
 #
-# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but validation
-# belongs in one hook. A malformed merged input now fails at loader INIT before staging or installer
-# work begins.
-# =========================================================================================== #
+# WHY THIS EXISTS: both installers consume the manager endpoint and S3 coordinates, but
+# validation belongs in one hook. A malformed merged input now fails at loader INIT before
+# staging or installer work begins.
+# ============================================================================================= #
 
-- name: 'BEGIN | Assert Manager Endpoint Is Explicit'
+- name: 'VALIDATE | Assert Manager Endpoint Is Explicit'
   when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
@@ -40,14 +40,15 @@
 #
 # This is intentionally play-scoped. A host deployed by a separate play is outside this check;
 # consumers that split deployment across plays must enforce uniqueness across those plays.
-- name: 'BEGIN | Assert Agent Name Is Unique Across This Play'
+- name: 'VALIDATE | Assert Agent Name Is Unique Across This Play'
   when: (state | default('present') | string | lower | trim) == 'present'
   run_once: true
   vars:
     __effective_names__: >-
       {%- set out = [] -%}
       {%- for h in ansible_play_hosts_all -%}
-        {%- set merged = hostvars[h].wazuh_agent_running | default(hostvars[h].config | default({}, true), true) -%}
+        {%- set merged = hostvars[h].wazuh_agent_running
+             | default(hostvars[h].config | default({}, true), true) -%}
         {%- set explicit = merged.agent_name | default('') | string | trim -%}
         {%- set _ = out.append(explicit if explicit | length > 0 else h) -%}
       {%- endfor -%}
@@ -61,7 +62,7 @@
       names: {{ __effective_names__ }}.
     quiet: true
 
-- name: 'BEGIN | Assert Shared Agent S3 Inputs Are Complete'
+- name: 'VALIDATE | Assert Shared Agent S3 Inputs Are Complete'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __agent_s3__: "{{ config.s3 | default({}) }}"
@@ -74,7 +75,7 @@
       '<account-id>' tripwire before an agent package can be downloaded.
     quiet: true
 
-- name: 'BEGIN | Assert Windows Agent MSI Inputs Are Complete'
+- name: 'VALIDATE | Assert Windows Agent MSI Inputs Are Complete'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | default('') | lower) == 'windows'
@@ -89,7 +90,7 @@
       64-character hexadecimal wazuh_agent.s3.agent_msi_sha256.
     quiet: true
 
-- name: 'BEGIN | Assert POSIX Agent RPM Inputs Are Complete'
+- name: 'VALIDATE | Assert POSIX Agent RPM Inputs Are Complete'
   when:
     - (state | default('present') | string | lower | trim) == 'present'
     - (ansible_facts.os_family | default('') | lower) != 'windows'

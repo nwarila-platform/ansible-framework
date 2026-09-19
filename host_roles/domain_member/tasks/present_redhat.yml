@@ -1,6 +1,6 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/present_redhat.yml'
-# --- [ Description ] ------------------------------------------------------------------------ #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Joins a RedHat-family host to the declared realm as an SSSD member.
 #
@@ -13,8 +13,8 @@
 #
 #   BEGIN    reads the machine, decides whether a join is required, and refuses a host that
 #            already belongs to a different realm.
-#   PROCESS  hands the caller's resolved join password, and the whole contract with it, to the
-#            system role.
+#   PROCESS  hands the caller's resolved join password, and the whole contract with it, to
+#            the system role.
 #   END      proves the result from the machine rather than from the system role's report.
 #
 # RC4 IS NOT A KNOB: the system role can re-admit it through a crypto subpolicy, and this role
@@ -28,11 +28,10 @@
 # asked to change its crypto policy.
 #
 # The password arrives resolved from the caller and is handed to the system role as a variable,
-# so the guest is never given cloud credentials and no task here writes the value to a file.
-# What pipelining does and does not change about that is in the README.
+# so the guest is never given cloud credentials and no task here writes the value to a file. What
+# pipelining does and does not change about that is in the README.
 #
 # ============================================================================================= #
----
 #region ------ [ Begin: Join This RedHat Host To The Realm ] ---------------------------------- #
 
 - name: 'BEGIN | Read The Machine And Decide One Action'
@@ -45,10 +44,10 @@
     # One action, two tasks: realmd is not present on a host that has never been joined -- the
     # system role installs it -- so the command that answers the question cannot run until
     # something establishes that it exists, and the stat is that something. The stat asks only
-    # whether the file is there, because a digest and a MIME type are answers to
-    # questions nobody here is asking, and both reads are marked read-only rather than left to be
-    # skipped under --check, because a run that cannot report what a machine currently is has
-    # nothing to say about it.
+    # whether the file is there, because a digest and a MIME type are answers to questions nobody
+    # here is asking, and both reads are marked read-only rather than left to be skipped under
+    # --check, because a run that cannot report what a machine currently is has nothing to
+    # say about it.
 
     - name: 'BEGIN | Look For The Realm Client'
       check_mode: false
@@ -85,9 +84,9 @@
     # membership written by other tooling (adcli by hand, a golden image, a hand-built sssd.conf)
     # leaves a machine keytab behind and no realmd, and for that host "the realm client is not
     # there" is not an answer to "what is this host joined to" -- it is the absence of one. The
-    # keytab is the cheapest artifact that separates the two: every working AD membership keys the
-    # machine, whatever tool wrote it. Only read when the realm client is missing, because when it
-    # exists the realm list above is the authoritative answer.
+    # keytab is the cheapest artifact that separates the two: every working AD membership keys
+    # the machine, whatever tool wrote it. Only read when the realm client is missing, because
+    # when it exists the realm list above is the authoritative answer.
 
     - name: 'BEGIN | Look For A Machine Keytab When The Realm Client Is Missing'
       check_mode: false
@@ -142,8 +141,8 @@
     # policy, before anything notices the mismatch. Whatever the join itself would then say, the
     # machine has already been half moved.
     #
-    # Compared case-insensitively, because realmd prints the realm in the directory's own case and
-    # a case difference is the same realm.
+    # Compared case-insensitively, because realmd prints the realm in the directory's own case
+    # and a case difference is the same realm.
     #
     # The test is exact, not membership: a host joined to the declared realm AND a second one is
     # still a host joined to another realm, and letting it converge green would put this role's
@@ -181,33 +180,35 @@
   become: true
   vars:
     __timesync_declared__: >-
-      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0 }}
+      {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0
+      }}
 
   # Begin The 'Process' Block
   block:
 
     #region ------ [ Process: Hand The Contract To The System Role ] -------------------------- #
     # Every variable below is this role's contract translated into the system role's own names,
-    # which is the whole reason the contract uses those names: the mapping is mechanical, so there
-    # is nowhere for a translation bug to hide.
+    # which is the whole reason the contract uses those names: the mapping is mechanical, so
+    # there is nowhere for a translation bug to hide.
     #
     # Four are pinned here rather than exposed in the contract:
     #
-    #   allow_rc4_crypto        false, always, and not reachable from the contract. See the file
-    #                           header.
+    #   allow_rc4_crypto        false, always, and not reachable from the contract. See
+    #                           the file header.
     #   manage_crypto_policies  false, always, for the same reason: on RHEL 8 the subpolicy this
     #                           would apply is what enables RC4.
-    #   manage_timesync         on exactly when a source was declared. The system role fails if it
-    #                           is on without one, so the two are derived from the same value
+    #   manage_timesync         on exactly when a source was declared. The system role fails if
+    #                           it is on without one, so the two are derived from the same value
     #                           rather than declared separately and allowed to disagree.
-    #   secure_logging          true, which is the system role's own default, stated because it is
-    #                           what keeps the password out of its task output.
+    #   secure_logging          true, which is the system role's own default, stated because it
+    #                           is what keeps the password out of its task output.
     #
     # The include carries 'not ansible_check_mode' because the system role cannot support check
-    # mode on the host that most needs a dry run: on a machine with no realmd yet, --check installs
-    # nothing and the role's own 'ensure services started' step then fails on a service that does
-    # not exist, which is an error about systemd rather than an honest account of what a real run
-    # would do. Skipped explicitly, --check reaches END and END says the useful thing instead.
+    # mode on the host that most needs a dry run: on a machine with no realmd yet, --check
+    # installs nothing and the role's own 'ensure services started' step then fails on a service
+    # that does not exist, which is an error about systemd rather than an honest account of what
+    # a real run would do. Skipped explicitly, --check reaches END and END says the
+    # useful thing instead.
 
     - name: 'PROCESS | Hand The Contract To The System Role'
       vars:
@@ -246,15 +247,15 @@
 
 
 #region ------ [ Always: Apply Any Pending Restart ] ------------------------------------------ #
-# The system role flushes handlers once, EARLY -- straight after it writes realmd.conf, verified in
-# the ad_integration source shipped with redhat.rhel_system_roles -- and then
-# writes the SSSD settings that carry this role's machine-account posture, which notify a restart
-# that is still pending when its tasks end. A converge where a later role in the play fails would
-# leave that restart unflushed, and the NEXT converge would write nothing, because the settings are
-# already correct, so it would notify nothing and never restart either. SSSD would run without the
+# The system role flushes handlers once, EARLY -- straight after it writes realmd.conf, verified
+# in the ad_integration source shipped with redhat.rhel_system_roles -- and then writes the SSSD
+# settings that carry this role's machine-account posture, which notify a restart that is still
+# pending when its tasks end. A converge where a later role in the play fails would leave that
+# restart unflushed, and the NEXT converge would write nothing, because the settings are already
+# correct, so it would notify nothing and never restart either. SSSD would run without the
 # posture for good, under runs that report success. An 'always' runs even when the block above
-# failed, and a handler that already ran is not run again, so a successful converge still restarts
-# exactly once. This is the same defence the Windows path makes for the same reason.
+# failed, and a handler that already ran is not run again, so a successful converge still
+# restarts exactly once. This is the same defence the Windows path makes for the same reason.
 
   # Begin the 'Always' block
   always:
@@ -314,8 +315,8 @@
     #endregion --- [ End: Re-Read The Realm Membership ] -------------------------------------- #
 
     #region ------ [ End: Prove The Declared Membership ] ------------------------------------- #
-    # The system role reports what it did; the realm list is what the machine actually holds. They
-    # come apart when a join half-succeeds -- a computer object created, a configuration not
+    # The system role reports what it did; the realm list is what the machine actually holds.
+    # They come apart when a join half-succeeds -- a computer object created, a configuration not
     # written -- which is exactly the case that must not pass as joined.
 
     - name: 'END | Prove The Declared Realm Is Configured'
@@ -346,12 +347,12 @@
     #endregion --- [ End: Prove The Declared Membership ] ------------------------------------- #
 
     #region ------ [ End: Prove The Machine Account Credential ] ------------------------------ #
-    # One action, two tasks: a configured realm is not a working membership. The configuration can
-    # name a realm this host can no longer authenticate to -- a machine account deleted or reset in
-    # the directory, a keytab that no longer matches -- and every file on disk still looks correct.
-    # adcli asks the directory, using the machine's own credential, which is the only answer that
-    # means the membership actually works. It is also what a forced rejoin exists to repair, so
-    # this is the task that tells an operator whether they need one.
+    # One action, two tasks: a configured realm is not a working membership. The configuration
+    # can name a realm this host can no longer authenticate to -- a machine account deleted or
+    # reset in the directory, a keytab that no longer matches -- and every file on disk still
+    # looks correct. adcli asks the directory, using the machine's own credential, which is the
+    # only answer that means the membership actually works. It is also what a forced rejoin
+    # exists to repair, so this is the task that tells an operator whether they need one.
     #
     # The test is allowed to fail so its result can be reported: ignore_errors keeps the failure
     # readable in the register, where failed_when: false would rewrite it and turn a real error
@@ -379,8 +380,10 @@
           '{{ inventory_hostname }}' is configured for '{{ domain_member_running.realm }}' but
           cannot authenticate to it with its own machine account:
           {{ __domain_member_testjoin__.stderr | default('', true) | trim
-          | default(__domain_member_testjoin__.msg | default('adcli testjoin failed', true), true) }}.
-          If that names a missing command, the realm client is incomplete; otherwise the membership
+          | default(__domain_member_testjoin__.msg | default('adcli testjoin failed', true),
+          true) }}.
+          If that names a missing command, the realm client is incomplete; otherwise the
+          membership
           exists on disk only and the computer object was most likely removed or reset in the
           directory, which domain_member.force_rejoin rebuilds.
         quiet: true

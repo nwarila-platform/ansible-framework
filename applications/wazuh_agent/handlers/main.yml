@@ -1,10 +1,15 @@
----
 # Handlers for wazuh_agent.
 
 - name: 'Wazuh agent config changed'
   listen: 'wazuh-agent-config-changed'
   become: true
-  when: wazuh_agent_svc_was_running | default(false)
+  # Reads the pre-config probe's register directly. A register is a host variable and IS visible
+  # to a handler -- verified against ansible-core 2.21 on both paths: a successful probe is read,
+  # and a skipped probe leaves a skipped-result dictionary whose nested service-state chain is
+  # undefined, which the default catches and makes this false. The set_fact latch this replaced
+  # existed on the belief that a handler could not see it.
+  when: >-
+    (__wazuh_agent_svc_pre__.status.ActiveState | default('inactive')) == 'active'
   ansible.builtin.systemd:
     name: 'wazuh-agent'
     state: 'restarted'
@@ -13,7 +18,8 @@
 # persists the merged config as the host-scoped `wazuh_agent_running` contract before dispatch.
 - name: 'Wazuh agent config changed (Windows)'
   listen: 'wazuh-agent-windows-config-changed'
-  when: wazuh_agent_win_svc_was_running | default(false)
+  when: >-
+    (__wazuh_agent_win_svc_pre__.services[0].state | default('')) == 'started'
   ansible.windows.win_service:
     name: "{{ wazuh_agent_running.windows.service_name | default('WazuhSvc') }}"
     state: 'restarted'

@@ -1,7 +1,6 @@
----
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/vars/redhat_dev.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 # Per-env overlay loaded by the generic role loader when os_family=redhat AND ENV=dev.
 #
 # Per-env operator action when bumping the agent version: upload the new RPM to
@@ -16,7 +15,7 @@
 # export the bucket name explicitly. Do NOT hand-edit this literal: it is a deliberate fail-fast
 # TRIPWIRE that role validation rejects before any AWS call. The real account id is never
 # committed to any repo.
-# =========================================================================================== #
+# ============================================================================================= #
 
 s3:
   bucket: '<account-id>-ansible'

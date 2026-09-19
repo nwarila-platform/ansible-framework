@@ -1,31 +1,31 @@
-# =========================================================================================== #
-# File: '{{ role_path }}/tasks/present_debian.yml'                                            #
-# --- [ Description ] ----------------------------------------------------------------------- #
-# OS-specific task file for the Debian family — state: present.                               #
-#                                                                                             #
-# Execution order:                                                                            #
-#   0. Preflight: verify ansible.builtin.apt prerequisites are met                            #
-#   1. Install the python3-pip package via the system package manager (apt)                   #
-#   2. Optionally self-upgrade pip to a pinned or latest version                              #
-#   3. Deploy pip.conf and any other configuration templates                                  #
-#   4. Validate that pip is installed and functional                                          #
-#                                                                                             #
-# This file is included by the shared role loader (tasks/main.yml) which passes the          #
-# merged running configuration as 'config'.                                                   #
-# =========================================================================================== #
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_debian.yml'                                              #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# OS-specific task file for the Debian family — state: present.                                 #
+#                                                                                               #
+# Execution order:                                                                              #
+#   0. Preflight: verify ansible.builtin.apt prerequisites are met                              #
+#   1. Install the python3-pip package via the system package manager (apt)                     #
+#   2. Optionally self-upgrade pip to a pinned or latest version                                #
+#   3. Deploy pip.conf and any other configuration templates                                    #
+#   4. Validate that pip is installed and functional                                            #
+#                                                                                               #
+# This file is included by the shared role loader (tasks/main.yml) which passes the             #
+# merged running configuration as 'config'.                                                     #
+# ============================================================================================= #
 
-#region ------ [ Script ] ------------------------------------------------------------------- #
+#region ------ [ Process: Install Python3 Pip On The Debian Family ] -------------------------- #
 
-- name: 'INFO | Entering OS Tasks (present_debian)'
+- name: 'PROCESS | Install Python3 Pip On The Debian Family'
 
   block:
 
-    #region ------ [ Preflight ] --------------------------------------------------------------- #
+    #region ------ [ Begin: Confirm The Package Manager Prerequisites ] ----------------------- #
 
-    - name: 'INFO | Entering Preflight Stage'
+    - name: 'BEGIN | Confirm The Package Manager Prerequisites'
       block:
 
-        #region ------ [ Preflight: Checking Installed Packages ] --------------------------------- #
+        #region ------ [ Begin: Check The Installed Packages ] -------------------------------- #
 
         # ansible.builtin.apt requires the python3-apt Python bindings to be installed on
         # the managed host. Ubuntu minimal installs typically include python3-apt, but
@@ -34,7 +34,7 @@
         # ansible_facts.packages is populated by the shared loader (tasks/main.yml) before
         # this file is included. The assert fails immediately with a clear remediation message
         # rather than producing a cryptic Python import error from inside ansible.builtin.apt.
-        - name: 'PREFLIGHT | Verify Required Packages Are Installed'
+        - name: 'BEGIN | Require The Package Manager Bindings'
           ansible.builtin.assert:
             that:
               - "'python3-apt' in ansible_facts.packages"
@@ -44,29 +44,30 @@
                 apt-get install -y python3-apt
             quiet: true
 
-        #endregion --- [ Preflight: Checking Installed Packages ] --------------------------------- #
+        #endregion --- [ Begin: Check The Installed Packages ] -------------------------------- #
 
-    #endregion --- [ Preflight ] --------------------------------------------------------------- #
+    #endregion --- [ Begin: Confirm The Package Manager Prerequisites ] ----------------------- #
 
-    #region ------ [ Main ] -------------------------------------------------------------------- #
+    #region ------ [ Process: Install And Configure Pip ] ------------------------------------- #
 
-    - name: 'INFO | Entering Main Stage'
+    - name: 'PROCESS | Install And Configure Pip'
       become: true
       block:
 
-        #region ------ [ MAIN: Installing the 'Python3-pip' Package ] -------------------------------- #
+        #region ------ [ Process: Install The Python3 Pip Package ] --------------------------- #
 
         # Install python3-pip via apt. package_manager is a dict keyed by os_family so we access
-        # the correct platform entry directly — no loop or filter needed. All parameters fall back
-        # to secure defaults via | default() so the task is safe even if an overlay only partially
-        # overrides the platform block.
-        - name: "MAIN | Installing the 'Python3-pip' Package"
+        # the correct platform entry directly — no loop or filter needed. All parameters fall
+        # back to secure defaults via | default() so the task is safe even if an overlay only
+        # partially overrides the platform block.
+        - name: 'PROCESS | Install The Python3 Pip Package'
           when: ansible_facts.os_family in config.package_manager
           vars:
             __package__: "{{ config.package_manager[ansible_facts.os_family] }}"
 
           ansible.builtin.apt:
-            allow_change_held_packages: "{{ __package__.allow_change_held_packages | default(false) }}"
+            allow_change_held_packages: >-
+              {{ __package__.allow_change_held_packages | default(false) }}
             allow_downgrade: "{{ __package__.allow_downgrade | default(false) }}"
             allow_unauthenticated: "{{ __package__.allow_unauthenticated | default(false) }}"
             autoclean: "{{ __package__.autoclean | default(false) }}"
@@ -74,7 +75,9 @@
             cache_valid_time: "{{ __package__.cache_valid_time | default(0) }}"
             clean: "{{ __package__.clean | default(false) }}"
             default_release: "{{ __package__.default_release | default(omit) }}"
-            dpkg_options: "{{ __package__.dpkg_options | default(['force-confold', 'force-confdef']) | join(',') }}"
+            dpkg_options: >-
+              {{ __package__.dpkg_options | default(['force-confold', 'force-confdef']) |
+              join(',') }}
             fail_on_autoremove: "{{ __package__.fail_on_autoremove | default(false) }}"
             force: "{{ __package__.force | default(false) }}"
             force_apt_get: "{{ __package__.force_apt_get | default(false) }}"
@@ -87,12 +90,13 @@
             state: "{{ __package__.state | default('present') }}"
             update_cache: "{{ __package__.update_cache | default(false) }}"
             update_cache_retries: "{{ __package__.update_cache_retries | default(5) }}"
-            update_cache_retry_max_delay: "{{ __package__.update_cache_retry_max_delay | default(12) }}"
+            update_cache_retry_max_delay: >-
+              {{ __package__.update_cache_retry_max_delay | default(12) }}
             upgrade: "{{ __package__.upgrade | default('no') }}"
 
-        #endregion --- [ MAIN: Installing the 'Python3-pip' Package ] -------------------------------- #
+        #endregion --- [ Process: Install The Python3 Pip Package ] --------------------------- #
 
-        #region ------ [ MAIN: Self Upgrade ] -------------------------------------------------------- #
+        #region ------ [ Process: Upgrade Pip Itself ] ---------------------------------------- #
 
         # The apt-packaged pip is typically outdated. This task upgrades pip to the version
         # specified in config.self_upgrade.version. Set to 'latest' for the newest release,
@@ -101,7 +105,7 @@
         # Runs before template deployment so pip.conf is applied to the final pip version.
         # Guarded by config.self_upgrade.enabled — disable per-environment via overlay vars.
         # umask '0022' ensures installed files are world-readable regardless of system defaults.
-        - name: 'MAIN | Upgrading PIP To {{ __pip_version__ }}'
+        - name: 'PROCESS | Upgrade Pip To The Declared Version'
           become: true
           when: config.self_upgrade.enabled | default(true) | bool
           vars:
@@ -115,9 +119,9 @@
             umask: '0022'
             version: "{{ omit if __is_latest__ else __pip_version__ }}"
 
-        #endregion --- [ MAIN: Self Upgrade ] -------------------------------------------------------- #
+        #endregion --- [ Process: Upgrade Pip Itself ] ---------------------------------------- #
 
-        #region ------ [ MAIN: Templates ] ---------------------------------------------------------- #
+        #region ------ [ Process: Deploy The Configuration Templates ] ------------------------ #
 
         # Deploy configuration file templates defined in config.templates. Each entry specifies
         # the Jinja2 source template, destination path, file ownership, permissions, and the
@@ -125,9 +129,10 @@
         #
         # SELinux parameters are omitted on Debian-family hosts — the | default(omit) guards
         # ensure the template module does not fail when selinux context keys are absent.
-        - name: 'MAIN | Deploy Configuration Templates'
-          loop: "{{ config.templates | default({}) | dict2items | map(attribute='value') | list }}"
-          loop_control: { loop_var: '__template__' }
+        - name: 'PROCESS | Deploy The Configuration Templates'
+          loop: >-
+            {{ config.templates | default({}) | dict2items | map(attribute='value') | list }}
+          loop_control: { label: '{{ __template__ }}', loop_var: '__template__' }
 
           ansible.builtin.template:
             src: "{{ __template__.template }}"
@@ -140,17 +145,17 @@
             setype: "{{ __template__.file.selinux.type | default(omit) }}"
             seuser: "{{ __template__.file.selinux.user | default(omit) }}"
 
-        #endregion --- [ MAIN: Templates ] ---------------------------------------------------------- #
+        #endregion --- [ Process: Deploy The Configuration Templates ] ------------------------ #
 
-        #region ------ [ MAIN: Validation ] --------------------------------------------------------- #
+        #region ------ [ End: Verify The Installation ] --------------------------------------- #
 
         # Smoke test: run 'pip3 --version' to verify the installation is functional.
         # failed_when: false prevents Ansible from halting on a non-zero exit code,
         # allowing the assert task below to provide a meaningful error message instead.
-        - name: 'MAIN | Verifying PIP Installation'
+        - name: 'END | Verify The Pip Installation'
           changed_when: false
           failed_when: false
-          register: __pip_check__
+          register: '__python3_pip_check__'
 
           ansible.builtin.command:
             argv:
@@ -159,19 +164,19 @@
 
         # Assert that pip returned successfully and the output contains 'pip' to guard
         # against edge cases like a broken symlink or wrapper script masking a real failure.
-        - name: 'MAIN | Validate PIP Is Functional'
+        - name: 'END | Verify Pip Is Functional'
           ansible.builtin.assert:
             that:
-              - __pip_check__.rc == 0
-              - "'pip' in __pip_check__.stdout"
+              - __python3_pip_check__.rc == 0
+              - "'pip' in __python3_pip_check__.stdout"
             fail_msg: >-
               PIP validation failed. Expected 'pip3 --version' to return successfully.
-              stdout: {{ __pip_check__.stdout | default('') }}
-              stderr: {{ __pip_check__.stderr | default('') }}
-            success_msg: "{{ __pip_check__.stdout }}"
+              stdout: {{ __python3_pip_check__.stdout | default('') }}
+              stderr: {{ __python3_pip_check__.stderr | default('') }}
+            success_msg: "{{ __python3_pip_check__.stdout }}"
 
-        #endregion --- [ MAIN: Validation ] --------------------------------------------------------- #
+        #endregion --- [ End: Verify The Installation ] --------------------------------------- #
 
-    #endregion --- [ Main ] -------------------------------------------------------------------- #
+    #endregion --- [ Process: Install And Configure Pip ] ------------------------------------- #
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Process: Install Python3 Pip On The Debian Family ] -------------------------- #
