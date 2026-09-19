@@ -1,6 +1,6 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/clean_windows.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # This role owns no state of its own -- it holds values and hands them to openvpn_client -- so
 # there is nothing here to clean. The entry point exists because the loader resolves 'clean' to a
@@ -11,9 +11,8 @@
 # as a side effect of tidying caches.
 #
 # ============================================================================================= #
----
 
-- name: 'INFO | Nothing To Clean (remote_client owns no state)'
+- name: 'END | Report That Clean Has No State To Remove'
   ansible.builtin.debug:
     msg: >-
       remote_client holds configuration only; state=clean is a supported no-op. To remove the

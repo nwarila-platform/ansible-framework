@@ -187,8 +187,17 @@
 !/host_roles/domain_member/tests/
 !/host_roles/domain_member/vars/
 !/host_roles/remote_client/defaults/
+!/host_roles/remote_client/files/
+!/host_roles/remote_client/handlers/
+!/host_roles/remote_client/library/
+!/host_roles/remote_client/lookup_plugins/
 !/host_roles/remote_client/meta/
+!/host_roles/remote_client/module_utils/
+!/host_roles/remote_client/molecule/
 !/host_roles/remote_client/tasks/
+!/host_roles/remote_client/templates/
+!/host_roles/remote_client/tests/
+!/host_roles/remote_client/vars/
 !/host_roles/*/*/*.yml
 !/host_roles/*/*/.gitkeep
 
