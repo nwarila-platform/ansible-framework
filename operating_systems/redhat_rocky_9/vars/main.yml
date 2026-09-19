@@ -1,0 +1,24 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/vars/main.yml'                                        | Version 1.0.0  #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Internal role constants - NOT intended to be overridden by users.                             #
+#                                                                                               #
+# These keys are the role's IDENTITY, consumed by the OS-validation assert in                   #
+# 'tasks/bootstrap.yml'. They live here rather than in defaults/main.yml precisely BECAUSE role #
+# vars outrank play vars and group_vars: if a caller could override them, the OS check would    #
+# become decorative and the role would happily run its RHEL-9 logic on anything.                #
+# ============================================================================================= #
+
+#region ------ [ Operating System Identity ] -------------------------------------------------- #
+
+rhel9_bootstrap_os_family: 'RedHat'
+rhel9_bootstrap_distributions:
+  - 'RedHat'
+  - 'Rocky'
+rhel9_bootstrap_os_major: 9
+
+# python3.12 first shipped in RHEL 9.4. Below that minor the package list cannot be satisfied, so
+# the release assert refuses the host rather than letting dnf fail on a package name.
+rhel9_bootstrap_os_minor_floor: 4
+
+#endregion --- [ Operating System Identity ] -------------------------------------------------- #
