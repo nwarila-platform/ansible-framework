@@ -1,7 +1,6 @@
----
-# =========================================================================================== #
+# ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml'
-# --- [ Description ] ----------------------------------------------------------------------- #
+# --- [ Description ] ------------------------------------------------------------------------- #
 #
 # Lowest-precedence configuration for the linux_disk_manager role, merged by the shared loader
 # into 'linux_disk_manager_running' (defaults -> vars/<family>[_<dist>[_<ver>]][_<env>].yml
@@ -25,22 +24,22 @@
 #   Input correctness is primarily CI/CD's responsibility. The role retains only load-bearing
 #   guards for silent provider skips, ambiguous identity, and destructive foreign disk layouts.
 #
-# =========================================================================================== #
+# ============================================================================================= #
 linux_disk_manager_defaults:
 
-  #region ------ [ Platform targeting ] --------------------------------------------------------- #
+  #region ------ [ Platform targeting ] ------------------------------------------------------- #
   # Declared infrastructure platform (vmware | proxmox | aws). REQUIRED in the
   # linux_disk_manager: override dict; no default is safe. present_redhat.yml dispatches all
-  # three to the SAME shared by-id provider block because every identity is a
-  # /dev/disk/by-id/ NAME. There is deliberately NO detected-vendor match.
+  # three to the SAME shared by-id provider block because every identity is a /dev/disk/by-id/
+  # NAME. There is deliberately NO detected-vendor match.
   platform: ''
-  #endregion --- [ Platform targeting ] --------------------------------------------------------- #
+  #endregion --- [ Platform targeting ] ------------------------------------------------------- #
 
-  #region ------ [ Managed disks ] -------------------------------------------------------------- #
+  #region ------ [ Managed disks ] ------------------------------------------------------------ #
   # Declared disks to manage. Empty by default, but `platform` is still required whenever this
   # role is invoked. Each entry declares EXACTLY ONE of unique_id / function. tasks/validate.yml
-  # rejects the silent-wrong BOTH case at loader INIT; missing/unusable identities fail loudly
-  # in the resolver/device tasks:
+  # rejects the silent-wrong BOTH case at loader INIT; missing/unusable identities fail loudly in
+  # the resolver/device tasks:
   #
   #   - unique_id:   Stable /dev/disk/by-id/ NAME of the WHOLE disk (VMware WWN 'wwn-0x...',
   #                  Proxmox QEMU by-id serial, or AWS NVMe serial by-id name). Never a /dev/sdX
@@ -59,7 +58,8 @@ linux_disk_manager_defaults:
   #     passno:      fstab fsck order (default 2 for a data mount).
   #
   # THE `function` RESOLUTION CONTRACT:
-  #   - Resolution uses ONE controller-side amazon.aws.ec2_vol_info call per HOST, never per disk.
+  #   - Resolution uses ONE controller-side amazon.aws.ec2_vol_info call per HOST, never
+  #     per disk.
   #   - Every declared `function` must match EXACTLY ONE attached volume's Function tag; zero or
   #     multiple matches fails loudly (never silently resolves to the first match).
   #   - A match resolves to `unique_id: 'nvme-Amazon_Elastic_Block_Store_' ~
@@ -92,4 +92,4 @@ linux_disk_manager_defaults:
   #         label:       'wazuh-data'
   #         opts:        'defaults,nodev,nosuid')
   disks: []
-  #endregion --- [ Managed disks ] -------------------------------------------------------------- #
+  #endregion --- [ Managed disks ] ------------------------------------------------------------ #
