@@ -148,10 +148,10 @@
               - "/dev/disk/by-id/{{ item.unique_id }}"
 
         # NEGATIVE PROOF: a disk carrying a foreign msdos table, an LVM PV signature, or a
-        # whole-disk filesystem fails this assert (pttype != 'gpt', or no child partition is
-        # labeled `item.item.label`), and the role stops here — before parted ever runs. A
-        # blank/RAW disk (no pttype, no fstype) and a disk this role already partitioned and
-        # labeled (pttype 'gpt' with a child partition labeled `item.item.label`) both pass, so
+        # whole-disk filesystem fails this assert (pttype != 'gpt', or no child partition carries
+        # the declared `label`), and the role stops here — before parted ever runs. A blank/RAW
+        # disk (no pttype, no fstype) and a disk this role already partitioned and labeled
+        # (pttype 'gpt' with a child partition carrying the declared `label`) both pass, so
         # re-runs stay idempotent.
         #
         # Half-provisioned recovery: a run that lays down the GPT label but dies before mkfs
@@ -161,10 +161,11 @@
         - name: 'BEGIN | Assert No Foreign Disk Layout Before Partitioning'
           loop: "{{ __linux_disk_manager_layout__.results }}"
           loop_control:
+            loop_var: '__layout_probe__'
             index_var: '__idx__'
-            label: "{{ item.item.unique_id }}"
+            label: "{{ __layout_probe__.item.unique_id }}"
           vars:
-            __dev__: "{{ (item.stdout | from_json).blockdevices[0] }}"
+            __dev__: "{{ (__layout_probe__.stdout | from_json).blockdevices[0] }}"
             __children__: "{{ __dev__.children | default([], true) }}"
             # Zipped by index, not re-looked-up: both probes above loop over the SAME `__disks__`
             # list, in the same order, unfiltered — so index `__idx__` into
@@ -177,25 +178,27 @@
             __is_blank__: "{{ (__pttype__ | length) == 0 and (__fstype__ | length) == 0 }}"
             __is_ours__: >-
               {{ __pttype__ == 'gpt' and (__children__ | selectattr('label', 'equalto',
-              item.item.label) | list | length) > 0 }}
+              __layout_probe__.item.label) | list | length) > 0 }}
+
           ansible.builtin.assert:
+            fail_msg: >-
+              Refusing to partition '/dev/disk/by-id/{{ __layout_probe__.item.unique_id }}' ({{
+              __layout_probe__.item.mount_point }}): it is neither blank/RAW nor already
+              provisioned by this role (GPT with a partition labeled '{{
+              __layout_probe__.item.label }}'). Detected on-disk signature: pttype='{{ __pttype__
+              | default('none', true) }}', fstype='{{ __fstype__ | default('none', true) }}',
+              partitions={{ __children__ | map(attribute='name') | list }}.
+              community.general.parted unconditionally rewrites the partition table (mklabel gpt)
+              when the on-disk table does not already match 'gpt', which would DESTROY this
+              disk's existing data. Verify 'unique_id' for this entry in config.disks — it must
+              point at a blank disk or one already labeled '{{ __layout_probe__.item.label }}' by
+              this role, never a foreign or occupied disk. If this disk is half-provisioned from
+              a previously failed run (GPT but no partition labeled '{{
+              __layout_probe__.item.label }}'), confirm it holds no data, wipe it (`wipefs -a
+              /dev/disk/by-id/{{ __layout_probe__.item.unique_id }}`), and re-run.
+            quiet: true
             that:
               - __is_blank__ or __is_ours__
-            fail_msg: >-
-              Refusing to partition '/dev/disk/by-id/{{ item.item.unique_id }}' ({{
-              item.item.mount_point }}): it is neither blank/RAW nor already provisioned by
-              this role (GPT with a partition labeled '{{ item.item.label }}'). Detected
-              on-disk signature: pttype='{{ __pttype__ | default('none', true) }}', fstype='{{
-              __fstype__ | default('none', true) }}', partitions={{ __children__ |
-              map(attribute='name') | list }}. community.general.parted unconditionally rewrites
-              the partition table (mklabel gpt) when the on-disk table does not already match
-              'gpt', which would DESTROY this disk's existing data. Verify 'unique_id' for this
-              entry in config.disks — it must point at a blank disk or one already labeled '{{
-              item.item.label }}' by this role, never a foreign or occupied disk. If this
-              disk is half-provisioned from a previously failed run (GPT but no partition labeled
-              '{{ item.item.label }}'), confirm it holds no data, wipe it (`wipefs -a
-              /dev/disk/by-id/{{ item.item.unique_id }}`), and re-run.
-            quiet: true
 
         #endregion --- [ Begin: Refuse A Foreign Or Occupied Disk Before Parted ] ------------- #
 
@@ -267,14 +270,16 @@
         - name: 'PROCESS | Mount Filesystem By UUID And Persist To Fstab'
           loop: "{{ __linux_disk_manager_filesystem_uuid__.results }}"
           loop_control:
-            label: "{{ item.item.mount_point }}"
+            loop_var: '__uuid_probe__'
+            label: "{{ __uuid_probe__.item.mount_point }}"
+
           ansible.posix.mount:
-            path: "{{ item.item.mount_point }}"
-            src: "UUID={{ item.stdout | trim }}"
-            fstype: "{{ item.item.fstype | default('xfs') }}"
-            opts: "{{ item.item.opts | default('defaults,nodev,nosuid') }}"
-            passno: "{{ item.item.passno | default(2) }}"
             dump: 0
+            fstype: "{{ __uuid_probe__.item.fstype | default('xfs') }}"
+            opts: "{{ __uuid_probe__.item.opts | default('defaults,nodev,nosuid') }}"
+            passno: "{{ __uuid_probe__.item.passno | default(2) }}"
+            path: "{{ __uuid_probe__.item.mount_point }}"
+            src: "UUID={{ __uuid_probe__.stdout | trim }}"
             state: 'mounted'
 
         # Grow the filesystem to fill its partition. Real, idempotent case this covers: a
