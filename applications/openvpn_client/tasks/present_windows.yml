@@ -537,9 +537,16 @@
     #region ------ [ Process: Hold The Automatic Service On ] --------------------------------- #
     # The MSI registers the automatic service DISABLED and never started -- read from the
     # installer's own source, msi.wxs, ServiceInstall Start="disabled" -- so without this the
-    # profile sits in config-auto and nothing ever opens it. Auto, not delayed: the tunnel is
-    # what the domain join and everything behind the domain controllers depends on, and delayed
-    # start holds it back by minutes after every boot. The logon account is HELD, not inherited:
+    # profile sits in config-auto and nothing ever opens it. The tunnel must not be established
+    # while the platform's launch agent is still running its boot stages. On AWS the OpenVPN
+    # service reaches Running about 41 seconds after boot while the EC2Launch agent does not
+    # finish until 51-65 seconds after boot, so the tunnel comes up inside the agent's window;
+    # something in that window stalls network API calls for 8-14 seconds, and an agent whose
+    # metadata fetch lands in the stall marks its whole run failed, which a readiness gate then
+    # refuses until the machine is rebooted by hand. Delayed start puts the tunnel after the
+    # agent. Nothing in a converge needs the tunnel in the first two minutes: Ansible reaches the
+    # host over its own network interface, and domain traffic happens later in the run. The logon
+    # account is HELD, not inherited:
     # it is the identity the profile's permissions admit, and a service moved to any other
     # account would look healthy and open nothing. A virtual account carries no password, so none
     # is given, and update_password is pinned to the module's documented current default because
@@ -558,7 +565,7 @@
         desktop_interact: false
         force_dependent_services: false
         name: "{{ openvpn_client_running.service_name }}"
-        start_mode: 'auto'
+        start_mode: 'delayed'
         state: 'started'
         update_password: 'on_create'
         username: "{{ openvpn_client_running.service_account }}"
@@ -895,14 +902,14 @@
           '{{ openvpn_client_running.service_name }}' is
           '{{ __openvpn_client_service__.services[0].state }}' with start mode
           '{{ __openvpn_client_service__.services[0].start_mode }}' as
-          '{{ __openvpn_client_service__.services[0].username }}'; expected started, auto and
+          '{{ __openvpn_client_service__.services[0].username }}'; expected started, delayed and
           '{{ openvpn_client_running.service_account }}'. A service that is not running opens no
           tunnel, one that is not automatic opens none after the next reboot, and one running as
           any other account cannot read the profile.
         quiet: true
         that:
           - __openvpn_client_service__.services[0].state == 'started'
-          - __openvpn_client_service__.services[0].start_mode == 'auto'
+          - __openvpn_client_service__.services[0].start_mode == 'delayed'
           - __openvpn_client_service__.services[0].username | lower
             == openvpn_client_running.service_account | lower
 
