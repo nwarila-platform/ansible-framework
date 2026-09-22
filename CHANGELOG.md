@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.3.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.2.0...v0.3.0) (2026-09-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **s3_artifact_delivery:** delete the role ([#116](https://github.com/nwarila-platform/ansible-framework/issues/116))
+
+### Code Refactoring
+
+* **linux_disk_manager:** read named loop variables directly ([#114](https://github.com/nwarila-platform/ansible-framework/issues/114)) ([88e2f5b](https://github.com/nwarila-platform/ansible-framework/commit/88e2f5b58cd66b462c6dd445a73fb8d528d01a0b))
+
+
+### Miscellaneous
+
+* **s3_artifact_delivery:** delete the role ([#116](https://github.com/nwarila-platform/ansible-framework/issues/116)) ([f3605ec](https://github.com/nwarila-platform/ansible-framework/commit/f3605ecc32c859bd2b5f2fd4f3d60444821d67d4))
+
 ## [0.2.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.1.9...v0.2.0) (2026-09-19)
 
 
