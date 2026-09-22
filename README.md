@@ -79,7 +79,6 @@ modified.
 | `linux_disk_manager`   | Step-0 storage initializer: selects disks by stable by-id identity, then partitions, formats, and mounts by UUID (VMware, Proxmox, AWS)   |
 | `openvpn_client`       | OpenVPN community client for Windows, installed at a pinned version from S3 through the controller and verified against a pinned digest  |
 | `python3_pip`          | Installs, upgrades, and configures Python3 pip with a security-hardened `pip.conf`                                                       |
-| `s3_artifact_delivery` | Delivers checksum-pinned S3 artifacts through fresh controller-generated presigned URLs; no target holds AWS credentials                 |
 | `wazuh_agent`          | Installs and enrolls the Wazuh agent: a standalone RPM on RedHat, an MSI on Windows, both fetched from S3                                |
 | `windows_disk_manager` | Windows NTFS disk provisioning (initialize, partition, format) with stable disk identity and a drive-letter contract for VMware and AWS  |
 

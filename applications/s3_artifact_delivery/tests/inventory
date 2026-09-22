@@ -1,3 +1,0 @@
-[artifact_delivery_cleanup]
-control ansible_connection=local s3_artifact_delivery_platform=fixture
-transport_lost ansible_connection=ssh ansible_host=127.0.0.1 ansible_port=1 ansible_user=fixture ansible_timeout=1 s3_artifact_delivery_platform=posix

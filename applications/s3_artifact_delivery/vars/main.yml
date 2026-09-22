@@ -1,2 +1,0 @@
----
-# The helper role has no internal constants. Public tuning values live in defaults/main.yml.

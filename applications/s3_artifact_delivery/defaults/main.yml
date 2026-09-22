@@ -1,6 +1,0 @@
----
-# Public tuning values for the explicit tasks_from: fetch entry point.
-s3_artifact_delivery_url_expiry_seconds: 900
-s3_artifact_delivery_retry_delay_seconds: 10
-s3_artifact_delivery_transfer_timeout_seconds: 60
-s3_artifact_delivery_posix_mode: '0600'

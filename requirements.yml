@@ -33,14 +33,13 @@ collections:
   # consumer that executes it, so these four are kept in lockstep with that file.
   # ---------------------------------------------------------------------------
 
-  # s3_object, sts_assume_role, ec2_vol_info.
+  # s3_object and ec2_vol_info.
   - name: 'amazon.aws'
     version: '11.4.0'
 
   # setup and the win_* modules every Windows path uses: win_copy, win_file,
-  # win_find, win_get_url, win_hostname, win_package, win_powershell, win_reboot,
-  # win_regedit, win_service, win_service_info, win_shell, win_stat, win_uri and
-  # win_wait_for.
+  # win_find, win_hostname, win_package, win_powershell, win_reboot, win_regedit,
+  # win_service, win_service_info, win_shell, win_stat, win_uri and win_wait_for.
   - name: 'ansible.windows'
     version: '3.7.0'
 
