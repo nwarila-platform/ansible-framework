@@ -19,17 +19,17 @@
 #                                                                                             #
 # =========================================================================================== #
 
-#region ------ [ Script ] ------------------------------------------------------------------- #
+#region ------ [ Script ] --------------------------------------------------------------------- #
 
 - name: 'INFO | Entering Role'
   block:
 
-    #region ------ [ Initialization ] ------------------------------------------------------- #
+    #region ------ [ Initialization ] --------------------------------------------------------- #
 
     - name: 'INFO | Entering Initialization Stage'
       block:
 
-        #region ------ [ Initialization: Validating Required Input(s) ] ------------------------------ #
+        #region ------ [ Initialization: Validating Required Input(s) ] ----------------------- #
 
         # Fail immediately if 'ENV' is missing, empty, or contains unsafe characters.
         # ENV determines which environment-specific overlay files are loaded
@@ -57,21 +57,24 @@
               - (ENV | string | trim) is match('^[a-zA-Z0-9_-]+$')
               - __state__ in ['present', 'absent', 'clean']
             fail_msg: >-
-              {% if ENV is undefined or (ENV | string | trim | length) == 0 or not ((ENV | string | trim) is match('^[a-zA-Z0-9_-]+$')) %}
+              {% if ENV is undefined or (ENV | string | trim | length) == 0 or not ((ENV |
+              string | trim) is match('^[a-zA-Z0-9_-]+$')) %}
               The 'ENV' variable is required but was
               {{ 'not defined' if ENV is undefined
-                 else ('empty' if (ENV | string | trim | length) == 0
-                 else "invalid ('" ~ ENV ~ "'). Only alphanumeric characters, hyphens, and underscores are allowed") }}.
+              else ('empty' if (ENV | string | trim | length) == 0
+              else "invalid ('" ~ ENV ~ "'). Only alphanumeric characters, hyphens, and
+              underscores are allowed") }}.
               Set it via group_vars, host_vars, extra-vars, or inventory
               (e.g., -e "ENV=prod").
               {% else %}
-              The 'state' variable is invalid ('{{ state | default('') }}'). Allowed values: present, absent, clean.
+              The 'state' variable is invalid ('{{ state | default('') }}'). Allowed values:
+              present, absent, clean.
               {% endif %}
             quiet: true
 
-        #endregion --- [ Initialization: Validating Required Input(s) ] ------------------------------ #
+        #endregion --- [ Initialization: Validating Required Input(s) ] ----------------------- #
 
-        #region ------ [ Initialization: Loading Required Operating System (OS) Facts ] ------------ #
+        #region ------ [ Initialization: Loading Required Operating System (OS) Facts ] ------- #
 
         # Gather only the 'distribution' fact subset to populate os_family, distribution,
         # and distribution_major_version. Skipped if these facts already exist (e.g.,
@@ -101,23 +104,23 @@
               Required Operating System (OS) facts remain undefined after fact gathering.
               Missing facts:
               {% if ansible_facts.os_family is not defined %}ansible_facts.os_family;{% endif %}
-              {% if ansible_facts.distribution is not defined %}ansible_facts.distribution;{% endif %}
+              {% if ansible_facts.distribution is not defined %}ansible_facts.distribution;{%
+              endif %}
               {% if ansible_facts.distribution_major_version is not defined %}
               ansible_facts.distribution_major_version;
               {% endif %}
             quiet: true
 
-        #endregion --- [ Initialization: Loading Required Operating System (OS) Facts ] ------------ #
+        #endregion --- [ Initialization: Loading Required Operating System (OS) Facts ] ------- #
 
-        #region ------ [ Initialization: Loading Installed Package Facts ] -------------------------- #
+        #region ------ [ Initialization: Loading Installed Package Facts ] -------------------- #
 
-        # Populate ansible_facts.packages with the known non-Windows host's installed package list.
-        # Skipped if already populated (e.g., from gather_facts: true in the playbook or a
+        # Populate ansible_facts.packages with the known non-Windows host's installed package
+        # list. Skipped if already populated (e.g., from gather_facts: true in the playbook or a
         # prior role), or on Windows. The postcondition above guarantees os_family is defined
         # before this guard. Uses manager: auto so the correct backend (rpm, apt, etc.) is
-        # selected based on what is available on the target.
-        # OS-specific task files can assert against ansible_facts.packages without needing
-        # their own gather task.
+        # selected based on what is available on the target. OS-specific task files can assert
+        # against ansible_facts.packages without needing their own gather task.
         - name: 'INIT | Loading Installed Package Facts'
           when:
             - ansible_facts.packages is not defined
@@ -126,9 +129,9 @@
           ansible.builtin.package_facts:
             manager: auto
 
-        #endregion --- [ Initialization: Loading Installed Package Facts ] -------------------------- #
+        #endregion --- [ Initialization: Loading Installed Package Facts ] -------------------- #
 
-        #region ------ [ Initialization: Declaring Variables ] ------------------------------------- #
+        #region ------ [ Initialization: Declaring Variables ] -------------------------------- #
 
         # Build OS resolution lists once per host, reused across every role.
         # Derived from three Ansible facts: os_family, distribution, major_version.
@@ -155,12 +158,13 @@
               - "{{ __family__ ~ '_' ~ __dist__ ~ '_' ~ __ver__ }}"
 
           ansible.builtin.set_fact:
-            __var_candidates__: "{{ __candidates__ | product(['', '_' ~ __env__]) | map('join') | list }}"
+            __var_candidates__: "{{ __candidates__ | product(['', '_' ~ __env__]) | map('join')
+              | list }}"
             __playbook_candidates__: "{{ __candidates__ | reverse | list }}"
 
-        #endregion --- [ Initialization: Declaring Variables ] ------------------------------------- #
+        #endregion --- [ Initialization: Declaring Variables ] -------------------------------- #
 
-        #region ------ [ Initialization: Loading Overlay(s): Defaults ] ---------------------------- #
+        #region ------ [ Initialization: Loading Overlay(s): Defaults ] ----------------------- #
 
         # Seed '<role_name>_running' from the variable '<role_name>_defaults' when it is
         # defined, and fall back to an empty dictionary when it is undefined.
@@ -169,11 +173,12 @@
         - name: 'INIT | Initialize running configuration'
           no_log: true
           ansible.builtin.set_fact:
-            "{{ role_name }}_running": "{{ lookup('vars', role_name ~ '_defaults', default={}) }}"
+            "{{ role_name }}_running": "{{ lookup('vars', role_name ~ '_defaults', default={})
+              }}"
 
-        #endregion --- [ Initialization: Loading Overlay(s): Defaults ] ---------------------------- #
+        #endregion --- [ Initialization: Loading Overlay(s): Defaults ] ----------------------- #
 
-        #region ------ [ Initialization: Loading Overlay(s): Vars ] -------------------------------- #
+        #region ------ [ Initialization: Loading Overlay(s): Vars ] --------------------------- #
 
         # Merge overlay files into the running config in ascending precedence order.
         # Each file is optional — missing or empty files are silently skipped.
@@ -196,17 +201,19 @@
           loop_control: { loop_var: '__overlay__' }
           vars:
             __current__: "{{ lookup('vars', role_name ~ '_running', default={}) }}"
-            __content__: "{{ lookup('file', role_path ~ '/vars/' ~ __overlay__ ~ '.yml', errors='ignore') | from_yaml | default({}, true) }}"
+            __content__: "{{ lookup('file', role_path ~ '/vars/' ~ __overlay__ ~ '.yml',
+              errors='ignore') | from_yaml | default({}, true) }}"
           when:
             - __content__ is mapping
             - __content__ | length > 0
 
           ansible.builtin.set_fact:
-            "{{ role_name }}_running": "{{ __current__ | combine(__content__, recursive=True, list_merge='replace') }}"
+            "{{ role_name }}_running": "{{ __current__ | combine(__content__, recursive=True,
+              list_merge='replace') }}"
 
-        #endregion --- [ Initialization: Loading Overlay(s): Vars ] -------------------------------- #
+        #endregion --- [ Initialization: Loading Overlay(s): Vars ] --------------------------- #
 
-        #region ------ [ Initialization: Loading Overlay(s): Override ] ---------------------------- #
+        #region ------ [ Initialization: Loading Overlay(s): Override ] ----------------------- #
 
         # Apply user-provided overrides as the highest-precedence layer. The variable
         # '<role_name>' (e.g., firewall: { port: 8080 }) is set by the playbook author
@@ -222,19 +229,20 @@
             __overrides__: "{{ lookup('vars', role_name, default={}) }}"
           when: __overrides__ is mapping and __overrides__ | length > 0
           ansible.builtin.set_fact:
-            "{{ role_name }}_running": "{{ __base__ | combine(__overrides__, recursive=True, list_merge='replace') }}"
+            "{{ role_name }}_running": "{{ __base__ | combine(__overrides__, recursive=True,
+              list_merge='replace') }}"
 
-        #endregion --- [ Initialization: Loading Overlay(s): Override ] ---------------------------- #
+        #endregion --- [ Initialization: Loading Overlay(s): Override ] ----------------------- #
 
-        #region ------ [ Initialization: Validating Merged Configuration ] ------------------------- #
+        #region ------ [ Initialization: Validating Merged Configuration ] -------------------- #
 
         # Optional generic hook: if the role ships 'tasks/validate.yml', run it once the running
         # configuration is fully merged (defaults -> overlays -> overrides) and BEFORE the temp
         # directory or any OS-specific work, so a malformed merged config fails fast. The merged
-        # config is passed as 'config', scoped to the include. Roles that ship no validate.yml are
-        # unaffected (first_found skip:true -> empty -> the include is skipped).
-        # NOTE: validate.yml runs for EVERY state (present/absent/clean) and receives only 'config';
-        # a role whose contract is state-dependent must branch on 'state' inside its validate.yml.
+        # config is passed as 'config', scoped to the include. Roles that ship no validate.yml
+        # are unaffected (first_found skip:true -> empty -> the include is skipped). NOTE:
+        # validate.yml runs for EVERY state (present/absent/clean) and receives only 'config'; a
+        # role whose contract is state-dependent must branch on 'state' inside its validate.yml.
         - name: 'INIT | Resolving Config Validation File'
           ansible.builtin.set_fact:
             __validate_file__: "{{ lookup('ansible.builtin.first_found', __resolve__) }}"
@@ -252,9 +260,9 @@
             config: "{{ lookup('vars', role_name ~ '_running') }}"
           when: __validate_file__ | default('') | length > 0
 
-        #endregion --- [ Initialization: Validating Merged Configuration ] ------------------------- #
+        #endregion --- [ Initialization: Validating Merged Configuration ] -------------------- #
 
-        #region ------ [ Initialization: Creating Temp Directory ] --------------------------------- #
+        #region ------ [ Initialization: Creating Temp Directory ] ---------------------------- #
 
         # '<role_name>.temp_dir_path' (str, optional) selects the PARENT directory the temp
         # directory is created under. Unset or null, the system default (usually /tmp) is
@@ -274,7 +282,8 @@
           become: true
           register: '__temp_parent__'
           vars:
-            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('', true) | regex_replace('/+$', '') }}"
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] |
+              default('', true) | regex_replace('/+$', '') }}"
           when:
             - (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
             - __temp_dir_path__ | length > 0
@@ -288,7 +297,8 @@
         # instead of silently reverting to the system default location.
         - name: 'INIT | Validating Temp-Dir Parent Override'
           vars:
-            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('', true) | regex_replace('/+$', '') }}"
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] |
+              default('', true) | regex_replace('/+$', '') }}"
           when:
             - (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
             - lookup('vars', role_name, default={})['temp_dir_path'] is defined
@@ -303,9 +313,11 @@
               - (not __temp_parent__.stat.exists) or __temp_parent__.stat.isdir
               - (not __temp_parent__.stat.exists) or (__temp_parent__.stat.uid == 0)
               - (not __temp_parent__.stat.exists) or (not __temp_parent__.stat.woth)
-              - (not __temp_parent__.stat.exists) or (not __temp_parent__.stat.wgrp) or (__temp_parent__.stat.gid == 0)
+              - (not __temp_parent__.stat.exists) or (not __temp_parent__.stat.wgrp) or
+                (__temp_parent__.stat.gid == 0)
             fail_msg: >-
-              '{{ role_name }}.temp_dir_path' ('{{ lookup('vars', role_name, default={})['temp_dir_path'] }}')
+              '{{ role_name }}.temp_dir_path' ('{{ lookup('vars', role_name,
+              default={})['temp_dir_path'] }}')
               must be a dedicated absolute directory: no dot components, no empty or
               relative values, not a shared system temp location, and an existing target
               must be a root-owned directory without group- or world-write (symlinks are
@@ -320,7 +332,8 @@
         - name: 'INIT | Ensuring Temp-Dir Parent Exists'
           become: true
           vars:
-            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('', true) | regex_replace('/+$', '') }}"
+            __temp_dir_path__: "{{ lookup('vars', role_name, default={})['temp_dir_path'] |
+              default('', true) | regex_replace('/+$', '') }}"
           when:
             - (lookup('vars', role_name, default={})['temp_dir'] | default(true)) | bool
             - __temp_dir_path__ | length > 0
@@ -350,7 +363,8 @@
 
           ansible.builtin.tempfile:
             state: directory
-            path: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('', true) | regex_replace('/+$', '') | default(omit, true) }}"
+            path: "{{ lookup('vars', role_name, default={})['temp_dir_path'] | default('', true)
+              | regex_replace('/+$', '') | default(omit, true) }}"
             prefix: "ansible_{{ role_name }}_"
 
         # Lock down the temp directory. ansible.builtin.tempfile does not support
@@ -373,37 +387,36 @@
             setype: 'tmp_t'
             seuser: 'system_u'
 
-        #endregion --- [ Initialization: Creating Temp Directory ] --------------------------------- #
+        #endregion --- [ Initialization: Creating Temp Directory ] ---------------------------- #
 
-    #endregion --- [ Initialization ] -------------------------------------------------------- #
+    #endregion --- [ Initialization ] --------------------------------------------------------- #
 
-    #region ------ [ Main ] ------------------------------------------------------------------ #
+    #region ------ [ Main ] ------------------------------------------------------------------- #
 
     - name: 'INFO | Entering Main Stage'
       block:
 
-        #region ------ [ Main: Executing OS Specific Installers ] --------------------------------- #
+        #region ------ [ Main: Executing OS Specific Installers ] ----------------------------- #
 
-        # Resolve the most-specific OS task file using ansible.builtin.first_found.
-        # File names are prefixed with the resolved state value, then searched in
-        # reverse specificity order (most specific first):
-        #   state=present → present_redhat_rocky_10.yml, present_redhat_rocky.yml, present_redhat.yml
-        #   state=absent  → absent_redhat_rocky_10.yml,  absent_redhat_rocky.yml,  absent_redhat.yml
-        #   state=clean   → clean_redhat_rocky_10.yml,   clean_redhat_rocky.yml,   clean_redhat.yml
-        #
-        # This allows roles that work across an entire OS family (e.g., any RHEL derivative)
-        # to provide only <state>_redhat.yml, while roles with version-specific logic can
-        # provide <state>_redhat_rocky_10.yml. The first file found wins.
-        #
-        # Resolved on the controller (no SSH round-trip). Result is stored in __os_task_file__
-        # so the lookup runs once and both the guard and inclusion reference the same value.
+        # Resolve the most-specific OS task file using ansible.builtin.first_found. File names
+        # are prefixed with the resolved state value, then searched in reverse specificity order
+        # (most specific first): state=present → present_redhat_rocky_10.yml,
+        # present_redhat_rocky.yml, present_redhat.yml state=absent → absent_redhat_rocky_10.yml,
+        # absent_redhat_rocky.yml, absent_redhat.yml state=clean → clean_redhat_rocky_10.yml,
+        # clean_redhat_rocky.yml, clean_redhat.yml This allows roles that work across an entire
+        # OS family (e.g., any RHEL derivative) to provide only <state>_redhat.yml, while roles
+        # with version-specific logic can provide <state>_redhat_rocky_10.yml. The first file
+        # found wins. Resolved on the controller (no SSH round-trip). Result is stored in
+        # __os_task_file__ so the lookup runs once and both the guard and inclusion reference the
+        # same value.
         - name: 'MAIN | Resolving OS Task File'
           ansible.builtin.set_fact:
             __os_task_file__: "{{ lookup('ansible.builtin.first_found', __resolve__) }}"
           vars:
             __state__: "{{ state | default('present') | string | lower | trim }}"
             __resolve__:
-              files: "{{ __playbook_candidates__ | map('regex_replace', '^', __state__ ~ '_') | map('regex_replace', '$', '.yml') | list }}"
+              files: "{{ __playbook_candidates__ | map('regex_replace', '^', __state__ ~ '_') |
+                map('regex_replace', '$', '.yml') | list }}"
               paths:
                 - "{{ role_path }}/tasks"
               skip: true
@@ -419,7 +432,8 @@
             msg: >-
               No OS-specific task file found for state='{{ __state__ }}' on this host.
               Searched (most to least specific):
-              {{ __playbook_candidates__ | map('regex_replace', '^', __state__ ~ '_') | map('regex_replace', '$', '.yml') | join(', ') }}
+              {{ __playbook_candidates__ | map('regex_replace', '^', __state__ ~ '_') |
+              map('regex_replace', '$', '.yml') | join(', ') }}
               in {{ role_path }}/tasks/
 
         # Include the resolved OS-specific task file. 'config' is passed via vars: so it
@@ -429,11 +443,11 @@
           vars:
             config: "{{ lookup('vars', role_name ~ '_running') }}"
 
-        #endregion --- [ Main: Executing OS Specific Installers ] --------------------------------- #
+        #endregion --- [ Main: Executing OS Specific Installers ] ----------------------------- #
 
-    #endregion --- [ Main ] ------------------------------------------------------------------ #
+    #endregion --- [ Main ] ------------------------------------------------------------------- #
 
-  #region ------ [ Cleaning Up ] ------------------------------------------------------------- #
+  #region ------ [ Cleaning Up ] -------------------------------------------------------------- #
 
   # Runs regardless of success or failure. Ensures the POSIX temp directory is removed even
   # if the role errors out, preventing orphaned files from accumulating on the target.
@@ -455,6 +469,6 @@
         path: "{{ __temp_dir__.path }}"
         state: 'absent'
 
-  #endregion --- [ Cleaning Up ] ------------------------------------------------------------- #
+  #endregion --- [ Cleaning Up ] -------------------------------------------------------------- #
 
-#endregion --- [ Script ] -------------------------------------------------------------------- #
+#endregion --- [ Script ] --------------------------------------------------------------------- #

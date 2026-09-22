@@ -18,7 +18,7 @@ rules:
   # pipelines don't fail on rare exceptions; keep lines short by convention.
   # ---------------------------------------------------------------------------
   line-length:
-    max: 160
+    max: 97
     level: warning
 
   # ---------------------------------------------------------------------------

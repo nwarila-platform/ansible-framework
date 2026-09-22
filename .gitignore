@@ -23,6 +23,11 @@
 !/release-please-config.json
 !/requirements-dev.txt
 !/requirements.yml
+# The shared v3 loader's published sha256. Migration item 6: consumers format their
+# copy only after this digest changes, and LOADER-01 verifies against it.
+!/meta/
+!/meta/loader-digest.txt
+
 
 # Repository-level lookup plugins
 !/lookup_plugins/
