@@ -97,6 +97,19 @@ def main():
     shutil.copyfile(HERE / "converge-2-NONIDEM600-1.json",
                     out / "converge-2-ATTEMPT904-1.json")
 
+    # T25 -- an excluded inventory-local host has a nonzero changed counter.
+    art = load("converge-2-SPIKE100-1.json")
+    art["stats"]["controller_explicit"] = {
+        "changed": 1,
+        "failures": 0,
+        "ignored": 0,
+        "ok": 1,
+        "rescued": 0,
+        "skipped": 0,
+        "unreachable": 0,
+    }
+    dump(art, out / "converge-2-EXCLUDED905-1.json")
+
 
 if __name__ == "__main__":
     main()

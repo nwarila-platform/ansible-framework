@@ -60,6 +60,7 @@
 !/tests/gate_idempotence/fixtures/converge-2-ATTEMPT904-2.json
 !/tests/gate_idempotence/fixtures/converge-2-COMBINED101-1.json
 !/tests/gate_idempotence/fixtures/converge-2-DYNAMIC903-1.json
+!/tests/gate_idempotence/fixtures/converge-2-EXCLUDED905-1.json
 !/tests/gate_idempotence/fixtures/converge-2-FAILURES130-1.json
 !/tests/gate_idempotence/fixtures/converge-2-FRESH800-1.json
 !/tests/gate_idempotence/fixtures/converge-2-GROUPLOCAL501-1.json

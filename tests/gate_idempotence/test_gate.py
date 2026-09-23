@@ -317,6 +317,7 @@ class GateIdempotence(unittest.TestCase):
             "check-diff-SECOND902-1.json",
             "converge-2-ATTEMPT904-2.json",
             "converge-2-ATTEMPT904-1.json",
+            "converge-2-EXCLUDED905-1.json",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir)
@@ -365,6 +366,18 @@ class GateIdempotence(unittest.TestCase):
         self.assertEqual(
             stdout,
             "PASS: converge-2-ATTEMPT904-2.json; "
+            "expected=node_a,node_b,node_c; excluded=controller_explicit",
+        )
+
+    def test_t25_excluded_host_counters_not_judged(self):
+        rc, stdout, _ = self.run_gate(
+            "inventory-main.json", FIX, "converge-2", "EXCLUDED905"
+        )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            stdout,
+            "PASS: converge-2-EXCLUDED905-1.json; "
             "expected=node_a,node_b,node_c; excluded=controller_explicit",
         )
 

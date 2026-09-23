@@ -175,9 +175,11 @@ It recomputes `<leg>-<run-id>-<run-attempt>.json` inside `--artifact-dir` and re
 any other file there is ignored. Expected hosts are the deduplicated union of every group's `hosts`
 array in the `ansible-inventory --list` dump — not the keys of `_meta.hostvars`, which omits a host
 that resolved no variables. The host named `localhost`, and any host whose `ansible_connection` is
-`local` in inventory host or group vars, are excluded; an empty remainder fails. For every remaining
-host, `changed`, `unreachable`, `failures` and `ignored` must all be `0`, and a missing counter is a
-failure, not a zero. On the `check-diff` leg no task result under `plays[].tasks[].hosts[]` may carry
+`local` in inventory host or group vars, are excluded; an empty remainder fails. Counters are then
+judged over every host the artifact reports as well as every expected one — `(expected | stats) minus
+excluded` — so a host created at run time by `add_host`, which the inventory dump cannot describe and
+therefore cannot exclude, is always judged. For every judged host, `changed`, `unreachable`, `failures`
+and `ignored` must all be `0`, and a missing counter is a failure, not a zero. On the `check-diff` leg no task result under `plays[].tasks[].hosts[]` may carry
 `"changed": true`, for any host, excluded or not.
 
 It prints one line — `PASS: <artifact>; expected=…; excluded=…` or `FAIL: <reason>` — and exits `0`
