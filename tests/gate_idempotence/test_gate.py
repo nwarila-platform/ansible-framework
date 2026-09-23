@@ -20,7 +20,7 @@ def digest(path):
 
 
 class GateIdempotence(unittest.TestCase):
-    def run_gate(self, inventory, artifact_dir, leg, run_id):
+    def run_gate(self, inventory, artifact_dir, leg, run_id, run_attempt="1"):
         completed = subprocess.run(
             [
                 "python3",
@@ -34,7 +34,7 @@ class GateIdempotence(unittest.TestCase):
                 "--run-id",
                 run_id,
                 "--run-attempt",
-                "1",
+                run_attempt,
             ],
             capture_output=True,
             check=False,
@@ -313,6 +313,10 @@ class GateIdempotence(unittest.TestCase):
             "converge-2-FAILURES130-1.json",
             "check-diff-TASKONLY710-1.json",
             "check-diff-CTRL720-1.json",
+            "converge-2-DYNAMIC903-1.json",
+            "check-diff-SECOND902-1.json",
+            "converge-2-ATTEMPT904-2.json",
+            "converge-2-ATTEMPT904-1.json",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir)
@@ -327,6 +331,42 @@ class GateIdempotence(unittest.TestCase):
             for name in names:
                 with self.subTest(name=name):
                     self.assertEqual(digest(out / name), digest(FIX / name))
+
+    def test_t22_runtime_added_host_is_judged(self):
+        rc, stdout, _ = self.run_gate(
+            "inventory-main.json", FIX, "converge-2", "DYNAMIC903"
+        )
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(stdout.startswith("FAIL: four-zero predicate: "))
+        self.assertEqual(
+            stdout,
+            "FAIL: four-zero predicate: dynamic_added.changed=1",
+        )
+
+    def test_t23_second_play_check_results_scanned(self):
+        rc, stdout, _ = self.run_gate(
+            "inventory-main.json", FIX, "check-diff", "SECOND902"
+        )
+
+        self.assertEqual(rc, 1)
+        self.assertTrue(stdout.startswith("FAIL: check leg predicted change: "))
+        self.assertEqual(
+            stdout,
+            "FAIL: check leg predicted change: p1t0.node_a",
+        )
+
+    def test_t24_run_attempt_selects_its_own_artifact(self):
+        rc, stdout, _ = self.run_gate(
+            "inventory-main.json", FIX, "converge-2", "ATTEMPT904", "2"
+        )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            stdout,
+            "PASS: converge-2-ATTEMPT904-2.json; "
+            "expected=node_a,node_b,node_c; excluded=controller_explicit",
+        )
 
 
 if __name__ == "__main__":

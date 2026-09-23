@@ -70,8 +70,10 @@ def main():
     if missing:
         fail("missing expected hosts: " + ",".join(missing))
 
+    judged = sorted((set(expected) | set(stats)) - set(excluded))
+
     counter_bad = []
-    for host in expected:
+    for host in judged:
         for counter in COUNTERS:
             value = stats[host].get(counter, "missing")
             if value != 0:

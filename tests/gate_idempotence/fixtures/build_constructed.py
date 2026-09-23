@@ -2,6 +2,7 @@
 """Build the deterministic constructed fixtures for the GATE-01 test suite."""
 
 import argparse
+import copy
 import json
 import shutil
 from pathlib import Path
@@ -62,6 +63,39 @@ def main():
     art = load("converge-2-SPIKE100-1.json")
     art["plays"][0]["tasks"][0]["hosts"]["controller_explicit"] = {"changed": True}
     dump(art, out / "check-diff-CTRL720-1.json")
+
+    # T22 -- one runtime-added stats host with a nonzero changed counter.
+    art = load("converge-2-SPIKE100-1.json")
+    art["stats"]["dynamic_added"] = {
+        "changed": 1,
+        "failures": 0,
+        "ignored": 0,
+        "ok": 1,
+        "rescued": 0,
+        "skipped": 0,
+        "unreachable": 0,
+    }
+    dump(art, out / "converge-2-DYNAMIC903-1.json")
+
+    # T23 -- only a task result in a second play reports changed.
+    art = load("check-diff-SPIKE700-1.json")
+    for host in art["stats"]:
+        for counter in ("changed", "unreachable", "failures", "ignored"):
+            art["stats"][host][counter] = 0
+    for task in art["plays"][0]["tasks"]:
+        for result in task["hosts"].values():
+            result["changed"] = False
+    second_play = copy.deepcopy(art["plays"][0])
+    second_play["tasks"] = [second_play["tasks"][0]]
+    second_play["tasks"][0]["hosts"]["node_a"]["changed"] = True
+    art["plays"].append(second_play)
+    dump(art, out / "check-diff-SECOND902-1.json")
+
+    # T24 -- attempt 2 is clean while the attempt-1 decoy is non-idempotent.
+    shutil.copyfile(HERE / "converge-2-SPIKE100-1.json",
+                    out / "converge-2-ATTEMPT904-2.json")
+    shutil.copyfile(HERE / "converge-2-NONIDEM600-1.json",
+                    out / "converge-2-ATTEMPT904-1.json")
 
 
 if __name__ == "__main__":
