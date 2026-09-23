@@ -50,12 +50,10 @@ service_account: 'NT SERVICE\OpenVPNService'
 
 #region ------ [ The tunnel adapter ] --------------------------------------------------------- #
 
-# How this role recognises the adapter it created, so it can keep that adapter's address out of
-# the realm's DNS. Matched on the DRIVER's own description rather than the connection name,
-# because the connection name is renameable by anyone and the description comes from the driver
-# the install region selects (ADDLOCAL=...,Drivers.OvpnDco): the data channel offload adapter is
-# the only one this role installs, so 'OpenVPN*' names it and nothing else.
-adapter_description_match: 'OpenVPN*'
+# Match either property: TAP's description is 'TAP-Windows Adapter V9' and only its name has
+# 'OpenVPN' (measured 2026-09-22 on Server 2019); DCO's MSI-created display name is 'OpenVPN
+# Data Channel Offload' (openvpn-build 33ffa51).
+adapter_match: 'OpenVPN*'
 
 #endregion --- [ The tunnel adapter ] --------------------------------------------------------- #
 

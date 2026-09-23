@@ -310,11 +310,11 @@
     # The feature set and the success codes are properties of this MSI, not operator choices, so
     # they live beside the package invocation. ADDLOCAL names exactly what a headless client
     # needs and nothing else: the client itself, the automatic service that runs config-auto, and
-    # the data channel offload driver -- no GUI, no TAP-Windows6, no documentation or sample
-    # configurations. Parents are listed with their children because Windows Installer installs
-    # only the features named. The DCO driver is the only driver, which holds on Server 2022 and
-    # later (the MSI itself gates it on Windows 10 2004) and is what the pinned profile's AEAD
-    # ciphers run on. The digest is verified on the guest, because that is the copy that
+    # both tunnel drivers -- no GUI, documentation or sample configurations. Parents are listed
+    # with their children because Windows Installer installs only named features. The pinned MSI
+    # gates Drivers.OvpnDco with WIN102004 and leaves Drivers.TAPWindows6 unconditional
+    # (openvpn-build 33ffa51), so a below-gate host gets TAP and a capable host gets both; the
+    # pinned profile/client picks DCO when available. The guest digest is verified before it
     # executes. A wrong feature name would fail the install rather than prompt, but the run is
     # still bounded so a hung installer fails inside Ansible. 3010 is accepted alongside 0
     # because it is not a failure: the driver install can ask for a restart, the module turns
@@ -329,7 +329,7 @@
         - not ansible_check_mode
 
       ansible.windows.win_package:
-        arguments: 'ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.OvpnDco'
+        arguments: 'ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.OvpnDco,Drivers.TAPWindows6'
         checksum: "{{ openvpn_client_running.installer.sha256 }}"
         checksum_algorithm: 'sha256'
         expected_return_code: [ 0, 3010 ]
@@ -650,27 +650,28 @@
         depth: 2
         error_action: 'stop'
         parameters:
-          AdapterDescriptionMatch: "{{ openvpn_client_running.adapter_description_match }}"
+          AdapterMatch: "{{ openvpn_client_running.adapter_match }}"
           PolicyPath: "{{ __registration_policy__ }}"
           RegisterThroughPolicy: "{{ __dns_declared__ | bool }}"
         remote_src: false
         script: |
           [CmdletBinding(SupportsShouldProcess)]
           Param(
-            [System.String]$AdapterDescriptionMatch,
+            [System.String]$AdapterMatch,
             [System.String]$PolicyPath,
             [System.Boolean]$RegisterThroughPolicy
           )
           $Ansible.Changed = $false
 
           $Adapters = @(Get-NetAdapter -ErrorAction Stop |
-            Where-Object { $PSItem.InterfaceDescription -like $AdapterDescriptionMatch })
+            Where-Object { ($PSItem.InterfaceDescription -like $AdapterMatch) -or
+                           ($PSItem.Name -like $AdapterMatch) })
           If ($Adapters.Count -eq 0) {
-            $NoAdapter = "No adapter matches '{0}'. This role installs that driver, so its " +
-              "absence means the install did not produce the tunnel adapter -- refusing to " +
-              "permit registration through the policy while the adapter that must be excluded " +
-              "cannot be found."
-            Throw ($NoAdapter -f $AdapterDescriptionMatch)
+            $NoAdapter = "No adapter matches '{0}'. This role requests the ovpn-dco and " +
+              "TAP-Windows6 drivers, and the MSI should create at least one. Repair or reinstall the " +
+              "pinned OpenVPN package; refusing to permit registration through the policy while no " +
+              "tunnel adapter can be excluded."
+            Throw ($NoAdapter -f $AdapterMatch)
           }
 
           ForEach ($Adapter In $Adapters) {
