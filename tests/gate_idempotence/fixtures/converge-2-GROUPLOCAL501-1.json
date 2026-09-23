@@ -1,0 +1,67 @@
+{
+    "custom_stats": {},
+    "global_custom_stats": {},
+    "plays": [
+        {
+            "play": {
+                "duration": {
+                    "end": "2026-09-21T21:41:19.239683Z",
+                    "start": "2026-09-21T21:41:18.730964Z"
+                },
+                "id": "1c697a62-9dd8-c972-c452-000000000006",
+                "name": "Play-level local override",
+                "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/play-local.yml:2"
+            },
+            "tasks": [
+                {
+                    "hosts": {
+                        "play_local_alias": {
+                            "_ansible_verbose_always": true,
+                            "action": "ansible.builtin.debug",
+                            "changed": false,
+                            "msg": "resolved=local"
+                        }
+                    },
+                    "task": {
+                        "duration": {
+                            "end": "2026-09-21T21:41:18.759512Z",
+                            "start": "2026-09-21T21:41:18.738011Z"
+                        },
+                        "id": "1c697a62-9dd8-c972-c452-000000000008",
+                        "name": "Show resolved connection",
+                        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/play-local.yml:7"
+                    }
+                },
+                {
+                    "hosts": {
+                        "play_local_alias": {
+                            "action": "ansible.builtin.ping",
+                            "changed": false,
+                            "ping": "pong"
+                        }
+                    },
+                    "task": {
+                        "duration": {
+                            "end": "2026-09-21T21:41:19.239683Z",
+                            "start": "2026-09-21T21:41:18.761209Z"
+                        },
+                        "id": "1c697a62-9dd8-c972-c452-000000000009",
+                        "name": "Ping through play-level local connection",
+                        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/play-local.yml:11"
+                    }
+                }
+            ]
+        }
+    ],
+    "stats": {
+        "play_local_alias": {
+            "changed": 0,
+            "failures": 0,
+            "ignored": 0,
+            "ok": 2,
+            "rescued": 0,
+            "skipped": 0,
+            "unreachable": 0
+        }
+    }
+}

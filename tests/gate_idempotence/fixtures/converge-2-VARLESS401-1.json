@@ -1,0 +1,48 @@
+{
+    "custom_stats": {},
+    "global_custom_stats": {},
+    "plays": [
+        {
+            "play": {
+                "duration": {
+                    "end": "2026-09-21T21:41:23.686663Z",
+                    "start": "2026-09-21T21:41:21.845796Z"
+                },
+                "id": "1c697a62-9dd8-94c7-f2f1-000000000003",
+                "name": "Reach hosts through play-level SSH settings",
+                "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/ping-all-ssh.yml:2"
+            },
+            "tasks": [
+                {
+                    "hosts": {
+                        "varful_b": {
+                            "action": "ansible.builtin.ping",
+                            "changed": false,
+                            "ping": "pong"
+                        }
+                    },
+                    "task": {
+                        "duration": {
+                            "end": "2026-09-21T21:41:23.686663Z",
+                            "start": "2026-09-21T21:41:21.855778Z"
+                        },
+                        "id": "1c697a62-9dd8-94c7-f2f1-000000000005",
+                        "name": "Ping target",
+                        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/ping-all-ssh.yml:15"
+                    }
+                }
+            ]
+        }
+    ],
+    "stats": {
+        "varful_b": {
+            "changed": 0,
+            "failures": 0,
+            "ignored": 0,
+            "ok": 1,
+            "rescued": 0,
+            "skipped": 0,
+            "unreachable": 0
+        }
+    }
+}

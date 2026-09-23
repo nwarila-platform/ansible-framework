@@ -1,0 +1,53 @@
+{
+    "_meta": {
+        "hostvars": {
+            "controller_explicit": {
+                "ansible_connection": "local"
+            },
+            "node_a": {
+                "ansible_connection": "ssh",
+                "ansible_host": "127.0.0.1",
+                "ansible_port": 40222,
+                "ansible_ssh_common_args": "-o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+                "ansible_ssh_private_key_file": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/id_ed25519",
+                "ansible_user": "hellbomb"
+            },
+            "node_b": {
+                "ansible_connection": "ssh",
+                "ansible_host": "127.0.0.1",
+                "ansible_port": 40222,
+                "ansible_ssh_common_args": "-o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+                "ansible_ssh_private_key_file": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/id_ed25519",
+                "ansible_user": "hellbomb"
+            },
+            "node_c": {
+                "ansible_connection": "ssh",
+                "ansible_host": "127.0.0.1",
+                "ansible_port": 40222,
+                "ansible_ssh_common_args": "-o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+                "ansible_ssh_private_key_file": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/id_ed25519",
+                "ansible_user": "hellbomb"
+            }
+        },
+        "profile": "inventory_legacy"
+    },
+    "all": {
+        "children": [
+            "ungrouped",
+            "gate_targets",
+            "controllers"
+        ]
+    },
+    "controllers": {
+        "hosts": [
+            "controller_explicit"
+        ]
+    },
+    "gate_targets": {
+        "hosts": [
+            "node_a",
+            "node_b",
+            "node_c"
+        ]
+    }
+}

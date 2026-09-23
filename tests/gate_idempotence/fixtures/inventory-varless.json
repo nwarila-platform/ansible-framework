@@ -1,0 +1,21 @@
+{
+    "_meta": {
+        "hostvars": {
+            "varful_b": {
+                "marker": "present"
+            }
+        },
+        "profile": "inventory_legacy"
+    },
+    "all": {
+        "children": [
+            "ungrouped"
+        ]
+    },
+    "ungrouped": {
+        "hosts": [
+            "varless_a",
+            "varful_b"
+        ]
+    }
+}

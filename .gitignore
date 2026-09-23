@@ -45,11 +45,47 @@
 !/tests/secret_lookup/fixtures/botocore/__init__.py
 !/tests/secret_lookup/fixtures/botocore/exceptions.py
 
+# GATE-01 idempotence gate: the unittest module, the fixture builder, and every committed fixture.
+# Spike-named files are byte copies of SPIKE-GATE-01 artifacts; the rest are produced by
+# build_constructed.py and re-checked against these bytes by the suite's drift test.
+!/tests/gate_idempotence/
+!/tests/gate_idempotence/test_gate.py
+!/tests/gate_idempotence/fixtures/
+!/tests/gate_idempotence/fixtures/build_constructed.py
+!/tests/gate_idempotence/fixtures/check-diff-SPIKE700-1.json
+!/tests/gate_idempotence/fixtures/check-diff-CTRL720-1.json
+!/tests/gate_idempotence/fixtures/check-diff-TASKONLY710-1.json
+!/tests/gate_idempotence/fixtures/converge-2-COMBINED101-1.json
+!/tests/gate_idempotence/fixtures/converge-2-FAILURES130-1.json
+!/tests/gate_idempotence/fixtures/converge-2-FRESH800-1.json
+!/tests/gate_idempotence/fixtures/converge-2-GROUPLOCAL501-1.json
+!/tests/gate_idempotence/fixtures/converge-2-IGNORE200-1.json
+!/tests/gate_idempotence/fixtures/converge-2-LIMIT400-1.json
+!/tests/gate_idempotence/fixtures/converge-2-LOCALHOST110-1.json
+!/tests/gate_idempotence/fixtures/converge-2-NOIGNORE120-1.json
+!/tests/gate_idempotence/fixtures/converge-2-NONIDEM600-1.json
+!/tests/gate_idempotence/fixtures/converge-2-OLD799-1.json
+!/tests/gate_idempotence/fixtures/converge-2-PLAYLOCAL502-1.json
+!/tests/gate_idempotence/fixtures/converge-2-SPIKE100-1.json
+!/tests/gate_idempotence/fixtures/converge-2-TTY900-1.json
+!/tests/gate_idempotence/fixtures/converge-2-UNREACH300-1.json
+!/tests/gate_idempotence/fixtures/converge-2-VARLESS401-1.json
+!/tests/gate_idempotence/fixtures/nonidempotent-2-SPIKE600-1.json
+!/tests/gate_idempotence/fixtures/inventory-group-local-only.json
+!/tests/gate_idempotence/fixtures/inventory-localhost-present.json
+!/tests/gate_idempotence/fixtures/inventory-main.json
+!/tests/gate_idempotence/fixtures/inventory-play-only.json
+!/tests/gate_idempotence/fixtures/inventory-truncated.json
+!/tests/gate_idempotence/fixtures/inventory-unreachable.json
+!/tests/gate_idempotence/fixtures/inventory-varless.json
+
 # First-class PowerShell scripts and their Pester specs. A role that executes one tracks only
 # files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies the source below into the role
 # before it runs. The source and its spec are reviewed once, here -- the materialized copy in a
 # role's files/ directory is a build artifact and is never allowlisted anywhere.
 !/scripts/
+# The framework-owned GATE-01 idempotence checker, run from each consumer's aws-deploy.yml.
+!/scripts/gate-idempotence.py
 !/scripts/materialize-role-scripts.sh
 !/scripts/Set-DnsNamespaceForwarder.ps1
 !/scripts/Set-DnsNamespaceForwarder.pester.ps1

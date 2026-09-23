@@ -1,0 +1,20 @@
+{
+    "_meta": {
+        "hostvars": {
+            "play_local_alias": {
+                "marker": "play-override"
+            }
+        },
+        "profile": "inventory_legacy"
+    },
+    "all": {
+        "children": [
+            "ungrouped"
+        ]
+    },
+    "ungrouped": {
+        "hosts": [
+            "play_local_alias"
+        ]
+    }
+}

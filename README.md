@@ -156,6 +156,52 @@ python3_pip:
         mode: '0640'
 ```
 
+## Idempotence gate (GATE-01)
+
+`scripts/gate-idempotence.py` judges one JSON callback artifact from one deploy leg. A consuming
+deploy runs it after its second converge and again after its `--check --diff` leg; this repository
+owns the checker and its tests, not the adoption.
+
+```bash
+python3 scripts/gate-idempotence.py \
+  --inventory-dump inventory.json \
+  --artifact-dir artifacts \
+  --leg converge-2 \
+  --run-id "$GITHUB_RUN_ID" \
+  --run-attempt "$GITHUB_RUN_ATTEMPT"
+```
+
+It recomputes `<leg>-<run-id>-<run-attempt>.json` inside `--artifact-dir` and reads only that file;
+any other file there is ignored. Expected hosts are the deduplicated union of every group's `hosts`
+array in the `ansible-inventory --list` dump — not the keys of `_meta.hostvars`, which omits a host
+that resolved no variables. The host named `localhost`, and any host whose `ansible_connection` is
+`local` in inventory host or group vars, are excluded; an empty remainder fails. For every remaining
+host, `changed`, `unreachable`, `failures` and `ignored` must all be `0`, and a missing counter is a
+failure, not a zero. On the `check-diff` leg no task result under `plays[].tasks[].hosts[]` may carry
+`"changed": true`, for any host, excluded or not.
+
+It prints one line — `PASS: <artifact>; expected=…; excluded=…` or `FAIL: <reason>` — and exits `0`
+on pass, `1` on any gate failure, `2` on a usage error. It reads two files, writes nothing, and uses
+no network and no subprocess.
+
+Three capture requirements the caller must meet:
+
+1. **Select the callback.** Set `ANSIBLE_STDOUT_CALLBACK=ansible.posix.json` and pin `ansible.posix`
+   1.6.2 in the deploy's `requirements.yml`. `ansible.builtin.json` does not exist at ansible-core
+   2.21.4.
+2. **Separate the streams.** Redirect stdout to the artifact and stderr to its own file
+   (`> artifact.json 2> artifact.stderr`). `ansible.posix` 1.6.2 prints a deprecation warning under
+   core 2.21.4, so a `2>&1` artifact does not parse.
+3. **Name each leg's artifact by its own run.** Write
+   `converge-2-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json` and
+   `check-diff-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json`; freshness is name identity, not file
+   age. Keep the runner's `TMPDIR` short: a long one breaks core 2.21.4's local RPC socket
+   (`AF_UNIX` 108-byte limit) before the callback starts.
+
+Run the tests with `make test-gate`. Fixtures are committed captures from SPIKE-GATE-01 plus the
+files `tests/gate_idempotence/fixtures/build_constructed.py` derives from them; the suite
+regenerates the derived files and compares digests, so a hand-edited fixture fails.
+
 ---
 
 ## Contributing

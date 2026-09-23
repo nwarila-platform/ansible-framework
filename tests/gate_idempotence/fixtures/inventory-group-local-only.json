@@ -1,0 +1,21 @@
+{
+    "_meta": {
+        "hostvars": {
+            "group_local": {
+                "ansible_connection": "local"
+            }
+        },
+        "profile": "inventory_legacy"
+    },
+    "all": {
+        "children": [
+            "ungrouped",
+            "controllers"
+        ]
+    },
+    "controllers": {
+        "hosts": [
+            "group_local"
+        ]
+    }
+}

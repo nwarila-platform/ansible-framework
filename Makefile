@@ -16,11 +16,12 @@
 #                     Assert every loader role's defaults file defines its namespaced key
 #   make materialize-check
 #                     Verify every PowerShell stub resolves and no copy is stale
+#   make test-gate    Run the GATE-01 idempotence gate unit tests
 #   make clean        Remove Python cache artifacts
 # =============================================================================
 
 .DEFAULT_GOAL := help
-.PHONY: help install collections lint yamllint ansible-lint allowlist-check materialize-check loader-identity-check loader-defaults-convention-check pre-commit clean
+.PHONY: help install collections lint yamllint ansible-lint allowlist-check materialize-check loader-identity-check loader-defaults-convention-check pre-commit clean test-gate
 
 # The deny-all guard scans the whole repository. Only rooted, known local artifacts are excluded:
 # Ansible/cache state, the handoff workspace, a root .env, Python caches, and retry files.
@@ -59,6 +60,7 @@ help:
 	@echo "                     Assert every loader role's defaults file defines its namespaced key"
 	@echo "  make materialize-check"
 	@echo "                     Verify every PowerShell stub resolves and no copy is stale"
+	@echo "  make test-gate     Run the GATE-01 idempotence gate unit tests"
 	@echo "  make pre-commit    Run full pre-commit suite against all files"
 	@echo "  make clean         Remove Python cache artifacts"
 	@echo ""
@@ -185,6 +187,14 @@ loader-defaults-convention-check:
 # repository never validates breaks downstream, in someone else's deploy.
 materialize-check:
 	@scripts/materialize-role-scripts.sh --check
+
+# ---------------------------------------------------------------------------
+# GATE-01 idempotence gate
+# ---------------------------------------------------------------------------
+# Standard library only: no pip install, no collections, no network. The suite
+# drives scripts/gate-idempotence.py as a subprocess against committed fixtures.
+test-gate:
+	python3 -m unittest discover -s tests/gate_idempotence -p 'test_*.py' -v
 
 # ---------------------------------------------------------------------------
 # Pre-Commit

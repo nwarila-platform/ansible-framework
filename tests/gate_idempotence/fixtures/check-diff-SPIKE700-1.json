@@ -1,0 +1,176 @@
+{
+    "custom_stats": {},
+    "global_custom_stats": {},
+    "plays": [
+        {
+            "play": {
+                "duration": {
+                    "end": "2026-09-21T21:41:17.435287Z",
+                    "start": "2026-09-21T21:41:04.047153Z"
+                },
+                "id": "1c697a62-9dd8-8300-6f3a-000000000005",
+                "name": "Check and diff behavior",
+                "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/check-diff.yml:2"
+            },
+            "tasks": [
+                {
+                    "hosts": {
+                        "node_a": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "diff": [
+                                {
+                                    "after": "predicted-change\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/stable.txt",
+                                    "before": "stable\n",
+                                    "before_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/stable.txt"
+                                }
+                            ]
+                        },
+                        "node_b": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "diff": [
+                                {
+                                    "after": "predicted-change\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/stable.txt",
+                                    "before": "stable\n",
+                                    "before_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/stable.txt"
+                                }
+                            ]
+                        },
+                        "node_c": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "diff": [
+                                {
+                                    "after": "predicted-change\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/stable.txt",
+                                    "before": "stable\n",
+                                    "before_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/stable.txt"
+                                }
+                            ]
+                        }
+                    },
+                    "task": {
+                        "duration": {
+                            "end": "2026-09-21T21:41:09.147629Z",
+                            "start": "2026-09-21T21:41:04.058355Z"
+                        },
+                        "id": "1c697a62-9dd8-8300-6f3a-000000000007",
+                        "name": "Predict change without applying it",
+                        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/check-diff.yml:6"
+                    }
+                },
+                {
+                    "hosts": {
+                        "node_a": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "checksum": "f1d80301c894e909e6ec90f95b02328ffec8ddeb",
+                            "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/forced-under-check.txt",
+                            "diff": [
+                                {
+                                    "after": "changed despite check mode\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/forced-under-check.txt",
+                                    "before": ""
+                                }
+                            ],
+                            "gid": 1001,
+                            "group": "hellbomb",
+                            "md5sum": "e513e7da7ccb69bf340269ea3b41f206",
+                            "mode": "0640",
+                            "owner": "hellbomb",
+                            "size": 27,
+                            "src": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/tmp/remote/ansible-tmp-1790026869.1679766-57-196872791909645/.source.txt",
+                            "state": "file",
+                            "uid": 1001
+                        },
+                        "node_b": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "checksum": "f1d80301c894e909e6ec90f95b02328ffec8ddeb",
+                            "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/forced-under-check.txt",
+                            "diff": [
+                                {
+                                    "after": "changed despite check mode\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/forced-under-check.txt",
+                                    "before": ""
+                                }
+                            ],
+                            "gid": 1001,
+                            "group": "hellbomb",
+                            "md5sum": "e513e7da7ccb69bf340269ea3b41f206",
+                            "mode": "0640",
+                            "owner": "hellbomb",
+                            "size": 27,
+                            "src": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/tmp/remote/ansible-tmp-1790026869.1711385-58-115107474499021/.source.txt",
+                            "state": "file",
+                            "uid": 1001
+                        },
+                        "node_c": {
+                            "action": "ansible.builtin.copy",
+                            "changed": true,
+                            "checksum": "f1d80301c894e909e6ec90f95b02328ffec8ddeb",
+                            "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/forced-under-check.txt",
+                            "diff": [
+                                {
+                                    "after": "changed despite check mode\n",
+                                    "after_header": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/forced-under-check.txt",
+                                    "before": ""
+                                }
+                            ],
+                            "gid": 1001,
+                            "group": "hellbomb",
+                            "md5sum": "e513e7da7ccb69bf340269ea3b41f206",
+                            "mode": "0640",
+                            "owner": "hellbomb",
+                            "size": 27,
+                            "src": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/tmp/remote/ansible-tmp-1790026869.1798332-59-12182776424926/.source.txt",
+                            "state": "file",
+                            "uid": 1001
+                        }
+                    },
+                    "task": {
+                        "duration": {
+                            "end": "2026-09-21T21:41:17.435287Z",
+                            "start": "2026-09-21T21:41:09.149847Z"
+                        },
+                        "id": "1c697a62-9dd8-8300-6f3a-000000000008",
+                        "name": "Force a real change in check mode",
+                        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/check-diff.yml:12"
+                    }
+                }
+            ]
+        }
+    ],
+    "stats": {
+        "node_a": {
+            "changed": 2,
+            "failures": 0,
+            "ignored": 0,
+            "ok": 2,
+            "rescued": 0,
+            "skipped": 0,
+            "unreachable": 0
+        },
+        "node_b": {
+            "changed": 2,
+            "failures": 0,
+            "ignored": 0,
+            "ok": 2,
+            "rescued": 0,
+            "skipped": 0,
+            "unreachable": 0
+        },
+        "node_c": {
+            "changed": 2,
+            "failures": 0,
+            "ignored": 0,
+            "ok": 2,
+            "rescued": 0,
+            "skipped": 0,
+            "unreachable": 0
+        }
+    }
+}

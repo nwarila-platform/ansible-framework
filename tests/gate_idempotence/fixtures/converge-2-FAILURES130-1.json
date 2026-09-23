@@ -1,0 +1,155 @@
+{
+  "custom_stats": {},
+  "global_custom_stats": {},
+  "plays": [
+    {
+      "play": {
+        "duration": {
+          "end": "2026-09-21T21:39:20.385275Z",
+          "start": "2026-09-21T21:39:14.916391Z"
+        },
+        "id": "1c697a62-9dd8-65aa-ca6f-000000000005",
+        "name": "Stable converge",
+        "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/stable.yml:2"
+      },
+      "tasks": [
+        {
+          "hosts": {
+            "node_a": {
+              "action": "ansible.builtin.file",
+              "changed": false,
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0750",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a",
+              "size": 4096,
+              "state": "directory",
+              "uid": 1001
+            },
+            "node_b": {
+              "action": "ansible.builtin.file",
+              "changed": false,
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0750",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b",
+              "size": 4096,
+              "state": "directory",
+              "uid": 1001
+            },
+            "node_c": {
+              "action": "ansible.builtin.file",
+              "changed": false,
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0750",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c",
+              "size": 4096,
+              "state": "directory",
+              "uid": 1001
+            }
+          },
+          "task": {
+            "duration": {
+              "end": "2026-09-21T21:39:16.993413Z",
+              "start": "2026-09-21T21:39:14.924683Z"
+            },
+            "id": "1c697a62-9dd8-65aa-ca6f-000000000007",
+            "name": "Create target directory",
+            "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/stable.yml:6"
+          }
+        },
+        {
+          "hosts": {
+            "node_a": {
+              "action": "ansible.builtin.copy",
+              "changed": false,
+              "checksum": "40f1141f7647ce9adb18c4b4c990a539c5e59a49",
+              "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/stable.txt",
+              "diff": [],
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0640",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_a/stable.txt",
+              "size": 7,
+              "state": "file",
+              "uid": 1001
+            },
+            "node_b": {
+              "action": "ansible.builtin.copy",
+              "changed": false,
+              "checksum": "40f1141f7647ce9adb18c4b4c990a539c5e59a49",
+              "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/stable.txt",
+              "diff": [],
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0640",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_b/stable.txt",
+              "size": 7,
+              "state": "file",
+              "uid": 1001
+            },
+            "node_c": {
+              "action": "ansible.builtin.copy",
+              "changed": false,
+              "checksum": "40f1141f7647ce9adb18c4b4c990a539c5e59a49",
+              "dest": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/stable.txt",
+              "diff": [],
+              "gid": 1001,
+              "group": "hellbomb",
+              "mode": "0640",
+              "owner": "hellbomb",
+              "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/target-state/node_c/stable.txt",
+              "size": 7,
+              "state": "file",
+              "uid": 1001
+            }
+          },
+          "task": {
+            "duration": {
+              "end": "2026-09-21T21:39:20.385275Z",
+              "start": "2026-09-21T21:39:16.997592Z"
+            },
+            "id": "1c697a62-9dd8-65aa-ca6f-000000000008",
+            "name": "Write stable content",
+            "path": "/github/nwarila-platform/.audits/ansible-framework/2026-09-21-gate-spike/work/stable.yml:12"
+          }
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "node_a": {
+      "changed": 0,
+      "failures": 1,
+      "ignored": 0,
+      "ok": 2,
+      "rescued": 0,
+      "skipped": 0,
+      "unreachable": 0
+    },
+    "node_b": {
+      "changed": 0,
+      "failures": 0,
+      "ignored": 0,
+      "ok": 2,
+      "rescued": 0,
+      "skipped": 0,
+      "unreachable": 0
+    },
+    "node_c": {
+      "changed": 0,
+      "failures": 0,
+      "ignored": 0,
+      "ok": 2,
+      "rescued": 0,
+      "skipped": 0,
+      "unreachable": 0
+    }
+  }
+}
