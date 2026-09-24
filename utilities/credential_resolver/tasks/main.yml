@@ -261,9 +261,6 @@
                or not credential_resolver_aws_report.s3_https
                or not credential_resolver_aws_report.bucket_https) else [])
         + ([credential_resolver_aws_report.name
-            ~ ': rule 4 refuses ambient AWS profile and access keys together']
-           if credential_resolver_aws_report.ambient_conflict else [])
-        + ([credential_resolver_aws_report.name
             ~ ': rule 4 refuses static AWS credentials while an environment profile is set']
            if credential_resolver_aws_report.static_profile_conflict else [])
       }}
@@ -286,14 +283,12 @@
     __credential_resolver_profile__: ''
     __credential_resolver_selected__: ''
 
+- name: 'PROCESS | Initialize The Credential Round'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_round__: 1
+
 - name: 'PROCESS | Walk Credential Rounds'
-  loop: "{{ range(1, credential_resolver_rounds | int + 1) | list }}"
-  loop_control:
-    loop_var: '__credential_resolver_round__'
-    label: "round {{ __credential_resolver_round__ }}"
-    break_when:
-      - (__credential_resolver_selected__ | length) > 0
-        or (__credential_resolver_round_eligible__ | default(0) | int) == 0
   ansible.builtin.include_tasks:
     file: 'round.yml'
 

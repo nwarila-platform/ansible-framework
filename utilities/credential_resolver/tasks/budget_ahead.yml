@@ -1,50 +1,39 @@
 ---
-- name: 'PROCESS | Read One Earlier Host Candidate'
+- name: 'PROCESS | Decide Password Budget Grant'
   no_log: true
   vars:
-    __matches__: >-
-      {{ hostvars[credential_resolver_ahead_host].credential_resolver_candidates
-         | default([])
-         | selectattr('name', 'equalto', __credential_resolver_candidate__.name)
-         | list }}
+    __budget_account__: "{{ __credential_resolver_attempt_intent__.account | string }}"
+    __budget_used__: >-
+      {%- set budget = namespace(total=0) -%}
+      {%- for tally_host in groups['all'] -%}
+      {%- set tally = hostvars[tally_host].__credential_resolver_password_tallies__
+                      | default({}) -%}
+      {%- set budget.total = budget.total + (tally.get(__budget_account__, 0) | int) -%}
+      {%- endfor -%}
+      {{ budget.total }}
+    __budget_ahead__: >-
+      {%- set reservation = namespace(total=0) -%}
+      {%- for ahead_host in
+            ansible_play_batch[:ansible_play_batch.index(inventory_hostname)] -%}
+      {%- set intent = hostvars[ahead_host].__credential_resolver_attempt_intent__
+                       | default({}) -%}
+      {%- if intent.get('eligible', false) | bool
+            and (intent.get('account', '') | string) == __budget_account__ -%}
+      {%- set reservation.total = reservation.total + (intent.get('cost', 0) | int) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ reservation.total }}
   ansible.builtin.set_fact:
-    __credential_resolver_ahead_candidate__: >-
-      {{ (__matches__ | first) if (__matches__ | length) > 0 else {} }}
-
-- name: 'PROCESS | Resolve One Earlier Host Booking Cost'
-  no_log: true
-  vars:
-    __ahead_profile__: >-
-      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles.get(
-           __credential_resolver_ahead_candidate__.profile | default(''), {}) }}
-  ansible.builtin.set_fact:
-    __credential_resolver_ahead_cost__: >-
+    __credential_resolver_budget_granted__: >-
       {{
-        (__ahead_profile__.password_cost | default(0) | int)
-        if (__credential_resolver_ahead_candidate__.vars.ansible_password
-            | default('') | string | length) > 0
-        else 0
+        __credential_resolver_attempt_intent__.eligible | bool
+        and (
+          (__credential_resolver_attempt_intent__.cost | int) == 0
+          or (
+            __budget_used__ | int
+            + __budget_ahead__ | int
+            + __credential_resolver_attempt_intent__.cost | int
+            <= credential_resolver_password_budget | int
+          )
+        )
       }}
-    __credential_resolver_ahead_attempts__: >-
-      {{
-        __credential_resolver_ahead_candidate__.attempts
-        | default(1 if (__ahead_profile__.password_cost | default(0) | int) > 0
-                    else credential_resolver_rounds)
-        | int
-      }}
-
-- name: 'PROCESS | Reserve For One Earlier Eligible Host'
-  when:
-    - ansible_play_batch.index(credential_resolver_ahead_host)
-      < ansible_play_batch.index(inventory_hostname)
-    - (hostvars[credential_resolver_ahead_host].__credential_resolver_selected__
-       | default('') | length) == 0
-    - (__credential_resolver_ahead_cost__ | int) > 0
-    - (__credential_resolver_round__ | int) <= (__credential_resolver_ahead_attempts__ | int)
-    - >-
-      (__credential_resolver_ahead_candidate__.account | default('') | string)
-      == (__credential_resolver_candidate__.account | default('') | string)
-  no_log: true
-  ansible.builtin.set_fact:
-    __credential_resolver_budget_ahead__: >-
-      {{ __credential_resolver_budget_ahead__ | int + __credential_resolver_ahead_cost__ | int }}

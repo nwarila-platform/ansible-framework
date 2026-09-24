@@ -5,15 +5,48 @@ the first set whose fresh session works. It does not decide which credential is 
 also require passwordless POSIX elevation, and a Windows invocation may require a boot newer than
 a FILETIME floor.
 
-The role is a utility with one entry point, `tasks/main.yml`. Inputs are play variables, never role
-or include parameters. Resolving plays must use the `linear` strategy and keep the role tagged
-`always`:
+The role is a utility with one entry point, `tasks/main.yml`. Candidate inputs are play variables,
+never role or include parameters. The boot floor is passed on the gated second invocation exactly
+as the caller contract below shows. Resolving plays must use the `linear` strategy and keep the role
+tagged `always`.
+
+## Caller contract
 
 ```yaml
 roles:
+  - { role: 'credential_resolver', tags: ['always'] }
+  - role: 'host_readiness'
+  - role: 'os_bootstrap'
+  - role: 'domain_member'
   - role: 'credential_resolver'
     tags: ['always']
+    when: __domain_member_boot_time__ is defined
+    vars:
+      credential_resolver_boot_time_after: "{{ __domain_member_boot_time__ }}"
+  - role: 'host_readiness'
+    when: __domain_member_boot_time__ is defined
+  - role: 'domain_member'
+    when: __domain_member_boot_time__ is defined
 ```
+
+The play supplies `credential_resolver_candidates` and optional
+`credential_resolver_require_elevated`. It supplies `ssh_trusted_principals` for `os_bootstrap`,
+and the first `domain_member` call uses `restart_wait: false`. The gated resolver call proves an
+identity on the new boot before readiness and membership are proved again. Later plays declare no
+connection identity.
+
+## How a resolution runs
+
+1. Check the controller mode, command-line inputs and required controller dependencies.
+2. Validate every candidate and its effective security floors before any connection traffic.
+3. Capture the original connection-plumbing baseline once per host for the run.
+4. Walk the candidates in caller order for each eligible round. Each attempt performs budget →
+   apply → verify → probe → record.
+5. Publish the first winner, print the `'<host>' works as '<name>' (<profile>, user '<user>')`
+   success line, and reset the connection only when that winner uses SSH.
+
+On a re-run against a converged host, the first probe wins, the gated second invocation does not
+run because `__domain_member_boot_time__` is not published, and the play reports `changed=0`.
 
 Credential acquisition is the sole exception to the ordinary utility boundary: this utility may
 apply caller-declared sets in caller order. It is the only role that writes connection credentials,
@@ -229,11 +262,12 @@ host's OS.
 
 AWS ambient mode deliberately leaves every AWS credential option `null` so the default chain can
 run. Profile and static modes write every other AWS credential option as `''`. Static mode is
-refused while `AWS_PROFILE` or `AWS_DEFAULT_PROFILE` is set. Ambient mode is refused when an
-environment profile and environment access key are both present. The role locally constructs SSM
-and S3 clients with placeholder client credentials and refuses any effective non-HTTPS endpoint,
-including service/global environment and shared-configuration endpoints. It never contacts AWS
-during preflight.
+refused while `AWS_PROFILE` or `AWS_DEFAULT_PROFILE` is set. When ambient mode sees both an
+environment profile and environment access key, the plugin's own check rejects that attempt before
+traffic and the resolver continues the walk. The role locally constructs SSM and S3 clients with
+placeholder client credentials and refuses any effective non-HTTPS endpoint, including
+service/global environment and shared-configuration endpoints. It never contacts AWS during
+preflight.
 
 ## Become profiles
 

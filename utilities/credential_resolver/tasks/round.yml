@@ -46,10 +46,6 @@
     file: 'attempt.yml'
 
 - name: 'PROCESS | Count Sets Eligible Next Round'
-  when:
-    - (__credential_resolver_selected__ | length) == 0
-    - (__credential_resolver_round_eligible__ | int) > 0
-    - (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
   no_log: true
   ansible.builtin.set_fact:
     __credential_resolver_next_round_eligible__: 0
@@ -85,11 +81,38 @@
     __credential_resolver_next_round_eligible__: >-
       {{ __credential_resolver_next_round_eligible__ | int + 1 }}
 
+- name: 'PROCESS | Publish Whether This Host Needs A Follow-Up Round'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_attempt_intent__:
+      account: ''
+      cost: 0
+      eligible: false
+    __credential_resolver_need_pause__: >-
+      {{ (__credential_resolver_selected__ | length) == 0
+         and (__credential_resolver_round_eligible__ | int) > 0
+         and (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
+         and (__credential_resolver_next_round_eligible__ | int) > 0 }}
+
 - name: 'PROCESS | Pause Before A Follow-Up Round'
-  when:
-    - (__credential_resolver_selected__ | length) == 0
-    - (__credential_resolver_round_eligible__ | int) > 0
-    - (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
-    - (__credential_resolver_next_round_eligible__ | default(0) | int) > 0
+  when: (__batch_hosts_needing_pause__ | length) > 0
+  vars:
+    __batch_hosts_needing_pause__: >-
+      {{ ansible_play_batch
+         | map('extract', hostvars, '__credential_resolver_need_pause__')
+         | map('default', false)
+         | select('equalto', true)
+         | list }}
   ansible.builtin.pause:
     seconds: "{{ credential_resolver_pause_seconds | int }}"
+
+- name: 'PROCESS | Advance To The Follow-Up Round'
+  when: __credential_resolver_need_pause__ | bool
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_round__: "{{ __credential_resolver_round__ | int + 1 }}"
+
+- name: 'PROCESS | Walk The Follow-Up Round'
+  when: __credential_resolver_need_pause__ | bool
+  ansible.builtin.include_tasks:
+    file: 'round.yml'

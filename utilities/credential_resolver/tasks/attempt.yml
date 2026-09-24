@@ -1,24 +1,34 @@
 ---
+- name: 'PROCESS | Publish This Host Attempt Intent'
+  no_log: true
+  vars:
+    __intent_profile__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles[
+           __credential_resolver_candidate__.profile
+         ] }}
+    __intent_cost__: >-
+      {{ (__intent_profile__.password_cost | int)
+         if (__credential_resolver_candidate__.vars.ansible_password
+             | default('') | string | length) > 0
+         else 0 }}
+    __intent_attempts__: >-
+      {{ __credential_resolver_candidate__.attempts
+         | default(1 if (__intent_cost__ | int) > 0 else credential_resolver_rounds)
+         | int }}
+  ansible.builtin.set_fact:
+    __credential_resolver_attempt_intent__:
+      account: "{{ __credential_resolver_candidate__.account | default('') | string }}"
+      cost: "{{ __intent_cost__ | int }}"
+      eligible: >-
+        {{ (__credential_resolver_selected__ | length) == 0
+           and (__credential_resolver_round__ | int) <= (__intent_attempts__ | int) }}
+
+- name: 'PROCESS | Resolve Password Budget Grant'
+  ansible.builtin.include_tasks:
+    file: 'budget_ahead.yml'
+
 - name: 'PROCESS | Try One Eligible Credential Set'
-  when:
-    - (__credential_resolver_selected__ | length) == 0
-    - >-
-      (__credential_resolver_round__ | int)
-      <= (
-        __credential_resolver_candidate__.attempts
-        | default(
-            1
-            if (
-              (__credential_resolver_catalog__.credential_resolver_connection_profiles[
-                __credential_resolver_candidate__.profile
-              ].password_cost | int) > 0
-              and (__credential_resolver_candidate__.vars.ansible_password
-                   | default('') | string | length) > 0
-            )
-            else credential_resolver_rounds
-          )
-        | int
-      )
+  when: __credential_resolver_attempt_intent__.eligible | bool
   block:
     - name: 'PROCESS | Resolve Attempt Profile And Password Cost'
       no_log: true
@@ -30,61 +40,9 @@
       ansible.builtin.set_fact:
         __credential_resolver_attempt_profile__: "{{ __catalog_profile__ }}"
         __credential_resolver_attempt_cost__: >-
-          {{
-            (__catalog_profile__.password_cost | int)
-            if (__credential_resolver_candidate__.vars.ansible_password
-                | default('') | string | length) > 0
-            else 0
-          }}
+          {{ __credential_resolver_attempt_intent__.cost | int }}
         __credential_resolver_attempt_account__: >-
-          {{ __credential_resolver_candidate__.account | default('') | string }}
-
-    - name: 'PROCESS | Initialize Password Budget Snapshot'
-      no_log: true
-      ansible.builtin.set_fact:
-        __credential_resolver_budget_ahead__: 0
-        __credential_resolver_budget_used__: 0
-
-    - name: 'PROCESS | Sum Prior Password Tallies Across Hosts'
-      when: (__credential_resolver_attempt_cost__ | int) > 0
-      no_log: true
-      loop: "{{ ansible_play_hosts_all }}"
-      loop_control:
-        loop_var: 'credential_resolver_tally_host'
-        label: "{{ credential_resolver_tally_host }}"
-      ansible.builtin.set_fact:
-        __credential_resolver_budget_used__: >-
-          {{
-            __credential_resolver_budget_used__ | int
-            + (
-              hostvars[credential_resolver_tally_host].__credential_resolver_password_tallies__
-              | default({})
-            ).get(__credential_resolver_attempt_account__, 0) | int
-          }}
-
-    - name: 'PROCESS | Reserve Password Cost In Batch Order'
-      when: (__credential_resolver_attempt_cost__ | int) > 0
-      no_log: true
-      loop: "{{ ansible_play_batch }}"
-      loop_control:
-        loop_var: 'credential_resolver_ahead_host'
-        label: "{{ credential_resolver_ahead_host }}"
-      ansible.builtin.include_tasks:
-        file: 'budget_ahead.yml'
-
-    - name: 'PROCESS | Decide Password Budget Grant'
-      no_log: true
-      ansible.builtin.set_fact:
-        __credential_resolver_budget_granted__: >-
-          {{
-            (__credential_resolver_attempt_cost__ | int) == 0
-            or (
-              __credential_resolver_budget_used__ | int
-              + __credential_resolver_budget_ahead__ | int
-              + __credential_resolver_attempt_cost__ | int
-              <= credential_resolver_password_budget | int
-            )
-          }}
+          {{ __credential_resolver_attempt_intent__.account | string }}
 
     - name: 'PROCESS | Record A Budget-Exhausted Attempt'
       when: not (__credential_resolver_budget_granted__ | bool)

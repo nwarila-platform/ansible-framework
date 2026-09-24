@@ -30,7 +30,7 @@ def _global_keysign_enabled() -> bool:
     except OSError:
         return False
     for line in lines:
-        statement = line.split("#", 1)[0].strip().lower().split()
+        statement = line.split("#", 1)[0].strip().lower().replace("=", " ", 1).split()
         if statement == ["enablesshkeysign", "yes"]:
             return True
     return False
@@ -88,8 +88,6 @@ def _aws_endpoints(candidates: list[dict]) -> list[dict]:
             try:
                 session = boto3.Session(profile_name=profile, region_name=candidate.get("region"))
                 endpoint_url = candidate.get("endpoint_url")
-                if service == "s3" and candidate.get("bucket_endpoint_url"):
-                    endpoint_url = candidate["bucket_endpoint_url"]
                 client = session.client(
                     service,
                     endpoint_url=endpoint_url or None,
