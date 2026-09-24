@@ -59,8 +59,22 @@ the bootstrap changes it.
 
 ## What it does
 
-Runs `raw` over whatever connection the inventory selected, repeatedly, until a command actually
-executes — then asserts that one did. That is the entire role.
+Runs `raw` over whatever connection the inventory selected, repeatedly, until the requested
+predicates hold. By default that means only that a command executed. A Windows caller can also
+require the High-integrity and built-in Administrators SIDs, a boot FILETIME newer than a recorded
+floor, or both.
+
+Set `host_readiness_required: false` for an identity-discovery play. The role records
+`__host_readiness_answered__` as a host fact and ends before platform detection and settling, so a
+refused identity remains available to later plays instead of failing the host. The identity remains
+a play-level connection declaration; this role never changes a connection variable.
+
+For an SSH identity declared by private-key content, the caller exports
+`ANSIBLE_SSH_AGENT=auto` and resolves the secret into controller memory for the run; only the
+public half is written to disk.
+The preceding Windows bootstrap play declares `ssh_trusted_principals` as the complete managed
+public set. Removing a principal removes its `Match User` stanza but deliberately leaves its key
+file in place, inert without the stanza.
 
 There is deliberately **no** controller-side port check. A plain TCP connect cannot speak for a
 connection that reaches its target through a proxy command or a tunnel, so on an SSM-proxied or
@@ -99,9 +113,18 @@ All optional, declared as **play** variables (never as `vars:` on the include).
 | Variable | Default | Meaning |
 | --- | ---: | --- |
 | `host_readiness_attempts` | `60` | How many times the probe may run before the wait fails. |
+| `host_readiness_boot_time_after` | `''` | Windows boot FILETIME the answer must exceed. Empty disables the floor. |
 | `host_readiness_pause_seconds` | `15` | Pause between attempts. |
+| `host_readiness_required` | `true` | Fail when no answer satisfies every requested predicate. False records the result and ends the role. |
+| `host_readiness_require_elevated` | `false` | On Windows, require both the High-integrity and built-in Administrators SIDs. |
 | `host_readiness_restart_when_owed` | `true` | Restart a Windows host once when it owes a restart -- a servicing mark with the Windows Modules Installer stopped, or the Windows Update reboot flag -- instead of failing. Turn off where a converge must never restart the machine. |
 
-The two multiply: the wait runs for at most `attempts × (pause + however long a refused connection
-takes to give up)`. The defaults allow roughly fifteen minutes of pauses, which covers a Windows
-first boot.
+The bound is `attempts × one connection attempt's runtime + (attempts - 1) × pause`; there is no
+pause after the final attempt. A refused connection consumes its transport timeout inside that
+bound.
+
+For a WinRM play, pin exactly one `ansible_winrm_transport` and supply the ambient identity's
+password. The caller must pin `pywinrm` in its controller requirements. Use at most two readiness
+attempts on that leg: this bounds task attempts, not directory authentications, because the number
+of challenge/retry authentications within one attempt is not classified here. The bound reduces
+lockout risk but cannot prevent lockout when the threshold or prior failure count is unknown.

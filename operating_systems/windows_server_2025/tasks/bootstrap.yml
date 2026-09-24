@@ -45,8 +45,8 @@
 #      module in the suite is a PowerShell module whose command wrapping must match the shell
 #      OpenSSH actually serves.
 #   2. INITIALIZATION: only now can facts be gathered (fact gathering IS a module run).
-#   3. MAIN: the one host precondition the suite cannot recover from on its own — an elevated
-#      token.
+#   3. MAIN: require an elevated token, install any declared OpenSSH public trust, and hold the
+#      pre-join computer name.
 #
 # NOTE the deliberate INVERSION of the Linux bootstrap's order (facts/OS-assert first, work
 # second): on Windows the transport is not yet trustworthy when the file starts, so the OS
@@ -367,6 +367,448 @@
             quiet: true
 
       #endregion --- [ Begin: Require An Elevated Session Token ] ----------------------------- #
+
+        # yamllint disable-line rule:comments
+        #region ------ [ Begin: Validate The Declared OpenSSH Principals ] -------------------- #
+        # The declaration is hand-authored, and a malformed or reserved derived name would make a
+        # later connection fail after this play had already changed the host.
+
+        - name: 'BEGIN | Validate The Declared OpenSSH Principals'
+          vars:
+            __principals__: "{{ ssh_trusted_principals | default([]) }}"
+            __users__: "{{ __principals__ | map(attribute='user') | map('lower') | list }}"
+            __key_files__: >-
+              {{ __users__ | map('regex_replace', '\\\\', '_')
+                 | map('regex_replace', '$', '_authorized_keys') | list }}
+          when: (ssh_trusted_principals | default([]) | length) > 0
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              ssh_trusted_principals must contain unique {user, public_key} mappings. Users must
+              be DOMAIN\user or unqualified names. Keys must be shaped OpenSSH RSA or ECDSA
+              public keys. No declaration may derive the reserved
+              administrators_authorized_keys file.
+            quiet: true
+            that:
+              - ssh_trusted_principals | default([]) is sequence
+              - ssh_trusted_principals | default([]) is not string
+              - __principals__ | reject('mapping') | list | length == 0
+              - __principals__ | rejectattr('user', 'defined') | list | length == 0
+              - __principals__ | rejectattr('public_key', 'defined') | list | length == 0
+              - >-
+                __principals__ | map(attribute='user') | map('string')
+                | reject('match', '^([A-Za-z0-9.-]+\\\\[A-Za-z0-9._-]+|[A-Za-z0-9._-]+)$')
+                | list | length == 0
+              - >-
+                __principals__ | map(attribute='public_key') | map('string')
+                | reject('match', '^(ecdsa-sha2-nistp(256|384|521)|ssh-rsa) '
+                  ~ 'AAAA[0-9A-Za-z+/]+=*( [^\r\n]*)?$') | list | length == 0
+              - __users__ | unique | length == __users__ | length
+              - __key_files__ | unique | length == __key_files__ | length
+              - "'administrators_authorized_keys' not in __key_files__"
+
+        # yamllint disable-line rule:comments
+        #endregion --- [ Begin: Validate The Declared OpenSSH Principals ] -------------------- #
+
+        # yamllint disable-line rule:comments
+        #region ------ [ Process: Install The Declared OpenSSH Keys ] ------------------------- #
+        # Staging and installation are one action split into two phases so a later invalid key
+        # cannot leave an earlier principal's live file changed.
+
+        - name: 'PROCESS | Stage And Validate Every OpenSSH Key Candidate'
+          changed_when: false
+          register: '__windows_server_2025_key_candidates__'
+          when: (ssh_trusted_principals | default([]) | length) > 0
+
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            parameters:
+              PrincipalsJson: "{{ ssh_trusted_principals | to_json }}"
+            remote_src: false
+            script: |
+              Param([System.String]$PrincipalsJson)
+              $Principals = @($PrincipalsJson | ConvertFrom-Json)
+              $Directory = Join-Path $env:ProgramData 'ssh'
+              $Keygen = Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe'
+              $Candidates = @()
+              Try {
+                ForEach ($Principal in $Principals) {
+                  $User = $Principal.user.ToLowerInvariant()
+                  $Name = '{0}_authorized_keys' -f $User.Replace('\', '_')
+                  $Candidate = Join-Path $Directory ($Name + '.candidate')
+                  $Candidates += $Candidate
+                  [IO.File]::WriteAllText(
+                    $Candidate,
+                    $Principal.public_key.TrimEnd() + [Environment]::NewLine,
+                    [Text.UTF8Encoding]::new($false)
+                  )
+                  $Output = & $Keygen -l -f $Candidate 2>&1
+                  If ($LASTEXITCODE -ne 0) {
+                    Throw "OpenSSH rejected the key candidate for '$User': $Output"
+                  }
+                }
+              }
+              Catch {
+                $Candidates | Where-Object { Test-Path -LiteralPath $PSItem } |
+                  Remove-Item -Force
+                Throw
+              }
+              $Ansible.Changed = $false
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'PROCESS | Install Every Validated OpenSSH Key'
+          when:
+            - (ssh_trusted_principals | default([]) | length) > 0
+            - __windows_server_2025_key_candidates__ is succeeded
+
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            parameters:
+              PrincipalsJson: "{{ ssh_trusted_principals | to_json }}"
+            remote_src: false
+            script: |
+              Param([System.String]$PrincipalsJson)
+              $Principals = @($PrincipalsJson | ConvertFrom-Json)
+              $Directory = Join-Path $env:ProgramData 'ssh'
+              $Administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+              $System = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+              $Allow = [Security.AccessControl.AccessControlType]::Allow
+              $None = [Security.AccessControl.InheritanceFlags]::None
+              $NoPropagation = [Security.AccessControl.PropagationFlags]::None
+              $Full = [Security.AccessControl.FileSystemRights]::FullControl
+
+              Function Test-KeyAcl([System.String]$Path) {
+                $Acl = Get-Acl -LiteralPath $Path
+                $Rules = @($Acl.GetAccessRules($true, $true,
+                  [Security.Principal.SecurityIdentifier]))
+                $Owner = $Acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+                If ($Owner -ne $Administrators.Value -or $Rules.Count -ne 2) {
+                  Return $false
+                }
+                $Expected = @($Administrators.Value, $System.Value) | Sort-Object
+                $Actual = @($Rules | ForEach-Object { $PSItem.IdentityReference.Value }) |
+                  Sort-Object
+                Return -not ($Rules | Where-Object {
+                  $PSItem.IsInherited -or $PSItem.AccessControlType -ne $Allow -or
+                  $PSItem.FileSystemRights -ne $Full -or $PSItem.InheritanceFlags -ne $None -or
+                  $PSItem.PropagationFlags -ne $NoPropagation
+                }) -and (($Expected -join '|') -eq ($Actual -join '|'))
+              }
+
+              $Ansible.Changed = $false
+              ForEach ($Principal in $Principals) {
+                $User = $Principal.user.ToLowerInvariant()
+                $Name = '{0}_authorized_keys' -f $User.Replace('\', '_')
+                $Candidate = Join-Path $Directory ($Name + '.candidate')
+                $Live = Join-Path $Directory $Name
+                $Same = (Test-Path -LiteralPath $Live) -and
+                  ([IO.File]::ReadAllText($Live) -ceq [IO.File]::ReadAllText($Candidate)) -and
+                  (Test-KeyAcl -Path $Live)
+                If ($Same) {
+                  Remove-Item -LiteralPath $Candidate -Force
+                  Continue
+                }
+
+                $Acl = [Security.AccessControl.FileSecurity]::new()
+                $Acl.SetAccessRuleProtection($true, $false)
+                $Acl.SetOwner($Administrators)
+                $Acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+                  $System, $Full, $None, $NoPropagation, $Allow))
+                $Acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+                  $Administrators, $Full, $None, $NoPropagation, $Allow))
+                Set-Acl -LiteralPath $Candidate -AclObject $Acl
+                Move-Item -LiteralPath $Candidate -Destination $Live -Force
+                If (-not (Test-KeyAcl -Path $Live)) {
+                  Throw ("The installed OpenSSH key file for '$User' has the wrong owner or " +
+                    'ACE set.')
+                }
+                $Ansible.Changed = $true
+              }
+
+        # yamllint disable-line rule:comments
+        #endregion --- [ Process: Install The Declared OpenSSH Keys ] ------------------------- #
+
+        # yamllint disable-line rule:comments
+        #region ------ [ Process: Converge The OpenSSH Configuration ] ------------------------ #
+        # An interrupted controller produces the recoverable layouts; a missing administrators
+        # block identifies a foreign image, and a provisioning account can leave a different
+        # owner that the replacement must carry rather than silently change.
+
+        - name: 'PROCESS | Recover And Converge The OpenSSH Configuration'
+          when: (ssh_trusted_principals | default([]) | length) > 0
+
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            parameters:
+              PrincipalsJson: "{{ ssh_trusted_principals | to_json }}"
+            remote_src: false
+            script: |
+              Param([System.String]$PrincipalsJson)
+              $Principals = @($PrincipalsJson | ConvertFrom-Json) |
+                ForEach-Object {
+                  [PSCustomObject]@{
+                    User = $PSItem.user.ToLowerInvariant()
+                    File = '{0}_authorized_keys' -f
+                      $PSItem.user.ToLowerInvariant().Replace('\', '_')
+                  }
+                } | Sort-Object User
+              $Directory = Join-Path $env:ProgramData 'ssh'
+              $Live = Join-Path $Directory 'sshd_config'
+              $Backup = Join-Path $Directory 'sshd_config.backup'
+              $Candidate = Join-Path $Directory 'sshd_config.candidate'
+              $Sshd = Join-Path $env:WINDIR 'System32\OpenSSH\sshd.exe'
+              $Changed = $false
+
+              Function Get-Sddl([System.String]$Path) {
+                Return (Get-Acl -LiteralPath $Path).GetSecurityDescriptorSddlForm(
+                  [Security.AccessControl.AccessControlSections]'Owner, Access')
+              }
+              Function Test-Config([System.String]$Path) {
+                $null = & $Sshd -t -f $Path 2>&1
+                Return $LASTEXITCODE -eq 0
+              }
+              Function Restore-Backup([System.String]$Layout, [System.String]$Snapshot) {
+                If (-not (Test-Config -Path $Backup)) {
+                  Throw "Cannot recover the $Layout layout: the backup configuration is invalid."
+                }
+                If (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Force }
+                Move-Item -LiteralPath $Backup -Destination $Live -Force
+                If (-not (Test-Config -Path $Live) -or (Get-Sddl -Path $Live) -ne $Snapshot) {
+                  Throw ("Recovery of the $Layout layout did not preserve valid content and " +
+                    'metadata.')
+                }
+                If (Test-Path -LiteralPath $Candidate) {
+                  Remove-Item -LiteralPath $Candidate -Force
+                }
+                $Ansible.Result = @{ Layout = $Layout }
+              }
+
+              If (-not (Test-Path -LiteralPath $Live)) {
+                If (-not (Test-Path -LiteralPath $Backup)) {
+                  Throw 'OpenSSH configuration is missing and no recovery backup exists.'
+                }
+                $Snapshot = Get-Sddl -Path $Backup
+                Restore-Backup -Layout 'missing-live' -Snapshot $Snapshot
+                $Changed = $true
+              }
+              Else {
+                $LiveValid = Test-Config -Path $Live
+                If (Test-Path -LiteralPath $Backup) {
+                  $Snapshot = Get-Sddl -Path $Backup
+                  If (-not $LiveValid) {
+                    Restore-Backup -Layout 'invalid-live' -Snapshot $Snapshot
+                    $Changed = $true
+                    $LiveValid = $true
+                  }
+                  ElseIf ((Get-Sddl -Path $Live) -eq $Snapshot) {
+                    Remove-Item -LiteralPath $Backup -Force
+                    If (Test-Path -LiteralPath $Candidate) {
+                      Remove-Item -LiteralPath $Candidate -Force
+                    }
+                  }
+                  Else {
+                    Restore-Backup -Layout 'interrupted-replacement' -Snapshot $Snapshot
+                    $Changed = $true
+                    $LiveValid = $true
+                  }
+                }
+                ElseIf ($LiveValid -and (Test-Path -LiteralPath $Candidate)) {
+                  Remove-Item -LiteralPath $Candidate -Force
+                }
+              }
+
+              $Text = [IO.File]::ReadAllText($Live)
+              $NewLine = If ($Text.Contains("`r`n")) { "`r`n" } Else { "`n" }
+              $Lines = @($Text -split "`r?`n", 0)
+              $MatchIndexes = @(0..($Lines.Count - 1) | Where-Object {
+                $Lines[$PSItem] -match '^\s*Match\s+'
+              })
+              $DeclaredUsers = @($Principals | ForEach-Object { $PSItem.User })
+              $Kept = [Collections.Generic.List[String]]::new()
+              $Cursor = 0
+              ForEach ($Index in $MatchIndexes) {
+                If ($Index -lt $Cursor) { Continue }
+                For ($I = $Cursor; $I -lt $Index; $I++) { $Kept.Add($Lines[$I]) }
+                $Next = @($MatchIndexes | Where-Object { $PSItem -gt $Index } |
+                  Select-Object -First 1)
+                $End = If ($Next.Count) { $Next[0] } Else { $Lines.Count }
+                $Block = @($Lines[$Index..($End - 1)])
+                $Header = $Block[0]
+                $NonBlank = @($Block | Where-Object { $PSItem.Trim().Length -gt 0 })
+                $Managed = $false
+                $ManagedUserPattern =
+                  '^\s*Match\s+User\s+([A-Za-z0-9._-]+(?:\\[A-Za-z0-9._-]+)?)\s*$'
+                If ($Header -match $ManagedUserPattern) {
+                  $User = $Matches[1].ToLowerInvariant()
+                  $ExpectedFile = '{0}_authorized_keys' -f $User.Replace('\', '_')
+                  $Managed = $NonBlank.Count -eq 2 -and
+                    $NonBlank[1] -match
+                      ('^\s*AuthorizedKeysFile\s+__PROGRAMDATA__/ssh/{0}\s*$' -f
+                       [Regex]::Escape($ExpectedFile))
+                  If ($DeclaredUsers -contains $User -and -not $Managed) {
+                    Throw ("Existing Match User stanza for '$User' is not owned by this " +
+                      'declaration.')
+                  }
+                }
+                ElseIf ($Header -match '^\s*Match\s+User\s+(.+)$') {
+                  $Selectors = @($Matches[1].Split(',') |
+                    ForEach-Object { $PSItem.Trim().ToLowerInvariant() })
+                  $Conflict = @($DeclaredUsers | Where-Object { $Selectors -contains $PSItem })
+                  If ($Conflict.Count) {
+                    Throw ("Existing compound Match User stanza names declared user '{0}'." -f
+                      $Conflict[0])
+                  }
+                }
+                If (-not $Managed) { $Block | ForEach-Object { $Kept.Add($PSItem) } }
+                $Cursor = $End
+              }
+              For ($I = $Cursor; $I -lt $Lines.Count; $I++) { $Kept.Add($Lines[$I]) }
+
+              $AdminIndex = @(0..($Kept.Count - 1) | Where-Object {
+                $Kept[$PSItem] -match '^\s*Match\s+Group\s+administrators\s*$'
+              } | Select-Object -First 1)
+              If (-not $AdminIndex.Count) {
+                Throw 'OpenSSH configuration has no Match Group administrators block.'
+              }
+              $ManagedLines = [Collections.Generic.List[String]]::new()
+              ForEach ($Principal in $Principals) {
+                $ManagedLines.Add(('Match User {0}' -f $Principal.User))
+                $ManagedLines.Add(('    AuthorizedKeysFile __PROGRAMDATA__/ssh/{0}' -f
+                  $Principal.File))
+                $ManagedLines.Add('')
+              }
+              $Output = [Collections.Generic.List[String]]::new()
+              For ($I = 0; $I -lt $Kept.Count; $I++) {
+                If ($I -eq $AdminIndex[0]) {
+                  $ManagedLines | ForEach-Object { $Output.Add($PSItem) }
+                }
+                $Output.Add($Kept[$I])
+              }
+              $CandidateText = ($Output -join $NewLine)
+              [IO.File]::WriteAllText(
+                $Candidate, $CandidateText, [Text.UTF8Encoding]::new($false))
+              $LiveBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Live))
+              $CandidateBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($Candidate))
+              If ($LiveValid -and $LiveBytes -ceq $CandidateBytes) {
+                Remove-Item -LiteralPath $Candidate -Force
+                $Ansible.Changed = $Changed
+                Return
+              }
+              $Validation = & $Sshd -t -f $Candidate 2>&1
+              If ($LASTEXITCODE -ne 0) {
+                Remove-Item -LiteralPath $Candidate -Force
+                Throw "OpenSSH rejected the candidate configuration: $Validation"
+              }
+              ForEach ($Principal in $Principals) {
+                $Effective = & $Sshd -T -f $Candidate -C `
+                  "user=$($Principal.User),host=h,addr=127.0.0.1" 2>&1
+                If ($LASTEXITCODE -ne 0 -or
+                    $Effective -notcontains
+                      ('authorizedkeysfile __PROGRAMDATA__/ssh/{0}' -f $Principal.File)) {
+                  Remove-Item -LiteralPath $Candidate -Force
+                  Throw "OpenSSH did not select the declared key file for '$($Principal.User)'."
+                }
+              }
+
+              $OriginalAcl = Get-Acl -LiteralPath $Live
+              $OriginalSddl = $OriginalAcl.GetSecurityDescriptorSddlForm(
+                [Security.AccessControl.AccessControlSections]'Owner, Access')
+              $Owner = $OriginalAcl.GetOwner([Security.Principal.SecurityIdentifier])
+              $CandidateAcl = Get-Acl -LiteralPath $Candidate
+              $CandidateAcl.SetOwner($Owner)
+              Set-Acl -LiteralPath $Candidate -AclObject $CandidateAcl
+              $ReadOwner = (Get-Acl -LiteralPath $Candidate).GetOwner(
+                [Security.Principal.SecurityIdentifier]).Value
+              If ($ReadOwner -ne $Owner.Value) {
+                Remove-Item -LiteralPath $Candidate -Force
+                Throw "Cannot carry OpenSSH owner '$($Owner.Value)'; read back '$ReadOwner'."
+              }
+
+              $ReplaceError = $null
+              Try {
+                [IO.File]::Replace($Candidate, $Live, $Backup)
+              }
+              Catch {
+                $ReplaceError = $PSItem.Exception.Message
+                If (-not (Test-Path -LiteralPath $Live) -and
+                    (Test-Path -LiteralPath $Backup)) {
+                  Move-Item -LiteralPath $Backup -Destination $Live -Force
+                }
+                If (Test-Path -LiteralPath $Candidate) {
+                  Remove-Item -LiteralPath $Candidate -Force
+                }
+              }
+              $LiveValid = (Test-Path -LiteralPath $Live) -and (Test-Config -Path $Live)
+              $LiveSddl = If (Test-Path -LiteralPath $Live) { Get-Sddl -Path $Live } Else { '' }
+              If ($ReplaceError) {
+                If (-not $LiveValid -or $LiveSddl -ne $OriginalSddl) {
+                  Throw ("OpenSSH replacement failed ($ReplaceError) and live revalidation " +
+                    'failed.')
+                }
+                Throw ('OpenSSH replacement failed with a valid preserved live file: ' +
+                  $ReplaceError)
+              }
+              If (-not $LiveValid -or $LiveSddl -ne $OriginalSddl) {
+                $Layout = If (-not $LiveValid) { 'invalid-live' } Else { 'metadata-difference' }
+                If (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Force }
+                Move-Item -LiteralPath $Backup -Destination $Live -Force
+                If (-not (Test-Config -Path $Live) -or
+                    (Get-Sddl -Path $Live) -ne $OriginalSddl) {
+                  Throw "OpenSSH $Layout rollback did not restore valid content and metadata."
+                }
+                Throw "OpenSSH replacement produced $Layout; the backup was restored."
+              }
+              Remove-Item -LiteralPath $Backup -Force
+              If (Test-Path -LiteralPath $Candidate) {
+                Remove-Item -LiteralPath $Candidate -Force
+              }
+              $Ansible.Changed = $true
+
+        # yamllint disable-line rule:comments
+        #endregion --- [ Process: Converge The OpenSSH Configuration ] ------------------------ #
+
+        # yamllint disable-line rule:comments
+        #region ------ [ Process: Hold A Current OpenSSH Listener ] --------------------------- #
+        # A failed prior restart or a stopped service can leave valid disk state behind a stale
+        # or absent listener, so the service PID and process start time prove convergence.
+
+        - name: 'PROCESS | Hold A Current OpenSSH Listener'
+          when: (ssh_trusted_principals | default([]) | length) > 0
+
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            remote_src: false
+            script: |
+              $Config = Join-Path $env:ProgramData 'ssh\sshd_config'
+              $Service = Get-CimInstance Win32_Service -Filter "Name='sshd'"
+              $Process = If ($Service.ProcessId) {
+                Get-Process -Id $Service.ProcessId -ErrorAction SilentlyContinue
+              }
+              $ConfigTime = (Get-Item -LiteralPath $Config).LastWriteTimeUtc
+              $Stale = $Service.State -ne 'Running' -or -not $Process -or
+                $Process.StartTime.ToUniversalTime() -le $ConfigTime
+              $Ansible.Changed = $false
+              If ($Stale) {
+                If ($Service.State -eq 'Running') { Restart-Service -Name 'sshd' -Force }
+                Else { Start-Service -Name 'sshd' }
+                $Ansible.Changed = $true
+                $Service = Get-CimInstance Win32_Service -Filter "Name='sshd'"
+                $Process = If ($Service.ProcessId) {
+                  Get-Process -Id $Service.ProcessId -ErrorAction SilentlyContinue
+                }
+              }
+              If ($Service.State -ne 'Running' -or -not $Process -or
+                  $Process.StartTime.ToUniversalTime() -le $ConfigTime) {
+                Throw 'OpenSSH has no running listener process newer than sshd_config.'
+              }
+
+        # yamllint disable-line rule:comments
+        #endregion --- [ Process: Hold A Current OpenSSH Listener ] --------------------------- #
 
         #region ------ [ Process: Set The Computer Name ] ------------------------------------- #
         # The host's own name. A host that later joins a directory carries this name into its

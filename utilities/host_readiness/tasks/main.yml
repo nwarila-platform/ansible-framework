@@ -12,11 +12,11 @@
 # ansible.builtin.wait_for_connection is unused: that action decides success by executing
 # the ping module.
 #
-# THE PROBE KNOWS NOTHING ABOUT THE PLATFORM OR THE TRANSPORT. It is a command every shell this
-# suite meets understands, carried by whatever connection the inventory selected. In particular
-# there is no controller-side port check: a plain TCP connect cannot speak for a connection that
-# reaches its target through a proxy command or a tunnel, so the only honest test is
-# the connection itself.
+# THE DEFAULT PROBE KNOWS NOTHING ABOUT THE PLATFORM OR THE TRANSPORT. Optional Windows elevation
+# and boot predicates select a PowerShell command that both supported Windows default shells can
+# launch. Either command is carried by whatever connection the caller selected. There is no
+# controller-side port check: a plain TCP connect cannot speak for a proxied or tunnelled
+# connection, so the only honest test is the connection itself.
 #
 # A host that answers is REACHABLE. On some platforms it is not yet FINISHED, and that is the one
 # thing this role learned to know: it runs the precondition for the platform it is on and the OS
@@ -39,6 +39,43 @@
 #   * Bounds are raised as PLAY variables; they are defaults so that a play can outrank them.
 #
 # ============================================================================================= #
+
+# yamllint disable-line rule:comments
+#region ------ [ Begin: Resolve The Operating System ] ---------------------------------------- #
+
+- name: 'BEGIN | Resolve The Operating System From The Inventory'
+  ansible.builtin.set_fact:
+    # 'platform' is the inventory's OS hint -- the same variable os_bootstrap reads, confusingly
+    # named, and not this role's to rename. Only the two values os_bootstrap acts on are
+    # honoured; anything else falls through instead of becoming an OS name in its own right.
+    __host_readiness_os__: >-
+      {%- if (platform | default('') | string | lower | trim) == 'windows' -%}
+        windows
+      {%- elif (platform | default('') | string | lower | trim) == 'linux' -%}
+        linux
+      {%- elif (ansible_shell_type | default('') | string | lower | trim) == 'powershell' -%}
+        windows
+      {%- elif (ansible_connection | default('') | string | lower | trim)
+      in ['winrm', 'psrp'] -%}
+        windows
+      {%- else -%}
+        linux
+      {%- endif -%}
+
+- name: 'BEGIN | Require Windows For An Elevated Token Probe'
+  when: host_readiness_require_elevated | bool
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      host_readiness_require_elevated is supported only for Windows hosts; '{{ inventory_hostname
+      }}' resolved as '{{ __host_readiness_os__ }}'. Correct the platform or shell hint, or
+      disable the Windows-only predicate.
+    quiet: true
+    that:
+      - __host_readiness_os__ == 'windows'
+
+# yamllint disable-line rule:comments
+#endregion --- [ Begin: Resolve The Operating System ] ---------------------------------------- #
 
 #region ------ [ Begin: Answer Over The Transport ] ------------------------------------------- #
 # A host that is still booting refuses the session, and a credential installed by first-boot
@@ -69,29 +106,126 @@
     break_when:
       - __host_readiness_probe__ is not unreachable
       - __host_readiness_probe__ is not failed
+      - >-
+        not (host_readiness_require_elevated | bool)
+        or (
+          'S-1-16-12288' in (__host_readiness_probe__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
+          | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
+          | list)
+          and 'S-1-5-32-544' in (__host_readiness_probe__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
+          | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
+          | list)
+        )
+      - >-
+        (host_readiness_boot_time_after | default('') | string | trim | length) == 0
+        or (
+          (__host_readiness_probe__.stdout_lines | default([])
+          | select('match', '^[0-9]+$') | map('int') | list | last | default(0))
+          > (host_readiness_boot_time_after | int)
+        )
     label: "attempt {{ item | int + 1 }} of {{ host_readiness_attempts | int }}"
     pause: "{{ host_readiness_pause_seconds | int }}"
   register: '__host_readiness_probe__'
 
-  ansible.builtin.raw: 'echo ready'
+  ansible.builtin.raw: >-
+    {{
+      'powershell -NoProfile -NonInteractive -Command "whoami /user /groups /fo csv /nh'
+      ~ ('; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
+         if (host_readiness_boot_time_after | default('') | string | trim | length) > 0
+         else '')
+      ~ '"'
+      if (__host_readiness_os__ == 'windows'
+          and ((host_readiness_require_elevated | bool)
+               or (host_readiness_boot_time_after | default('') | string | trim | length) > 0))
+      else 'echo ready'
+    }}
 
 # The LAST attempt is the verdict. The registered result reports unreachable if ANY attempt was,
 # which is the normal course of waiting for a host, so asking it directly would fail every wait
 # that ever had to wait.
 
-- name: 'BEGIN | Require That The Transport Answered'
+- name: 'BEGIN | Record Whether The Identity Answered'
   vars:
     __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
+    __host_readiness_group_sids__: >-
+      {{ __host_readiness_last__.stdout_lines | default([])
+         | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
+         | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
+         | list }}
+    __host_readiness_boot_times__: >-
+      {{ __host_readiness_last__.stdout_lines | default([])
+         | select('match', '^[0-9]+$') | map('int') | list }}
+  when: not (host_readiness_required | bool)
+
+  ansible.builtin.set_fact:
+    __host_readiness_answered__: >-
+      {{
+        __host_readiness_last__ is not unreachable
+        and __host_readiness_last__ is not failed
+        and (
+          not (host_readiness_require_elevated | bool)
+          or (
+            'S-1-16-12288' in __host_readiness_group_sids__
+            and 'S-1-5-32-544' in __host_readiness_group_sids__
+          )
+        )
+        and (
+          (host_readiness_boot_time_after | default('') | string | trim | length) == 0
+          or ((__host_readiness_boot_times__ | last | default(0))
+              > (host_readiness_boot_time_after | int))
+        )
+      }}
+
+- name: 'BEGIN | End A Probe-Only Readiness Check'
+  when: not (host_readiness_required | bool)
+  ansible.builtin.meta: 'end_role'
+
+- name: 'BEGIN | Require That The Identity Answered'
+  vars:
+    __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
+    __host_readiness_group_sids__: >-
+      {{ __host_readiness_last__.stdout_lines | default([])
+         | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
+         | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
+         | list }}
+    __host_readiness_boot_times__: >-
+      {{ __host_readiness_last__.stdout_lines | default([])
+         | select('match', '^[0-9]+$') | map('int') | list }}
+    __host_readiness_transport_answered__: >-
+      {{ __host_readiness_last__ is not unreachable and __host_readiness_last__ is not failed }}
+    __host_readiness_high_seen__: >-
+      {{ 'S-1-16-12288' in __host_readiness_group_sids__ }}
+    __host_readiness_administrators_seen__: >-
+      {{ 'S-1-5-32-544' in __host_readiness_group_sids__ }}
+    __host_readiness_boot_observed__: >-
+      {{ __host_readiness_boot_times__ | last | default(0) }}
+  when: host_readiness_required | bool
 
   ansible.builtin.assert:
     fail_msg: >-
-      '{{ inventory_hostname }}' never answered over its transport after
-      {{ __host_readiness_probe__.results | length }} attempt(s):
-      {{ __host_readiness_last__.msg | default('no message') }}
+      '{{ inventory_hostname }}' did not answer as '{{ ansible_user | default('<undeclared>') }}'
+      after {{ __host_readiness_probe__.results | length }} attempt(s). Predicates:
+      transport reached={{ __host_readiness_transport_answered__ }} (required=true){% if
+      host_readiness_require_elevated | bool %}; High-integrity SID seen={{
+      __host_readiness_high_seen__ }} (required=true); Administrators SID seen={{
+      __host_readiness_administrators_seen__ }} (required=true){% endif %}{% if
+      (host_readiness_boot_time_after | default('') | string | trim | length) > 0 %}; observed
+      boot FILETIME={{ __host_readiness_boot_observed__ }} (required greater than {{
+      host_readiness_boot_time_after | int }}){% endif %}.
     quiet: true
     that:
-      - __host_readiness_last__ is not unreachable
-      - __host_readiness_last__ is not failed
+      - __host_readiness_transport_answered__ | bool
+      - >-
+        not (host_readiness_require_elevated | bool)
+        or (
+          (__host_readiness_high_seen__ | bool)
+          and (__host_readiness_administrators_seen__ | bool)
+        )
+      - >-
+        (host_readiness_boot_time_after | default('') | string | trim | length) == 0
+        or ((__host_readiness_boot_observed__ | int) > (host_readiness_boot_time_after | int))
 
 #endregion --- [ Begin: Answer Over The Transport ] ------------------------------------------- #
 
@@ -104,31 +238,6 @@
 # the platform from a raw read of the SMBIOS vendor unless the caller declared one.
 #
 # first_found with skip: a pair that ships no file has no precondition, which is the common case.
-
-# The OS comes from the same inventory hint os_bootstrap dispatches on, in the same order, so a
-# host answers to one story about what it is. It decides which vendor probe to run below, and
-# which half of the precondition file name to ask for.
-
-- name: 'BEGIN | Resolve The Operating System From The Inventory'
-  ansible.builtin.set_fact:
-    # 'platform' is the inventory's OS hint -- the same variable os_bootstrap reads, confusingly
-    # named, and not this role's to rename. Only the two values os_bootstrap acts on are
-    # honoured; anything else falls through instead of becoming an OS name in its own right.
-    # Without that, an inventory setting platform to a cloud name would ask for
-    # checks_aws_aws.yml and skip in silence.
-    __host_readiness_os__: >-
-      {%- if (platform | default('') | string | lower | trim) == 'windows' -%}
-        windows
-      {%- elif (platform | default('') | string | lower | trim) == 'linux' -%}
-        linux
-      {%- elif (ansible_shell_type | default('') | string | lower | trim) == 'powershell' -%}
-        windows
-      {%- elif (ansible_connection | default('') | string | lower | trim)
-      in ['winrm', 'psrp'] -%}
-        windows
-      {%- else -%}
-        linux
-      {%- endif -%}
 
 # DETECTED, not asked of a module. This reads the same SMBIOS system vendor that
 # ansible_facts.system_vendor reports -- on Linux the very file the fact plugin opens, on Windows

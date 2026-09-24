@@ -111,8 +111,17 @@
     - name: 'BEGIN | Test The Machine Account Credential Against The Directory'
       changed_when: false
       check_mode: false
+      delay: "{{ __domain_member_channel_pause_seconds__ }}"
       ignore_errors: true
       register: '__domain_member_channel__'
+      retries: "{{ __domain_member_channel_attempts__ }}"
+      until: >-
+        __domain_member_channel__.output | default([], true) | first | default(false) | bool
+      vars:
+        # A directory controller reached through a tunnel can disappear for one probe without
+        # the machine credential being broken.
+        __domain_member_channel_attempts__: 6
+        __domain_member_channel_pause_seconds__: 20
       when: ansible_facts.windows_domain_member | default(false) | bool
 
       ansible.windows.win_powershell:
@@ -132,22 +141,273 @@
   vars:
     __realm_to_join__: "{{ domain_member_running.realm | string | trim }}"
     __currently_joined__: "{{ ansible_facts.windows_domain_member | default(false) | bool }}"
-    # A host that is joined but whose machine account the directory rejects is not a member in
-    # any sense this role can use, so it is rejoined exactly as an unjoined one is. Skipped when
-    # the probe did not run, which is the unjoined case the first clause already covers.
+    # Skipped when the probe did not run, which is the unjoined case.
     __credential_broken__: >-
       {{ (__currently_joined__ | bool)
          and not (__domain_member_channel__.output | default([], true) | first
                   | default(false) | bool) }}
     __join_required__: >-
-      {{ (not (__currently_joined__ | bool)) or (__credential_broken__ | bool)
-         or (domain_member_running.force_rejoin | bool) }}
+      {{ (not (__currently_joined__ | bool)) or (domain_member_running.force_rejoin | bool) }}
+    __reset_worked__: >-
+      {{ ((__domain_member_reset__.output | default([], true) | first
+           | default({}, true)).Worked | default(false)) is true }}
+    __restart_required__: >-
+      {{ (__domain_member_join__.reboot_required | default(false) | bool)
+         or (__reset_worked__ is true) }}
     __timesync_declared__: >-
       {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0
       }}
 
   # Begin The 'Process' Block
   block:
+
+    # yamllint disable-line rule:comments
+    #region ------ [ Process: Find A Reachable Domain Controller ] ---------------------------- #
+
+    - name: 'PROCESS | Find A Reachable Domain Controller'
+      changed_when: false
+      check_mode: false
+      register: '__domain_member_controller__'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          Realm: "{{ domain_member_running.realm }}"
+        remote_src: false
+        script: |
+          Param([System.String]$Realm)
+          $Controller = Resolve-DnsName -Name ('_ldap._tcp.dc._msdcs.{0}' -f $Realm) `
+            -Type SRV -ErrorAction SilentlyContinue |
+            Where-Object { $PSItem.NameTarget } |
+            ForEach-Object { $PSItem.NameTarget.TrimEnd('.') } |
+            Sort-Object -Unique |
+            Where-Object {
+              Test-NetConnection -ComputerName $PSItem -Port 389 `
+                -InformationLevel Quiet -WarningAction SilentlyContinue
+            } |
+            Select-Object -First 1
+          $Ansible.Changed = $false
+          [PSCustomObject]@{ Controller = $Controller }
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require A Reachable Domain Controller'
+      vars:
+        __controller__: >-
+          {{ (__domain_member_controller__.output | default([], true) | first
+             | default({}, true)).Controller | default('', true) }}
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          No domain controller for '{{ domain_member_running.realm }}' answered on TCP/389; this
+          is not a credential problem. Restore directory reachability before repairing the
+          machine account.
+        quiet: true
+        that:
+          - __controller__ | string | trim | length > 0
+
+    # yamllint disable-line rule:comments
+    #endregion --- [ Process: Find A Reachable Domain Controller ] ---------------------------- #
+
+    # yamllint disable-line rule:comments
+    #region ------ [ Process: Refuse A Repeated Automatic Repair ] ---------------------------- #
+    # A controller interruption after a machine-password reset can leave the connection identity
+    # unusable on the next run, so the host marker prevents an automatic retry loop.
+
+    - name: 'PROCESS | Read The Automatic Repair Marker'
+      register: '__domain_member_repair_marker__'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+
+      ansible.windows.win_reg_stat:
+        name: 'RepairAttemptedUtc'
+        path: 'HKLM:\SOFTWARE\Ansible\domain_member'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse A Repeated Automatic Repair'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Automatic machine-account repair was already attempted at {{
+          __domain_member_repair_marker__.value | default('<unknown>', true) }}. Replace the
+          host;
+          or, if its computer object is intact, use an out-of-band SYSTEM session or the local
+          administrator at the console to fetch the correct credential inside the repair script,
+          run Test-ComputerSecureChannel -Repair -Credential, and if it still tests false run
+          Reset-ComputerMachinePassword -Credential followed by a restart. Then rerun the
+          playbook; a working channel clears this marker. If the computer object is gone, replace
+          the host.
+        quiet: true
+        that:
+          - not (__domain_member_repair_marker__.exists | default(false) | bool)
+
+    # yamllint disable-line rule:comments
+    #endregion --- [ Process: Refuse A Repeated Automatic Repair ] ---------------------------- #
+
+    # yamllint disable-line rule:comments
+    #region ------ [ Process: Repair The Machine Account Credential ] ------------------------- #
+
+    - name: 'PROCESS | Repair The Machine Account Credential'
+      check_mode: false
+      no_log: true
+      register: '__domain_member_repair__'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+        - not ansible_check_mode
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: |
+          Param([System.Management.Automation.PSCredential]$Credential)
+          Try {
+            $Worked = Test-ComputerSecureChannel -Repair -Credential $Credential `
+              -ErrorAction Stop
+            $Ansible.Changed = [Boolean]$Worked
+            [PSCustomObject]@{ Worked = [Boolean]$Worked; Message = '' }
+          }
+          Catch {
+            $Ansible.Changed = $false
+            [PSCustomObject]@{ Worked = $false; Message = $PSItem.Exception.Message }
+          }
+        sensitive_parameters:
+          - name: 'Credential'
+            password: "{{ domain_member_running.password }}"
+            username: "{{ domain_member_running.user | string | trim }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Retest The Machine Account Credential After Repair'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_repair_retest__'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+        - not ansible_check_mode
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: 'Test-ComputerSecureChannel'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Report The Machine Account Repair Result'
+      vars:
+        __repair_result__: >-
+          {{ __domain_member_repair__.output | default([], true) | first | default({}, true) }}
+      when:
+        - __domain_member_repair__ is defined
+        - not (__domain_member_repair__ is skipped)
+
+      ansible.builtin.debug:
+        msg: >-
+          Machine-account repair result: {{ __repair_result__.Worked | default(false) }}{{
+          (': ' ~ __repair_result__.Message)
+          if (__repair_result__.Message | default('', true) | string | trim | length) > 0
+          else '' }}.
+        verbosity: 0
+
+    # yamllint disable-line rule:comments
+    #endregion --- [ Process: Repair The Machine Account Credential ] ------------------------- #
+
+    # yamllint disable-line rule:comments
+    #region ------ [ Process: Reset The Machine Account Password ] ---------------------------- #
+
+    - name: 'PROCESS | Mark The Automatic Machine Account Reset'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+        - not ansible_check_mode
+        - >-
+          not (__domain_member_repair_retest__.output | default([], true) | first
+               | default(false) | bool)
+
+      ansible.windows.win_regedit:
+        data: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+        delete_key: true
+        name: 'RepairAttemptedUtc'
+        path: 'HKLM:\SOFTWARE\Ansible\domain_member'
+        state: 'present'
+        type: 'string'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Reset The Machine Account Password'
+      check_mode: false
+      no_log: true
+      register: '__domain_member_reset__'
+      when:
+        - __credential_broken__ | bool
+        - not (domain_member_running.force_rejoin | bool)
+        - not ansible_check_mode
+        - >-
+          not (__domain_member_repair_retest__.output | default([], true) | first
+               | default(false) | bool)
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: |
+          Param([System.Management.Automation.PSCredential]$Credential)
+          Try {
+            Reset-ComputerMachinePassword -Credential $Credential -ErrorAction Stop
+            $Ansible.Changed = $true
+            [PSCustomObject]@{ Worked = $true; Message = '' }
+          }
+          Catch {
+            $Ansible.Changed = $false
+            [PSCustomObject]@{ Worked = $false; Message = $PSItem.Exception.Message }
+          }
+        sensitive_parameters:
+          - name: 'Credential'
+            password: "{{ domain_member_running.password }}"
+            username: "{{ domain_member_running.user | string | trim }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require The Machine Account Password Reset To Succeed'
+      vars:
+        __reset_result__: >-
+          {{ __domain_member_reset__.output | default([], true) | first | default({}, true) }}
+      when:
+        - __domain_member_reset__ is defined
+        - __domain_member_reset__ is not skipped
+        - not ansible_check_mode
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The machine-account password reset failed without restarting the host: {{
+          __reset_result__.Message | default('no result', true) }}. Replace the host; or, if its
+          computer object is intact, use an out-of-band SYSTEM session or the local administrator
+          at the console to fetch the correct credential inside the repair script, repair or
+          reset
+          the channel, restart after a reset, and rerun the playbook. If the object is gone,
+          replace the host.
+        quiet: true
+        that:
+          - __reset_result__.Worked | default(false) | bool
+
+    # yamllint disable-line rule:comments
+    #endregion --- [ Process: Reset The Machine Account Password ] ---------------------------- #
 
     #region ------ [ Process: Leave The Current Domain When A Rejoin Is Forced ] -------------- #
     # The RedHat system role's forced rejoin is 'realm leave' followed by 'realm join'; this is
@@ -168,7 +428,7 @@
       no_log: true
       register: '__domain_member_left__'
       when:
-        - domain_member_running.force_rejoin | bool or __credential_broken__ | bool
+        - domain_member_running.force_rejoin | bool
         - __currently_joined__ | bool
 
       microsoft.ad.membership:
@@ -226,27 +486,212 @@
 
     #endregion --- [ Process: Join The Declared Realm ] --------------------------------------- #
 
-    #region ------ [ Process: Restart To Complete The Join ] ---------------------------------- #
-    # Gated on the module's own answer rather than on whether it changed anything: a join always
-    # asks for a restart, and a converged host asks for none. A skipped join leaves no
-    # reboot_required at all, which defaults to false and skips this with it. Every option
-    # carries the module's documented default, stated so an upgrade cannot move what this role
-    # relies on, with two deliberate exceptions: msg is set because saying why the machine is
-    # going away is the whole point of having it; and boot_time_command is left alone because it
-    # is the module's own probe for "has the host returned" rather than a setting, so pinning it
-    # would freeze an implementation we want to inherit fixes to.
+    # yamllint disable-line rule:comments
+    #region ------ [ Process: Restart To Complete The Identity Change ] ----------------------- #
+    # A full security policy can retire the local network identity at the join restart. The
+    # caller
+    # can therefore schedule it without waiting and prove the new boot in a later play under the
+    # domain identity.
 
-    - name: 'PROCESS | Restart To Complete The Join'
-      when: __domain_member_join__.reboot_required | default(false) | bool
+    - name: 'PROCESS | Restart And Wait To Complete The Identity Change'
+      when:
+        - __restart_required__ | bool
+        - domain_member_running.restart_wait | bool
 
       ansible.windows.win_reboot:
         connect_timeout: 5
-        msg: 'Restart requested by Ansible to complete the Active Directory domain join'
+        msg: 'Restart requested by Ansible to complete the domain identity change'
         post_reboot_delay: 0
         pre_reboot_delay: 2
         reboot_timeout: 600
 
-    #endregion --- [ Process: Restart To Complete The Join ] ---------------------------------- #
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Retest The Machine Account Credential After The Reset Restart'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_reset_retest__'
+      when:
+        - __reset_worked__ is true
+        - domain_member_running.restart_wait | bool
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: 'Test-ComputerSecureChannel'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require The Reset Credential To Work After Restart'
+      when:
+        - __reset_worked__ is true
+        - domain_member_running.restart_wait | bool
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The machine-account password reset completed and the host restarted, but the secure
+          channel still tests false. Use the documented out-of-band repair sequence or replace
+          the host; the role will not leave and rejoin automatically.
+        quiet: true
+        that:
+          - >-
+            __domain_member_reset_retest__.output
+            | default([], true) | first | default(false) | bool
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Clear The Automatic Repair Marker After A Working Channel'
+      when:
+        - __currently_joined__ | bool
+        - not ansible_check_mode
+        - >-
+          (__domain_member_channel__.output | default([], true) | first | default(false) | bool)
+          or (__domain_member_repair_retest__.output | default([], true) | first
+              | default(false) | bool)
+          or (__domain_member_reset_retest__.output | default([], true) | first
+              | default(false) | bool)
+
+      ansible.windows.win_regedit:
+        delete_key: false
+        name: 'RepairAttemptedUtc'
+        path: 'HKLM:\SOFTWARE\Ansible\domain_member'
+        state: 'absent'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Read The Boot Time Before Scheduling The Restart'
+      changed_when: false
+      check_mode: false
+      register: '__domain_member_boot_time_read__'
+      when:
+        - __restart_required__ | bool
+        - not (domain_member_running.restart_wait | bool)
+        - not ansible_check_mode
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: |
+          $Ansible.Changed = $false
+          (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Record The Boot Time For The Next Play'
+      when:
+        - __restart_required__ | bool
+        - not (domain_member_running.restart_wait | bool)
+        - not ansible_check_mode
+
+      ansible.builtin.set_fact:
+        __domain_member_boot_time__: >-
+          {{ __domain_member_boot_time_read__.output | first | int }}
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Schedule The Identity Change Restart'
+      changed_when: true
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__domain_member_shutdown__'
+      when:
+        - __restart_required__ | bool
+        - not (domain_member_running.restart_wait | bool)
+        - not ansible_check_mode
+
+      ansible.windows.win_command:
+        argv:
+          - 'shutdown.exe'
+          - '/r'
+          - '/t'
+          - '5'
+          - '/c'
+          - 'Restart requested by Ansible to complete the domain identity change'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Abort An Already Scheduled Restart Before Reissuing It'
+      changed_when: true
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__domain_member_shutdown_abort__'
+      when:
+        - __domain_member_shutdown__ is defined
+        - not (__domain_member_shutdown__ is unreachable)
+        - __domain_member_shutdown__.rc | default(-1) | int == 1190
+
+      ansible.windows.win_command:
+        argv:
+          - 'shutdown.exe'
+          - '/a'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Reissue The Identity Change Restart'
+      changed_when: true
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__domain_member_shutdown_reissue__'
+      when:
+        - __domain_member_shutdown_abort__ is defined
+        - not (__domain_member_shutdown_abort__ is skipped)
+        - not (__domain_member_shutdown_abort__ is unreachable)
+        - __domain_member_shutdown_abort__.rc | default(-1) | int == 0
+
+      ansible.windows.win_command:
+        argv:
+          - 'shutdown.exe'
+          - '/r'
+          - '/t'
+          - '5'
+          - '/c'
+          - 'Restart requested by Ansible to complete the domain identity change'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require The Identity Change Restart To Be Scheduled'
+      vars:
+        __first_rc__: "{{ __domain_member_shutdown__.rc | default(-1) | int }}"
+        __abort_rc__: "{{ __domain_member_shutdown_abort__.rc | default(-1) | int }}"
+        __reissue_rc__: "{{ __domain_member_shutdown_reissue__.rc | default(-1) | int }}"
+      when:
+        - __restart_required__ | bool
+        - not (domain_member_running.restart_wait | bool)
+        - not ansible_check_mode
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Could not schedule the domain identity restart. Initial rc={{ __first_rc__ }}, abort
+          rc={{ __abort_rc__ }}, reissue rc={{ __reissue_rc__ }}. Expected rc 0 or 1115, or rc
+          1190 followed by a successful abort and reissue.
+        quiet: true
+        that:
+          - >-
+            __domain_member_shutdown__ is unreachable
+            or __first_rc__ in [0, 1115]
+            or (
+              __first_rc__ == 1190
+              and __abort_rc__ == 0
+              and (
+                __domain_member_shutdown_reissue__ is unreachable
+                or __reissue_rc__ in [0, 1115]
+              )
+            )
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | End After Scheduling The Identity Change Restart'
+      when:
+        - __restart_required__ | bool
+        - not (domain_member_running.restart_wait | bool)
+        - not ansible_check_mode
+      ansible.builtin.meta: 'end_role'
+
+    # yamllint disable-line rule:comments
+    #endregion --- [ Process: Restart To Complete The Identity Change ] ----------------------- #
 
     #region ------ [ Process: Hold The Domain Member Secure Channel ] ------------------------- #
     # What ad_integration writes into sssd.conf for RedHat, Windows keeps in Netlogon's
@@ -538,8 +983,7 @@
     # of leaving it on is worse than a missing answer (verified in ansible.windows 3.7.0
     # win_powershell.ps1): win_powershell refuses to run a script that does not declare
     # SupportsShouldProcess under --check, returning a message and NO output at all -- so a
-    # HEALTHY member host would fail this proof during a routine --check audit, with a message
-    # telling the operator to force a rejoin it does not need.
+    # HEALTHY member host would fail this proof during a routine --check audit.
 
     - name: 'END | Test The Machine Account Credential Against The Directory'
       changed_when: false
@@ -563,8 +1007,9 @@
           could not prove it with its own machine account:
           {{ __domain_member_secure_channel__.error | default([], true) | map(attribute='output')
           | list | join('; ') | trim | default('the check returned false', true) }}.
-          A domain controller this host cannot reach fails the same way a broken credential does;
-          where the credential is the problem, domain_member.force_rejoin rebuilds it.
+          A domain controller this host cannot reach fails the same way a broken credential does.
+          Restore reachability, follow the documented marked repair sequence, or replace the
+          host; the role will not leave and rejoin automatically.
         quiet: true
         that:
           - >-
