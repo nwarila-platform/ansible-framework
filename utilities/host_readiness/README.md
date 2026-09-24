@@ -72,6 +72,9 @@ a play-level connection declaration; this role never changes a connection variab
 For an SSH identity declared by private-key content, the caller exports
 `ANSIBLE_SSH_AGENT=auto` and resolves the secret into controller memory for the run; only the
 public half is written to disk.
+`auto` starts a run-scoped agent and replaces `SSH_AUTH_SOCK` for the whole run, so a private-key
+file another play reads must be usable without the ambient agent (unencrypted, or supplied as
+content); a path to an existing agent's `SSH_AUTH_SOCK` instead keeps that agent's keys available.
 The preceding Windows bootstrap play declares `ssh_trusted_principals` as the complete managed
 public set. Removing a principal removes its `Match User` stanza but deliberately leaves its key
 file in place, inert without the stanza.

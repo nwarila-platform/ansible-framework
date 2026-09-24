@@ -369,7 +369,6 @@
 
       #endregion --- [ Begin: Require An Elevated Session Token ] ----------------------------- #
 
-        # yamllint disable-line rule:comments
         #region ------ [ Begin: Validate The Declared OpenSSH Principals ] -------------------- #
         # The declaration is hand-authored, and a malformed or reserved derived name would make a
         # later connection fail after this play had already changed the host.
@@ -379,7 +378,7 @@
             __principals__: "{{ ssh_trusted_principals | default([]) }}"
             __users__: "{{ __principals__ | map(attribute='user') | map('lower') | list }}"
             __key_files__: >-
-              {{ __users__ | map('regex_replace', '\\\\', '_')
+              {{ __users__ | map('regex_replace', '\\', '_')
                  | map('regex_replace', '$', '_authorized_keys') | list }}
           when: (ssh_trusted_principals | default([]) | length) > 0
 
@@ -408,10 +407,8 @@
               - __key_files__ | unique | length == __key_files__ | length
               - "'administrators_authorized_keys' not in __key_files__"
 
-        # yamllint disable-line rule:comments
         #endregion --- [ Begin: Validate The Declared OpenSSH Principals ] -------------------- #
 
-        # yamllint disable-line rule:comments
         #region ------ [ Process: Install The Declared OpenSSH Keys ] ------------------------- #
         # Staging and installation are one action split into two phases so a later invalid key
         # cannot leave an earlier principal's live file changed.
@@ -433,6 +430,27 @@
               $Directory = Join-Path $env:ProgramData 'ssh'
               $Keygen = Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe'
               $Candidates = @()
+
+              Function Invoke-NativeCommand {
+                Param(
+                  [System.String]$FilePath,
+                  [System.String[]]$Argument
+                )
+                $Previous = $ErrorActionPreference
+                Try {
+                  $ErrorActionPreference = 'Continue'
+                  $Output = & $FilePath @Argument 2>&1
+                  $Exit = $LASTEXITCODE
+                } Finally {
+                  $ErrorActionPreference = $Previous
+                }
+                Return [PSCustomObject]@{
+                  ExitCode = $Exit
+                  Output = @($Output)
+                  Text = [System.String]($Output -join [Environment]::NewLine)
+                }
+              }
+
               Try {
                 ForEach ($Principal in $Principals) {
                   $User = $Principal.user.ToLowerInvariant()
@@ -444,13 +462,14 @@
                     $Principal.public_key.TrimEnd() + [Environment]::NewLine,
                     [Text.UTF8Encoding]::new($false)
                   )
-                  $Output = & $Keygen -l -f $Candidate 2>&1
-                  If ($LASTEXITCODE -ne 0) {
-                    Throw "OpenSSH rejected the key candidate for '$User': $Output"
+                  $Validation = Invoke-NativeCommand -FilePath $Keygen -Argument @(
+                    '-l', '-f', $Candidate)
+                  If ($Validation.ExitCode -ne 0) {
+                    Throw ("OpenSSH rejected the key candidate for '$User': " +
+                      "'$($Validation.Text)'.")
                   }
                 }
-              }
-              Catch {
+              } Catch {
                 $Candidates | Where-Object { Test-Path -LiteralPath $PSItem } |
                   Remove-Item -Force
                 Throw
@@ -462,7 +481,6 @@
         - name: 'PROCESS | Install Every Validated OpenSSH Key'
           when:
             - (ssh_trusted_principals | default([]) | length) > 0
-            - __windows_server_2022_key_candidates__ is succeeded
 
           ansible.windows.win_powershell:
             depth: 2
@@ -529,10 +547,8 @@
                 $Ansible.Changed = $true
               }
 
-        # yamllint disable-line rule:comments
         #endregion --- [ Process: Install The Declared OpenSSH Keys ] ------------------------- #
 
-        # yamllint disable-line rule:comments
         #region ------ [ Process: Converge The OpenSSH Configuration ] ------------------------ #
         # An interrupted controller produces the recoverable layouts; a missing administrators
         # block identifies a foreign image, and a provisioning account can leave a different
@@ -564,23 +580,46 @@
               $Sshd = Join-Path $env:WINDIR 'System32\OpenSSH\sshd.exe'
               $Changed = $false
 
+              Function Invoke-NativeCommand {
+                Param(
+                  [System.String]$FilePath,
+                  [System.String[]]$Argument
+                )
+                $Previous = $ErrorActionPreference
+                Try {
+                  $ErrorActionPreference = 'Continue'
+                  $Output = & $FilePath @Argument 2>&1
+                  $Exit = $LASTEXITCODE
+                } Finally {
+                  $ErrorActionPreference = $Previous
+                }
+                Return [PSCustomObject]@{
+                  ExitCode = $Exit
+                  Output = @($Output)
+                  Text = [System.String]($Output -join [Environment]::NewLine)
+                }
+              }
+
               Function Get-Sddl([System.String]$Path) {
                 Return (Get-Acl -LiteralPath $Path).GetSecurityDescriptorSddlForm(
                   [Security.AccessControl.AccessControlSections]'Owner, Access')
               }
               Function Test-Config([System.String]$Path) {
-                $null = & $Sshd -t -f $Path 2>&1
-                Return $LASTEXITCODE -eq 0
+                Return Invoke-NativeCommand -FilePath $Sshd -Argument @('-t', '-f', $Path)
               }
               Function Restore-Backup([System.String]$Layout, [System.String]$Snapshot) {
-                If (-not (Test-Config -Path $Backup)) {
-                  Throw "Cannot recover the $Layout layout: the backup configuration is invalid."
+                $BackupValidation = Test-Config -Path $Backup
+                If ($BackupValidation.ExitCode -ne 0) {
+                  Throw ("Cannot recover the $Layout layout: the backup configuration is " +
+                    "invalid; OpenSSH said '$($BackupValidation.Text)'.")
                 }
                 If (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Force }
                 Move-Item -LiteralPath $Backup -Destination $Live -Force
-                If (-not (Test-Config -Path $Live) -or (Get-Sddl -Path $Live) -ne $Snapshot) {
+                $RestoredValidation = Test-Config -Path $Live
+                If ($RestoredValidation.ExitCode -ne 0 -or
+                    (Get-Sddl -Path $Live) -ne $Snapshot) {
                   Throw ("Recovery of the $Layout layout did not preserve valid content and " +
-                    'metadata.')
+                    "metadata; OpenSSH said '$($RestoredValidation.Text)'.")
                 }
                 If (Test-Path -LiteralPath $Candidate) {
                   Remove-Item -LiteralPath $Candidate -Force
@@ -595,29 +634,26 @@
                 $Snapshot = Get-Sddl -Path $Backup
                 Restore-Backup -Layout 'missing-live' -Snapshot $Snapshot
                 $Changed = $true
-              }
-              Else {
-                $LiveValid = Test-Config -Path $Live
+              } Else {
+                $LiveValidation = Test-Config -Path $Live
+                $LiveValid = $LiveValidation.ExitCode -eq 0
                 If (Test-Path -LiteralPath $Backup) {
                   $Snapshot = Get-Sddl -Path $Backup
                   If (-not $LiveValid) {
                     Restore-Backup -Layout 'invalid-live' -Snapshot $Snapshot
                     $Changed = $true
                     $LiveValid = $true
-                  }
-                  ElseIf ((Get-Sddl -Path $Live) -eq $Snapshot) {
+                  } ElseIf ((Get-Sddl -Path $Live) -eq $Snapshot) {
                     Remove-Item -LiteralPath $Backup -Force
                     If (Test-Path -LiteralPath $Candidate) {
                       Remove-Item -LiteralPath $Candidate -Force
                     }
-                  }
-                  Else {
+                  } Else {
                     Restore-Backup -Layout 'interrupted-replacement' -Snapshot $Snapshot
                     $Changed = $true
                     $LiveValid = $true
                   }
-                }
-                ElseIf ($LiveValid -and (Test-Path -LiteralPath $Candidate)) {
+                } ElseIf ($LiveValid -and (Test-Path -LiteralPath $Candidate)) {
                   Remove-Item -LiteralPath $Candidate -Force
                 }
               }
@@ -654,8 +690,7 @@
                     Throw ("Existing Match User stanza for '$User' is not owned by this " +
                       'declaration.')
                   }
-                }
-                ElseIf ($Header -match '^\s*Match\s+User\s+(.+)$') {
+                } ElseIf ($Header -match '^\s*Match\s+User\s+(.+)$') {
                   $Selectors = @($Matches[1].Split(',') |
                     ForEach-Object { $PSItem.Trim().ToLowerInvariant() })
                   $Conflict = @($DeclaredUsers | Where-Object { $Selectors -contains $PSItem })
@@ -699,19 +734,22 @@
                 $Ansible.Changed = $Changed
                 Return
               }
-              $Validation = & $Sshd -t -f $Candidate 2>&1
-              If ($LASTEXITCODE -ne 0) {
+              $Validation = Invoke-NativeCommand -FilePath $Sshd -Argument @(
+                '-t', '-f', $Candidate)
+              If ($Validation.ExitCode -ne 0) {
                 Remove-Item -LiteralPath $Candidate -Force
-                Throw "OpenSSH rejected the candidate configuration: $Validation"
+                Throw "OpenSSH rejected the candidate configuration: '$($Validation.Text)'."
               }
               ForEach ($Principal in $Principals) {
-                $Effective = & $Sshd -T -f $Candidate -C `
-                  "user=$($Principal.User),host=h,addr=127.0.0.1" 2>&1
-                If ($LASTEXITCODE -ne 0 -or
-                    $Effective -notcontains
+                $Effective = Invoke-NativeCommand -FilePath $Sshd -Argument @(
+                  '-T', '-f', $Candidate, '-C',
+                  "user=$($Principal.User),host=h,addr=127.0.0.1")
+                If ($Effective.ExitCode -ne 0 -or
+                    $Effective.Output -notcontains
                       ('authorizedkeysfile __PROGRAMDATA__/ssh/{0}' -f $Principal.File)) {
                   Remove-Item -LiteralPath $Candidate -Force
-                  Throw "OpenSSH did not select the declared key file for '$($Principal.User)'."
+                  Throw ('OpenSSH did not select the declared key file for ' +
+                    "'$($Principal.User)'; it said '$($Effective.Text)'.")
                 }
               }
 
@@ -732,8 +770,7 @@
               $ReplaceError = $null
               Try {
                 [IO.File]::Replace($Candidate, $Live, $Backup)
-              }
-              Catch {
+              } Catch {
                 $ReplaceError = $PSItem.Exception.Message
                 If (-not (Test-Path -LiteralPath $Live) -and
                     (Test-Path -LiteralPath $Backup)) {
@@ -743,12 +780,16 @@
                   Remove-Item -LiteralPath $Candidate -Force
                 }
               }
-              $LiveValid = (Test-Path -LiteralPath $Live) -and (Test-Config -Path $Live)
+              $LiveValidation = If (Test-Path -LiteralPath $Live) {
+                Test-Config -Path $Live
+              }
+              $LiveValid = (Test-Path -LiteralPath $Live) -and
+                $LiveValidation.ExitCode -eq 0
               $LiveSddl = If (Test-Path -LiteralPath $Live) { Get-Sddl -Path $Live } Else { '' }
               If ($ReplaceError) {
                 If (-not $LiveValid -or $LiveSddl -ne $OriginalSddl) {
                   Throw ("OpenSSH replacement failed ($ReplaceError) and live revalidation " +
-                    'failed.')
+                    "failed; OpenSSH said '$($LiveValidation.Text)'.")
                 }
                 Throw ('OpenSSH replacement failed with a valid preserved live file: ' +
                   $ReplaceError)
@@ -757,11 +798,14 @@
                 $Layout = If (-not $LiveValid) { 'invalid-live' } Else { 'metadata-difference' }
                 If (Test-Path -LiteralPath $Live) { Remove-Item -LiteralPath $Live -Force }
                 Move-Item -LiteralPath $Backup -Destination $Live -Force
-                If (-not (Test-Config -Path $Live) -or
+                $RollbackValidation = Test-Config -Path $Live
+                If ($RollbackValidation.ExitCode -ne 0 -or
                     (Get-Sddl -Path $Live) -ne $OriginalSddl) {
-                  Throw "OpenSSH $Layout rollback did not restore valid content and metadata."
+                  Throw ("OpenSSH $Layout rollback did not restore valid content and " +
+                    "metadata; OpenSSH said '$($RollbackValidation.Text)'.")
                 }
-                Throw "OpenSSH replacement produced $Layout; the backup was restored."
+                Throw ("OpenSSH replacement produced $Layout; the backup was restored. " +
+                  "OpenSSH said '$($LiveValidation.Text)'.")
               }
               Remove-Item -LiteralPath $Backup -Force
               If (Test-Path -LiteralPath $Candidate) {
@@ -769,10 +813,8 @@
               }
               $Ansible.Changed = $true
 
-        # yamllint disable-line rule:comments
         #endregion --- [ Process: Converge The OpenSSH Configuration ] ------------------------ #
 
-        # yamllint disable-line rule:comments
         #region ------ [ Process: Hold A Current OpenSSH Listener ] --------------------------- #
         # A failed prior restart or a stopped service can leave valid disk state behind a stale
         # or absent listener, so the service PID and process start time prove convergence.
@@ -795,8 +837,9 @@
                 $Process.StartTime.ToUniversalTime() -le $ConfigTime
               $Ansible.Changed = $false
               If ($Stale) {
-                If ($Service.State -eq 'Running') { Restart-Service -Name 'sshd' -Force }
-                Else { Start-Service -Name 'sshd' }
+                If ($Service.State -eq 'Running') { Restart-Service -Name 'sshd' -Force } Else {
+                  Start-Service -Name 'sshd'
+                }
                 $Ansible.Changed = $true
                 $Service = Get-CimInstance Win32_Service -Filter "Name='sshd'"
                 $Process = If ($Service.ProcessId) {
@@ -808,7 +851,6 @@
                 Throw 'OpenSSH has no running listener process newer than sshd_config.'
               }
 
-        # yamllint disable-line rule:comments
         #endregion --- [ Process: Hold A Current OpenSSH Listener ] --------------------------- #
 
         #region ------ [ Process: Set The Computer Name ] ------------------------------------- #

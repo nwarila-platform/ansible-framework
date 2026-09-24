@@ -161,7 +161,6 @@
   # Begin The 'Process' Block
   block:
 
-    # yamllint disable-line rule:comments
     #region ------ [ Process: Find A Reachable Domain Controller ] ---------------------------- #
 
     - name: 'PROCESS | Find A Reachable Domain Controller'
@@ -213,10 +212,8 @@
         that:
           - __controller__ | string | trim | length > 0
 
-    # yamllint disable-line rule:comments
     #endregion --- [ Process: Find A Reachable Domain Controller ] ---------------------------- #
 
-    # yamllint disable-line rule:comments
     #region ------ [ Process: Refuse A Repeated Automatic Repair ] ---------------------------- #
     # A controller interruption after a machine-password reset can leave the connection identity
     # unusable on the next run, so the host marker prevents an automatic retry loop.
@@ -253,10 +250,8 @@
         that:
           - not (__domain_member_repair_marker__.exists | default(false) | bool)
 
-    # yamllint disable-line rule:comments
     #endregion --- [ Process: Refuse A Repeated Automatic Repair ] ---------------------------- #
 
-    # yamllint disable-line rule:comments
     #region ------ [ Process: Repair The Machine Account Credential ] ------------------------- #
 
     - name: 'PROCESS | Repair The Machine Account Credential'
@@ -279,8 +274,7 @@
               -ErrorAction Stop
             $Ansible.Changed = [Boolean]$Worked
             [PSCustomObject]@{ Worked = [Boolean]$Worked; Message = '' }
-          }
-          Catch {
+          } Catch {
             $Ansible.Changed = $false
             [PSCustomObject]@{ Worked = $false; Message = $PSItem.Exception.Message }
           }
@@ -325,10 +319,8 @@
           else '' }}.
         verbosity: 0
 
-    # yamllint disable-line rule:comments
     #endregion --- [ Process: Repair The Machine Account Credential ] ------------------------- #
 
-    # yamllint disable-line rule:comments
     #region ------ [ Process: Reset The Machine Account Password ] ---------------------------- #
 
     - name: 'PROCESS | Mark The Automatic Machine Account Reset'
@@ -372,8 +364,7 @@
             Reset-ComputerMachinePassword -Credential $Credential -ErrorAction Stop
             $Ansible.Changed = $true
             [PSCustomObject]@{ Worked = $true; Message = '' }
-          }
-          Catch {
+          } Catch {
             $Ansible.Changed = $false
             [PSCustomObject]@{ Worked = $false; Message = $PSItem.Exception.Message }
           }
@@ -406,7 +397,6 @@
         that:
           - __reset_result__.Worked | default(false) | bool
 
-    # yamllint disable-line rule:comments
     #endregion --- [ Process: Reset The Machine Account Password ] ---------------------------- #
 
     #region ------ [ Process: Leave The Current Domain When A Rejoin Is Forced ] -------------- #
@@ -486,7 +476,6 @@
 
     #endregion --- [ Process: Join The Declared Realm ] --------------------------------------- #
 
-    # yamllint disable-line rule:comments
     #region ------ [ Process: Restart To Complete The Identity Change ] ----------------------- #
     # A full security policy can retire the local network identity at the join restart. The
     # caller
@@ -690,7 +679,6 @@
         - not ansible_check_mode
       ansible.builtin.meta: 'end_role'
 
-    # yamllint disable-line rule:comments
     #endregion --- [ Process: Restart To Complete The Identity Change ] ----------------------- #
 
     #region ------ [ Process: Hold The Domain Member Secure Channel ] ------------------------- #

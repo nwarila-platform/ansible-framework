@@ -40,7 +40,6 @@
 #
 # ============================================================================================= #
 
-# yamllint disable-line rule:comments
 #region ------ [ Begin: Resolve The Operating System ] ---------------------------------------- #
 
 - name: 'BEGIN | Resolve The Operating System From The Inventory'
@@ -74,7 +73,6 @@
     that:
       - __host_readiness_os__ == 'windows'
 
-# yamllint disable-line rule:comments
 #endregion --- [ Begin: Resolve The Operating System ] ---------------------------------------- #
 
 #region ------ [ Begin: Answer Over The Transport ] ------------------------------------------- #
@@ -109,14 +107,12 @@
       - >-
         not (host_readiness_require_elevated | bool)
         or (
-          'S-1-16-12288' in (__host_readiness_probe__.stdout_lines | default([])
-          | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
-          | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
-          | list)
-          and 'S-1-5-32-544' in (__host_readiness_probe__.stdout_lines | default([])
-          | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
-          | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
-          | list)
+          (__host_readiness_probe__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-16-12288","[^"]*"$')
+          | list | length) > 0
+          and (__host_readiness_probe__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-5-32-544","[^"]*"$')
+          | list | length) > 0
         )
       - >-
         (host_readiness_boot_time_after | default('') | string | trim | length) == 0
@@ -149,11 +145,14 @@
 - name: 'BEGIN | Record Whether The Identity Answered'
   vars:
     __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
-    __host_readiness_group_sids__: >-
-      {{ __host_readiness_last__.stdout_lines | default([])
-         | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
-         | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
-         | list }}
+    __host_readiness_high_seen__: >-
+      {{ (__host_readiness_last__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-16-12288","[^"]*"$')
+          | list | length) > 0 }}
+    __host_readiness_administrators_seen__: >-
+      {{ (__host_readiness_last__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-5-32-544","[^"]*"$')
+          | list | length) > 0 }}
     __host_readiness_boot_times__: >-
       {{ __host_readiness_last__.stdout_lines | default([])
          | select('match', '^[0-9]+$') | map('int') | list }}
@@ -167,8 +166,8 @@
         and (
           not (host_readiness_require_elevated | bool)
           or (
-            'S-1-16-12288' in __host_readiness_group_sids__
-            and 'S-1-5-32-544' in __host_readiness_group_sids__
+            __host_readiness_high_seen__ | bool
+            and __host_readiness_administrators_seen__ | bool
           )
         )
         and (
@@ -185,20 +184,19 @@
 - name: 'BEGIN | Require That The Identity Answered'
   vars:
     __host_readiness_last__: "{{ __host_readiness_probe__.results | last }}"
-    __host_readiness_group_sids__: >-
-      {{ __host_readiness_last__.stdout_lines | default([])
-         | select('match', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$')
-         | map('regex_replace', '^"[^"]*","[^"]*","(S-1-[0-9-]+)","[^"]*"$', '\1')
-         | list }}
+    __host_readiness_high_seen__: >-
+      {{ (__host_readiness_last__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-16-12288","[^"]*"$')
+          | list | length) > 0 }}
+    __host_readiness_administrators_seen__: >-
+      {{ (__host_readiness_last__.stdout_lines | default([])
+          | select('match', '^"[^"]*","[^"]*","S-1-5-32-544","[^"]*"$')
+          | list | length) > 0 }}
     __host_readiness_boot_times__: >-
       {{ __host_readiness_last__.stdout_lines | default([])
          | select('match', '^[0-9]+$') | map('int') | list }}
     __host_readiness_transport_answered__: >-
       {{ __host_readiness_last__ is not unreachable and __host_readiness_last__ is not failed }}
-    __host_readiness_high_seen__: >-
-      {{ 'S-1-16-12288' in __host_readiness_group_sids__ }}
-    __host_readiness_administrators_seen__: >-
-      {{ 'S-1-5-32-544' in __host_readiness_group_sids__ }}
     __host_readiness_boot_observed__: >-
       {{ __host_readiness_boot_times__ | last | default(0) }}
   when: host_readiness_required | bool
