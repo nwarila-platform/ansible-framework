@@ -124,6 +124,10 @@
     label: "attempt {{ item | int + 1 }} of {{ host_readiness_attempts | int }}"
     pause: "{{ host_readiness_pause_seconds | int }}"
   register: '__host_readiness_probe__'
+  vars:
+    # Producer: after a restart changes group membership, a shared SSH master pins the first
+    # logon's token, so each attempt must open a new connection.
+    ansible_control_path: 'none'
 
   ansible.builtin.raw: >-
     {{
@@ -197,6 +201,10 @@
          | select('match', '^[0-9]+$') | map('int') | list }}
     __host_readiness_transport_answered__: >-
       {{ __host_readiness_last__ is not unreachable and __host_readiness_last__ is not failed }}
+    __host_readiness_host_reached__: >-
+      {{ __host_readiness_last__ is not unreachable }}
+    __host_readiness_probe_rc__: >-
+      {{ __host_readiness_last__.rc | default('<unreported>') }}
     __host_readiness_boot_observed__: >-
       {{ __host_readiness_boot_times__ | last | default(0) }}
   when: host_readiness_required | bool
@@ -205,7 +213,9 @@
     fail_msg: >-
       '{{ inventory_hostname }}' did not answer as '{{ ansible_user | default('<undeclared>') }}'
       after {{ __host_readiness_probe__.results | length }} attempt(s). Predicates:
-      transport reached={{ __host_readiness_transport_answered__ }} (required=true){% if
+      host reached={{ __host_readiness_host_reached__ }} (required=true){% if
+      __host_readiness_host_reached__ == true %}; probe exit code={{
+      __host_readiness_probe_rc__ }} (required=0){% endif %}{% if
       host_readiness_require_elevated | bool %}; High-integrity SID seen={{
       __host_readiness_high_seen__ }} (required=true); Administrators SID seen={{
       __host_readiness_administrators_seen__ }} (required=true){% endif %}{% if

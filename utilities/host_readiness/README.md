@@ -99,9 +99,15 @@ thing this role must not do. Measured against ansible-core 2.21.2: a `raw` task 
 A loop item that cannot connect is caught, so the next item runs; `ignore_unreachable` keeps the
 host in the play, and the assertion afterwards is what decides the outcome.
 
+For SSH, the probe opens a new connection on every attempt so a restart-time group-membership
+change is visible instead of being pinned to the first logon's token. A caller whose `ssh_args`
+already carry `-o ControlPath` overrides this behavior; the rest of the play keeps the caller's
+connection sharing.
+
 The assertion reads the **last** attempt. The registered result reports unreachable if *any*
 attempt was, which is the normal course of waiting, so asking it directly would fail every wait that
-actually had to wait.
+actually had to wait. On failure, the message reports whether the host was reached and, when it was,
+the probe's exit code, followed by the observed values of any requested token and boot predicates.
 
 ## Why not `wait_for_connection`
 
