@@ -6,12 +6,11 @@
 # in vars/ over this map and publishes the result as 'domain_member_running'; tasks read only the
 # merged map, never these keys directly.
 #
-# ONE CONTRACT, TWO PLATFORMS. Every key below means the same thing on RedHat and on Windows and
-# produces the same end state. The RedHat path hands them to
-# redhat.rhel_system_roles.ad_integration, whose variable names these deliberately mirror; the
-# Windows path implements the same semantics against microsoft.ad and the registry. A key that
-# could only ever mean something on one platform does not belong here -- it belongs in that
-# platform's overlay, or nowhere.
+# ONE MEMBERSHIP CONTRACT, TWO PLATFORMS. Shared posture keys mean the same thing on RedHat and
+# Windows; Windows-only identity-transition controls are marked beside their defaults. The RedHat
+# path hands them to redhat.rhel_system_roles.ad_integration, whose variable names these
+# deliberately mirror; the Windows path implements the same membership semantics against
+# microsoft.ad and the registry.
 #
 # IDENTITY DOES NOT BELONG HERE. This role is a WRAPPER: the join itself is
 # redhat.rhel_system_roles.ad_integration on RedHat and microsoft.ad.membership on Windows, and
@@ -77,13 +76,23 @@ domain_member_defaults:
   computer_ou: null
 
   # Leave the current realm and join again from scratch. False is the only safe default: a rejoin
-  # destroys the existing computer account association and builds a new one, which is the right
-  # repair for a broken machine-account credential and the wrong answer to everything else.
+  # destroys the existing computer account association and builds a new one. Broken Windows
+  # machine credentials use the bounded repair/reset state table instead; this is only an
+  # operator's explicit leave.
   #
   # WINDOWS CAVEAT: a forced rejoin unjoins to a workgroup and restarts before joining again, so
   # the connection account must be a LOCAL administrator. A domain account cannot authenticate to
   # a host that is, at that moment, not in the domain.
   force_rejoin: false
+
+  # A forced Windows rejoin leaves the realm before it joins again, so the ambient identity must
+  # survive that transition. The caller declares the scope explicitly; the role does not infer it
+  # from an account name.
+  identity_scope: ''
+
+  # Wait for the post-join or machine-password-reset restart. False schedules the restart and
+  # leaves its completion proof to the caller's next play under the joined identity.
+  restart_wait: true
 
   #endregion --- [ Join behaviour ] ----------------------------------------------------------- #
 

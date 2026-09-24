@@ -1,7 +1,8 @@
 # `domain_member` role
 
-Joins a host to an Active Directory realm. **One contract, two platforms.** Every key means the
-same thing and produces the same end state on both.
+Joins a host to an Active Directory realm. **One membership contract, two platforms.** Shared
+posture keys produce the same end state on both; Windows-only identity-transition controls are
+marked in the configuration table.
 
 This role WRAPS the platform's join mechanism -- `ad_integration` on RedHat,
 `microsoft.ad.membership` on Windows -- and adds this organization's answer to which realm, as
@@ -27,9 +28,11 @@ dict. Tasks read the merged result as `domain_member_running`.
 | `password` | Yes | `''` | The join account's password, already resolved to a string: `lookup('secret', 's3://<bucket>/<key>', '<sha256 of the stored bytes>')`. A value, not a location. The digest is the lookup's second term and is what makes a moved or truncated object fail at the read; the role cannot check it after the fact, so a caller that omits it joins with an unverified value. |
 | `registration_address` | No | `''` | The IPv4 address this host publishes in the realm's DNS under its own name. Empty asks the host: Windows publishes the address it reaches a remote network from, and the converge says which it chose. Declare it where that is wrong — a management path that is not the default route, a tunnel carrying the default route, or an interface holding several usable addresses. Not implemented on RedHat; declaring it there reports that it has no effect. |
 | `realm` | Yes | `''` | DNS name of the realm. Not the NetBIOS short name. |
-| `user` | Yes | `''` | Account permitted to create or reuse this machine's computer object, as a UPN. |
+| `user` | Yes | `''` | Account permitted to create or reuse this machine's computer object, as `DOMAIN\user` or a UPN. |
 | `computer_ou` | No | `null` | LDAP DN of the OU a **new** computer object is created in. Null files it in the directory's default computers container, where OU-linked policy does not reach it. |
 | `force_rejoin` | No | `false` | Leave the current realm and join again from scratch. |
+| `identity_scope` | No | `''` | Must be `local` for a forced Windows rejoin, declaring that the ambient identity survives the leave and restart. |
+| `restart_wait` | No | `true` | Wait for a Windows post-join or machine-password-reset restart. False schedules it and leaves proof to the caller's next invocation under the joined identity. |
 | `timesync_source` | No | `null` | Host or address to synchronise the clock with. |
 
 `ENV` is required by the loader — it selects the environment-specific overlay layer
@@ -44,9 +47,11 @@ before returning the value; the role hands that value to the join. The guest is 
 credentials, and no task in this role writes the value to a file.
 
 That is not the same as "it never touches disk": with pipelining off — Ansible's default, which
-this chassis keeps — Ansible itself stages every module payload as a file in the target's temp
-directory before executing it, and for the join that payload carries the password. Enable
-pipelining for plays running this role if that transit matters to you.
+this chassis keeps — every credential-bearing module argument is staged in the target's temp
+directory for the module run. That includes the join password and the repair/reset credentials.
+The repair/reset values are passed as sensitive parameters and are never interpolated into script
+text, which protects script text and output but does not change payload staging. Enable pipelining
+for plays running this role if that transit matters to you.
 
 The lookup runs **on the controller, with the controller's own ambient AWS credentials** — this
 role never authenticates to S3 and has no task targeting `localhost`, so a play needs no controller
@@ -115,9 +120,10 @@ The role neither reads nor sets FIPS state.
 - **A host already joined to a different realm is refused**, before anything is written — unless
   `force_rejoin` says otherwise. Joining it elsewhere abandons its computer object and every access
   granted through that object's group memberships.
-- **`force_rejoin` on Windows requires a local connection account.** The machine is unjoined and
+- **`force_rejoin` on Windows requires `identity_scope: local`.** The machine is unjoined and
   restarted before it rejoins, and a domain account cannot authenticate to a host that is, at that
-  moment, not in the domain.
+  moment, not in the domain. The role requires the declaration instead of inferring it from a user
+  string.
 - **Renaming the machine is not offered.** A rename is a separate change with its own consequences.
 - **An existing computer object is never moved between OUs.** `computer_ou` applies at creation.
 - **Leaving a domain is not implemented** as a state. `state: clean` is a supported no-op on both
@@ -139,4 +145,27 @@ two separate things:
 2. **That the machine account credential actually works** — `adcli testjoin` on RedHat,
    `Test-ComputerSecureChannel` on Windows. A configured realm is not a working membership: the
    computer object can be deleted or reset in the directory while every local answer still looks
-   correct. This is the check that tells an operator they need `force_rejoin`.
+   correct.
+
+## Windows secure-channel repair
+
+A failed channel test is retried six times, twenty seconds apart. If none succeeds, the role finds
+an SRV-advertised controller that answers on TCP/389, refuses a repeated automatic attempt when its
+`RepairAttemptedUtc` marker exists, and tries `Test-ComputerSecureChannel -Repair -Credential`.
+When repair does not restore the channel, it writes the marker and runs
+`Reset-ComputerMachinePassword -Credential`. The role never leaves the realm on this path.
+
+A successful password reset requires a restart. With `restart_wait: true`, the role waits and
+retests. With `restart_wait: false`, it records the pre-restart FILETIME in
+`__domain_member_boot_time__`, schedules the restart, and ends the role. The caller's next play
+passes that fact as `host_readiness_boot_time_after`, reconnects under the joined identity, and
+invokes this role again for its ordinary membership proof.
+
+The marker deliberately turns permanent damage into an operator decision. Replace the host; or,
+when the computer object is intact, keep it without relying on the broken channel: open an
+out-of-band SYSTEM session or use the local administrator at the hypervisor console, fetch the
+correct credential from the secret store inside the repair script, run
+`Test-ComputerSecureChannel -Repair -Credential`, and if the channel still tests false run
+`Reset-ComputerMachinePassword -Credential` followed by a restart. Rerun the playbook; a working
+channel clears the marker. Never pass the plaintext credential as a retained remote-command
+parameter. If the computer object no longer exists, replace the host.
