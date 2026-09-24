@@ -1,0 +1,11 @@
+---
+- name: 'PROCESS | Neutralize One Become Option Group'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_attempt_map__: >-
+      {{ __credential_resolver_attempt_map__
+         | combine(dict(
+             credential_resolver_become_group.aliases
+             | zip([credential_resolver_become_group.neutral]
+                   * (credential_resolver_become_group.aliases | length))
+           )) }}

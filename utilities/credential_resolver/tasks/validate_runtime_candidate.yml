@@ -1,0 +1,173 @@
+---
+- name: 'BEGIN | Resolve Effective Candidate Floor Inputs'
+  no_log: true
+  vars:
+    __profile_name__: "{{ credential_resolver_candidate.profile | default('') }}"
+    __profile__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles.get(
+           __profile_name__, {}) }}
+    __candidate_vars__: >-
+      {{ credential_resolver_candidate.vars
+         if (credential_resolver_candidate.vars | default(none)) is mapping else {} }}
+    __plugin_baseline__: >-
+      {{ __credential_resolver_baseline__.get(__profile__.plugin | default(''), {}) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_runtime_name__: >-
+      {{ credential_resolver_candidate.name | default('<unnamed>') | string }}
+    __credential_resolver_runtime_profile__: "{{ __profile__ }}"
+    __credential_resolver_runtime_vars__: "{{ __candidate_vars__ }}"
+    __credential_resolver_runtime_baseline__: "{{ __plugin_baseline__ }}"
+
+- name: 'BEGIN | Validate Controller Prerequisites And Host OS'
+  no_log: true
+  vars:
+    __runtime_prerequisites__: >-
+      {{ __credential_resolver_runtime_profile__.prerequisites | default([])
+         + (
+             __credential_resolver_runtime_profile__.conditional_prerequisites.managed_password
+             if (
+               credential_resolver_candidate.profile | default('') == 'winrm_kerberos'
+               and (__credential_resolver_runtime_vars__.ansible_password | default('')
+                    | string | length) > 0
+             )
+             else []
+           ) }}
+    __missing_dependencies__: >-
+      {{ __runtime_prerequisites__
+         | reject('in', __credential_resolver_available_dependencies__) | list }}
+    __profile_os__: "{{ __credential_resolver_runtime_profile__.os | default('') }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([__credential_resolver_runtime_name__ ~ ': rule 6 missing controller dependency '
+            ~ (__missing_dependencies__ | join(','))]
+           if (__missing_dependencies__ | length) > 0 else [])
+        + ([__credential_resolver_runtime_name__
+            ~ ': rule 6 requires SSH agent support for key content']
+           if (credential_resolver_candidate.profile | default('') == 'ssh_publickey'
+               and (__credential_resolver_runtime_vars__.ansible_private_key | default('')
+                    | string | length) > 0
+               and not (__credential_resolver_preflight__.ssh_agent_enabled | bool)) else [])
+        + ([__credential_resolver_runtime_name__
+            ~ ': rule 4 profile does not support this host OS']
+           if (
+             (__profile_os__ == 'windows' and __credential_resolver_os__ != 'windows')
+             or (__profile_os__ == 'posix' and __credential_resolver_os__ == 'windows')
+           ) else [])
+        + ([__credential_resolver_runtime_name__
+            ~ ': rule 5 permits become only on POSIX profiles']
+           if (credential_resolver_candidate.become is defined
+               and __credential_resolver_os__ == 'windows') else [])
+      }}
+
+- name: 'BEGIN | Validate Effective SSH Arguments'
+  when: >-
+    __credential_resolver_runtime_profile__.plugin | default('')
+    == 'ansible.builtin.ssh'
+  no_log: true
+  vars:
+    __ssh_args__: >-
+      {{ __credential_resolver_runtime_baseline__.ansible_ssh_args | default('') | string }}
+    __common_args__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_ssh_common_args
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_ssh_common_args | default('')
+           )
+         | string }}
+    __extra_args__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_ssh_extra_args
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_ssh_extra_args | default('')
+           )
+         | string }}
+    __scp_args__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_scp_extra_args
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_scp_extra_args | default('')
+           )
+         | string }}
+    __sftp_args__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_sftp_extra_args
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_sftp_extra_args | default('')
+           )
+         | string }}
+    __effective_args__: >-
+      {{ [
+           __ssh_args__, __common_args__, __extra_args__, __scp_args__, __sftp_args__
+         ] | join(' ') }}
+    __identity_pattern__: >-
+      (?x) (
+        (^|\s) (-i|-F) ($|\s|=|[^\s])
+        |
+        (?i: (IdentityFile|IdentityAgent|CertificateFile|PKCS11Provider|SecurityKeyProvider)
+        (\s|=) )
+      )
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{ __credential_resolver_validation_errors__
+         + ([__credential_resolver_runtime_name__
+             ~ ': rule 3 found an identity option in effective SSH arguments']
+            if __effective_args__ is search(__identity_pattern__) else []) }}
+
+- name: 'BEGIN | Validate Effective WinRM Floor'
+  when:
+    - >-
+      __credential_resolver_runtime_profile__.plugin | default('')
+      == 'ansible.builtin.winrm'
+    - >-
+      __credential_resolver_runtime_profile__.floor | default('')
+      in ['https', 'winrm_encrypted']
+  no_log: true
+  vars:
+    __port__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_port
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_port | default(5986)
+           ) | int }}
+    __scheme_declared__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_winrm_scheme
+         | default(__credential_resolver_runtime_baseline__.ansible_winrm_scheme | default(''))
+         | string | lower }}
+    __scheme__: >-
+      {{ __scheme_declared__ or ((__port__ == 5985) | ternary('http', 'https')) }}
+    __encryption__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_winrm_message_encryption
+         | default(__credential_resolver_runtime_baseline__.ansible_winrm_message_encryption
+                   | default('auto')) | string | lower }}
+    __floor__: "{{ __credential_resolver_runtime_profile__.floor }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{ __credential_resolver_validation_errors__
+         + ([__credential_resolver_runtime_name__ ~ ': rule 4 requires HTTPS']
+            if (__floor__ == 'https' and __scheme__ != 'https') else [])
+         + ([__credential_resolver_runtime_name__
+             ~ ': rule 4 requires message_encryption=always over HTTP']
+            if (__floor__ == 'winrm_encrypted' and __scheme__ == 'http'
+                and __encryption__ != 'always') else []) }}
+
+- name: 'BEGIN | Validate Effective PSRP Floor'
+  when:
+    - __credential_resolver_runtime_profile__.plugin | default('') == 'ansible.builtin.psrp'
+    - __credential_resolver_runtime_profile__.floor | default('') in ['https', 'psrp_encrypted']
+  no_log: true
+  vars:
+    __protocol__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_psrp_protocol
+         | default(__credential_resolver_runtime_baseline__.ansible_psrp_protocol
+                   | default('https'), true) | string | lower }}
+    __encryption__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_psrp_message_encryption
+         | default(__credential_resolver_runtime_baseline__.ansible_psrp_message_encryption
+                   | default('auto')) | string | lower }}
+    __floor__: "{{ __credential_resolver_runtime_profile__.floor }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{ __credential_resolver_validation_errors__
+         + ([__credential_resolver_runtime_name__ ~ ': rule 4 requires HTTPS']
+            if (__floor__ == 'https' and __protocol__ != 'https') else [])
+         + ([__credential_resolver_runtime_name__
+             ~ ': rule 4 requires message_encryption=always over HTTP']
+            if (__floor__ == 'psrp_encrypted' and __protocol__ == 'http'
+                and __encryption__ != 'always') else []) }}

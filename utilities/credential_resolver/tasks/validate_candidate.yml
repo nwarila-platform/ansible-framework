@@ -1,0 +1,252 @@
+---
+- name: 'BEGIN | Normalize One Candidate For Validation'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_candidate_name__: >-
+      {{ credential_resolver_candidate.name | default('<unnamed>') | string }}
+    __credential_resolver_candidate_profile_name__: >-
+      {{ credential_resolver_candidate.profile | default('') | string }}
+    __credential_resolver_candidate_vars__: >-
+      {{ credential_resolver_candidate.vars
+         if (credential_resolver_candidate.vars | default(none)) is mapping else {} }}
+    __credential_resolver_candidate_profile__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles.get(
+           credential_resolver_candidate.profile | default('') | string, {}) }}
+
+- name: 'BEGIN | Record Candidate Name'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_candidate_names__: >-
+      {{ __credential_resolver_candidate_names__ + [__credential_resolver_candidate_name__] }}
+
+- name: 'BEGIN | Validate Candidate Shape And Profile'
+  no_log: true
+  vars:
+    __known_profile__: "{{ __credential_resolver_candidate_profile__ | length > 0 }}"
+    __candidate_keys__: "{{ __credential_resolver_candidate_vars__.keys() | list }}"
+    __allowed_keys__: >-
+      {{ __credential_resolver_candidate_profile__.allowed_vars | default([]) }}
+    __required_keys__: >-
+      {{ __credential_resolver_candidate_profile__.required | default([]) }}
+    __empty_required__: >-
+      {{ __credential_resolver_candidate_vars__ | dict2items
+         | selectattr('key', 'in', __required_keys__)
+         | selectattr('value', 'in', [none, ''])
+         | map(attribute='key') | list }}
+    __become_block__: "{{ credential_resolver_candidate.become | default(none) }}"
+    __attempts__: "{{ credential_resolver_candidate.attempts | default(1) }}"
+    __candidate_fields__: >-
+      {{ credential_resolver_candidate.keys() | list
+         if credential_resolver_candidate is mapping else [] }}
+    __refused_connection_reason__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_refused_connection_profiles.get(
+           __credential_resolver_candidate_profile_name__, ''
+         ) }}
+    __refused_become_reason__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_refused_become_profiles.get(
+           __become_block__.profile | default('') if __become_block__ is mapping else '',
+           ''
+         ) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires a mapping candidate']
+           if credential_resolver_candidate is not mapping else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 1 accepts only name, profile, vars, attempts, account, certificate_file, '
+            ~ 'and become fields']
+           if (
+             __candidate_fields__ | difference([
+                 'name', 'profile', 'vars', 'attempts', 'account', 'certificate_file', 'become'
+               ]) | length
+           ) > 0 else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires a unique non-empty name']
+           if (credential_resolver_candidate.name | default(none) is not string
+               or __credential_resolver_candidate_name__ == '<unnamed>'
+               or (__credential_resolver_candidate_name__ | trim | length) == 0) else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires a string profile']
+           if credential_resolver_candidate.profile | default(none) is not string else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires vars to be a mapping']
+           if (credential_resolver_candidate.vars | default(none)) is not mapping else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 1 names an unknown connection profile']
+           if (not (__known_profile__ | bool)
+               and (__refused_connection_reason__ | length) == 0) else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 5 refuses '
+            ~ __credential_resolver_candidate_profile_name__ ~ ' because '
+            ~ __refused_connection_reason__]
+           if (__refused_connection_reason__ | length) > 0 else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 1 requires attempts to be a positive integer']
+           if (credential_resolver_candidate.attempts is defined
+               and (credential_resolver_candidate.attempts is not integer
+                    or (__attempts__ | int) < 1)) else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires become to be a mapping']
+           if (__become_block__ is not none and __become_block__ is not mapping) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 1 names an unknown become profile']
+           if (__become_block__ is mapping
+               and __become_block__.profile | default('')
+                   not in __credential_resolver_catalog__.credential_resolver_become_profiles
+               and (__refused_become_reason__ | length) == 0)
+           else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 5 refuses '
+            ~ (__become_block__.profile | default('')) ~ ' because '
+            ~ __refused_become_reason__]
+           if (__refused_become_reason__ | length) > 0 else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 2 contains a non-canonical or profile-incompatible variable']
+           if ((__candidate_keys__ | difference(__allowed_keys__)) | length) > 0 else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 2 is missing a required variable']
+           if ((__required_keys__ | difference(__candidate_keys__)) | length) > 0
+               or (__empty_required__ | length) > 0 else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 requires account for a login password']
+           if ((__credential_resolver_candidate_profile__.password_cost | default(0) | int) > 0
+               and (__credential_resolver_candidate_vars__.ansible_password | default('')
+                    | string | length) > 0
+               and (
+                 credential_resolver_candidate.account | default('') | string | trim | length
+               ) == 0)
+           else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 1 requires a string account id']
+           if (credential_resolver_candidate.account is defined
+               and credential_resolver_candidate.account is not string) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 1 requires a non-empty string certificate_file']
+           if (
+             credential_resolver_candidate.certificate_file is defined
+             and (
+               credential_resolver_candidate.certificate_file is not string
+               or (
+                 credential_resolver_candidate.certificate_file | string | trim | length
+               ) == 0
+             )
+           ) else [])
+      }}
+
+- name: 'BEGIN | Validate SSH Public-Key Form'
+  when: __credential_resolver_candidate_profile_name__ == 'ssh_publickey'
+  no_log: true
+  vars:
+    __has_content__: >-
+      {{ (__credential_resolver_candidate_vars__.ansible_private_key | default('')
+          | string | length) > 0 }}
+    __has_file__: >-
+      {{ (__credential_resolver_candidate_vars__.ansible_private_key_file | default('')
+          | string | length) > 0 }}
+    __has_provider__: >-
+      {{ (__credential_resolver_candidate_vars__.ansible_ssh_pkcs11_provider | default('')
+          | string | length) > 0 }}
+    __has_password__: >-
+      {{ (__credential_resolver_candidate_vars__.ansible_password | default('')
+          | string | length) > 0 }}
+    __has_passphrase__: >-
+      {{ (__credential_resolver_candidate_vars__.ansible_private_key_passphrase | default('')
+          | string | length) > 0 }}
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 2 requires exactly one SSH public-key form']
+           if (
+             (__has_provider__ and not (__has_file__ and __has_password__))
+             or (__has_provider__ and __has_content__)
+             or (not __has_provider__
+                 and ((__has_content__ | int + __has_file__ | int) != 1
+                      or __has_password__))
+           ) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 2 permits a passphrase only with key content']
+           if (__has_passphrase__ and not __has_content__) else [])
+      }}
+
+- name: 'BEGIN | Validate Profile-Specific Exclusivity'
+  no_log: true
+  vars:
+    __vars__: "{{ __credential_resolver_candidate_vars__ }}"
+    __profile__: "{{ __credential_resolver_candidate_profile_name__ }}"
+    __aws_target_count__: >-
+      {{ ((__vars__.ansible_aws_ssm_instance_id | default('') | string | length > 0) | int)
+         + ((__vars__.ansible_host | default('') | string | length > 0) | int) }}
+    __manual_kerberos__: >-
+      {{ (__vars__.ansible_winrm_kinit_mode | default('') | string | lower) == 'manual' }}
+    __has_password__: "{{ (__vars__.ansible_password | default('') | string | length) > 0 }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([__credential_resolver_candidate_name__ ~ ': rule 2 requires one aws_ssm target']
+           if (__profile__.startswith('aws_ssm_') and (__aws_target_count__ | int) != 1) else [])
+        + ([__credential_resolver_candidate_name__
+           ~ ': rule 2 requires managed-password XOR manual-cache Kerberos']
+           if (__profile__ == 'winrm_kerberos'
+               and (__manual_kerberos__ == __has_password__)) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 refuses encrypted PSRP certificate keys']
+           if 'ansible_psrp_certificate_key_password' in __vars__ else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 permits certificate_file only for ssh_publickey']
+           if (credential_resolver_candidate.certificate_file is defined
+               and __profile__ != 'ssh_publickey') else [])
+      }}
+
+- name: 'BEGIN | Validate Become Block'
+  when: credential_resolver_candidate.become | default(none) is mapping
+  no_log: true
+  vars:
+    __become__: "{{ credential_resolver_candidate.become }}"
+    __become_profile__: "{{ __become__.profile | default('') }}"
+    __become_keys__: "{{ __become__.keys() | list }}"
+    __user__: "{{ __become__.user | default('root') | string }}"
+    __flags__: "{{ __become__.flags | default('-H -S -n') | string }}"
+    __flag_tokens__: "{{ __flags__.split() }}"
+    __valid_sudo_tokens__: >-
+      {{ __flag_tokens__
+         | select(
+             'match',
+             '^(-n|--non-interactive|-H|--set-home|-S|--stdin|-E|--preserve-env'
+             ~ '|--preserve-env=[A-Za-z0-9_,]+|-i|--login|-s|--shell|-P'
+             ~ '|--preserve-groups)$'
+           )
+         | list }}
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 rejects fields outside profile, user, and flags']
+           if (
+             (__become_keys__ | difference(['profile', 'user', 'flags'])) | length
+           ) > 0 else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 rejects a shell-active become user']
+           if not (__user__ is match('^[A-Za-z0-9_][A-Za-z0-9_.@-]*$')) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 requires allowed argument-less sudo flags including -n']
+           if (__become_profile__ == 'sudo'
+               and ((__valid_sudo_tokens__ | length) != (__flag_tokens__ | length)
+                    or ('-n' not in __flag_tokens__
+                        and '--non-interactive' not in __flag_tokens__))) else [])
+        + ([__credential_resolver_candidate_name__ ~ ': rule 5 forbids flags for doas']
+           if (__become_profile__ == 'doas' and __become__.flags is defined) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 5 forbids user and flags for pfexec']
+           if (__become_profile__ == 'pfexec'
+               and (__become__.user is defined or __become__.flags is defined)) else [])
+      }}
+
+- name: 'BEGIN | Record Candidate Plumbing Groups'
+  no_log: true
+  vars:
+    __candidate_keys__: "{{ __credential_resolver_candidate_vars__.keys() | list }}"
+    __candidate_plumbing__: >-
+      {{ credential_resolver_option_groups
+         | selectattr('class', 'equalto', 'plumbing')
+         | selectattr('canonical', 'in', __candidate_keys__)
+         | map(attribute='canonical') | reject('equalto', none) | list }}
+  ansible.builtin.set_fact:
+    __credential_resolver_varying_plumbing__: >-
+      {{ (__credential_resolver_varying_plumbing__ + __candidate_plumbing__) | unique | list }}

@@ -1,0 +1,50 @@
+---
+- name: 'PROCESS | Read One Earlier Host Candidate'
+  no_log: true
+  vars:
+    __matches__: >-
+      {{ hostvars[credential_resolver_ahead_host].credential_resolver_candidates
+         | default([])
+         | selectattr('name', 'equalto', __credential_resolver_candidate__.name)
+         | list }}
+  ansible.builtin.set_fact:
+    __credential_resolver_ahead_candidate__: >-
+      {{ (__matches__ | first) if (__matches__ | length) > 0 else {} }}
+
+- name: 'PROCESS | Resolve One Earlier Host Booking Cost'
+  no_log: true
+  vars:
+    __ahead_profile__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles.get(
+           __credential_resolver_ahead_candidate__.profile | default(''), {}) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_ahead_cost__: >-
+      {{
+        (__ahead_profile__.password_cost | default(0) | int)
+        if (__credential_resolver_ahead_candidate__.vars.ansible_password
+            | default('') | string | length) > 0
+        else 0
+      }}
+    __credential_resolver_ahead_attempts__: >-
+      {{
+        __credential_resolver_ahead_candidate__.attempts
+        | default(1 if (__ahead_profile__.password_cost | default(0) | int) > 0
+                    else credential_resolver_rounds)
+        | int
+      }}
+
+- name: 'PROCESS | Reserve For One Earlier Eligible Host'
+  when:
+    - ansible_play_batch.index(credential_resolver_ahead_host)
+      < ansible_play_batch.index(inventory_hostname)
+    - (hostvars[credential_resolver_ahead_host].__credential_resolver_selected__
+       | default('') | length) == 0
+    - (__credential_resolver_ahead_cost__ | int) > 0
+    - (__credential_resolver_round__ | int) <= (__credential_resolver_ahead_attempts__ | int)
+    - >-
+      (__credential_resolver_ahead_candidate__.account | default('') | string)
+      == (__credential_resolver_candidate__.account | default('') | string)
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_budget_ahead__: >-
+      {{ __credential_resolver_budget_ahead__ | int + __credential_resolver_ahead_cost__ | int }}

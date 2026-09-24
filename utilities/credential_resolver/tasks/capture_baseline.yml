@@ -1,0 +1,47 @@
+---
+- name: 'BEGIN | Reset One Baseline Value'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_baseline_value__: null
+    __credential_resolver_baseline_variable_seen__: false
+
+- name: 'BEGIN | Read Ordered Baseline Aliases'
+  when:
+    - >-
+      (query(
+        'ansible.builtin.varnames',
+        '^' ~ (credential_resolver_group_alias | regex_escape) ~ '$'
+      ) | length) > 0
+    - lookup('ansible.builtin.vars', credential_resolver_group_alias) is not none
+  no_log: true
+  loop: "{{ credential_resolver_baseline_group.aliases }}"
+  loop_control:
+    loop_var: 'credential_resolver_group_alias'
+    label: "{{ credential_resolver_group_alias }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_baseline_value__: >-
+      {{ lookup('ansible.builtin.vars', credential_resolver_group_alias) }}
+    __credential_resolver_baseline_variable_seen__: true
+
+- name: 'BEGIN | Read Configured Plugin Baseline'
+  when: not (__credential_resolver_baseline_variable_seen__ | bool)
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_baseline_value__: >-
+      {{ lookup(
+           'ansible.builtin.config',
+           credential_resolver_baseline_group.option,
+           plugin_type=credential_resolver_baseline_group.plugin_type,
+           plugin_name=credential_resolver_baseline_group.plugin,
+           on_missing='skip'
+         ) | default(none) }}
+
+- name: 'BEGIN | Store One Baseline Group'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_baseline__: >-
+      {{ __credential_resolver_baseline__
+         | combine({credential_resolver_baseline_group.plugin: {
+             credential_resolver_baseline_group.canonical:
+               __credential_resolver_baseline_value__
+           }}, recursive=true) }}

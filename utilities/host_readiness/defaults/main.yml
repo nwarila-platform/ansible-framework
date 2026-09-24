@@ -1,28 +1,16 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml' | Version 1.0.0                                     #
 # --- [ Description ] ------------------------------------------------------------------------- #
-# Play-level readiness inputs. They live here rather than in vars/ so a play can change them --
-# role vars outrank play vars, defaults do not.
+# Bounds, not behaviour: how long the role may wait, never what it waits for -- with one
+# exception, below, for a host that must not be restarted by a converge. They live here rather
+# than in vars/ so a play can change them -- role vars outrank play vars, defaults do not.
 #
-# The wait is attempts times one connection attempt plus pauses between attempts. The defaults
-# allow roughly fifteen minutes of pauses, which covers a Windows first boot.
+# The two multiply: the wait runs for at most attempts x (pause + however long a refused
+# connection takes to give up). The defaults allow roughly fifteen minutes of pauses, which
+# covers a Windows first boot.
 # ============================================================================================= #
 host_readiness_attempts: 60
 host_readiness_pause_seconds: 15
-
-# Whether a refused connection fails the role. False is for a caller that must record which
-# identity answers before it chooses the roles a later play runs.
-host_readiness_required: true
-
-# Require both the High-integrity and built-in Administrators SIDs on a Windows answer. A domain
-# group can arrive after the local transport during first boot, so reachability alone is not
-# sufficient for a caller whose next role requires an elevated token.
-host_readiness_require_elevated: false
-
-# The Windows boot FILETIME that a later answer must exceed. A restart has a shutdown grace in
-# which the old boot can still answer, so the caller carries its pre-restart value into the next
-# play. Empty disables the floor.
-host_readiness_boot_time_after: ''
 
 # The infrastructure platform this host runs on. Empty means DETECT it -- the role reads the
 # SMBIOS system vendor over raw, which is not a module and not a network call, so it is safe at

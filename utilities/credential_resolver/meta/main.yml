@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  role_name: 'credential_resolver'
+  namespace: 'ansible_framework'
+  author: 'nwarila-platform'
+  description: >-
+    Tries declared credential profiles in order and publishes the first identity whose fresh
+    session satisfies the requested elevation and boot predicates.
+  license: 'MIT'
+  min_ansible_version: '2.21'
+  platforms:
+    - name: 'EL'
+      versions: ['8', '9', '10']
+    - name: 'Windows'
+      versions: ['2016', '2019', '2022', '2025']
+  galaxy_tags: ['authentication', 'bootstrap', 'credentials', 'preflight']
+
+# A restart-time identity change requires the same play to invoke the resolver again.
+allow_duplicates: true
+
+dependencies: []

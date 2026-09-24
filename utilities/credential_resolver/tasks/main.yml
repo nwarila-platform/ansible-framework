@@ -1,0 +1,356 @@
+---
+- name: 'BEGIN | Refuse Unsafe Controller Modes'
+  ansible.builtin.assert:
+    fail_msg: >-
+      credential_resolver rule 0 requires controller debug mode off and the configured linear
+      strategy. Resolving plays must also keep strategy: linear.
+    quiet: true
+    that:
+      - not (lookup('ansible.builtin.config', 'DEFAULT_DEBUG') | bool)
+      - lookup('ansible.builtin.config', 'DEFAULT_STRATEGY') == 'linear'
+
+- name: 'BEGIN | Load The Reviewed Profile Catalog'
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/profiles.yml"
+    name: '__credential_resolver_catalog__'
+
+- name: 'BEGIN | Validate Resolver Input Bounds'
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}': credential_resolver rule 1 requires a non-empty candidate list,
+      positive integer rounds and password budget, and a non-negative integer pause.
+    quiet: true
+    that:
+      - credential_resolver_candidates is sequence
+      - credential_resolver_candidates is not string
+      - (credential_resolver_candidates | length) > 0
+      - credential_resolver_rounds is integer
+      - (credential_resolver_rounds | int) > 0
+      - credential_resolver_pause_seconds is integer
+      - (credential_resolver_pause_seconds | int) >= 0
+      - credential_resolver_password_budget is integer
+      - (credential_resolver_password_budget | int) > 0
+      - credential_resolver_require_elevated is boolean
+      - >-
+        (credential_resolver_boot_time_after | string | trim | length) == 0
+        or credential_resolver_boot_time_after is integer
+        or credential_resolver_boot_time_after | string is match('^[0-9]+$')
+
+- name: 'BEGIN | Initialize Validation State'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_aws_preflight_sets__: []
+    __credential_resolver_candidate_names__: []
+    __credential_resolver_validation_errors__: []
+    __credential_resolver_varying_plumbing__: []
+
+- name: 'BEGIN | Validate Declared Candidates'
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_candidate'
+    label: "{{ credential_resolver_candidate.name | default('<unnamed>') }}"
+  ansible.builtin.include_tasks:
+    file: 'validate_candidate.yml'
+
+- name: 'BEGIN | Require Unique Candidate Names'
+  when:
+    - (__credential_resolver_candidate_names__ | unique | length)
+      != (__credential_resolver_candidate_names__ | length)
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{ __credential_resolver_validation_errors__
+         + ['credential_resolver: rule 1 requires unique candidate names'] }}
+
+- name: 'BEGIN | Mark Whether The Original Baseline Needs Capture'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_capture_baseline__: >-
+      {{ __credential_resolver_baseline__ is not defined }}
+
+- name: 'BEGIN | Initialize Original Baseline'
+  when: __credential_resolver_capture_baseline__ | bool
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_baseline__: {}
+
+- name: 'BEGIN | Capture Original Plumbing Baseline'
+  when: __credential_resolver_capture_baseline__ | bool
+  no_log: true
+  loop: >-
+    {{ credential_resolver_option_groups
+       | selectattr('plugin_type', 'equalto', 'connection')
+       | selectattr('class', 'equalto', 'plumbing')
+       | rejectattr('canonical', 'equalto', none)
+       | list }}
+  loop_control:
+    loop_var: 'credential_resolver_baseline_group'
+    label: >-
+      {{ credential_resolver_baseline_group.plugin }}.{{
+         credential_resolver_baseline_group.option }}
+  ansible.builtin.include_tasks:
+    file: 'capture_baseline.yml'
+
+- name: 'BEGIN | Reset Effective AWS Endpoint Preflight Inputs'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_aws_preflight_sets__: []
+
+- name: 'BEGIN | Record Effective AWS Endpoint Preflight Inputs'
+  when:
+    - credential_resolver_aws_candidate is mapping
+    - >-
+      (credential_resolver_aws_candidate.profile | default('') | string).startswith('aws_ssm_')
+    - >-
+      credential_resolver_aws_candidate.profile
+      in __credential_resolver_catalog__.credential_resolver_connection_profiles
+    - credential_resolver_aws_candidate.vars | default(none) is mapping
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_aws_candidate'
+    label: "{{ credential_resolver_aws_candidate.name | default('<unnamed>') }}"
+  vars:
+    __aws_profile__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_connection_profiles[
+           credential_resolver_aws_candidate.profile
+         ] }}
+    __aws_vars__: "{{ credential_resolver_aws_candidate.vars }}"
+    __aws_baseline__: >-
+      {{ __credential_resolver_baseline__.get('amazon.aws.aws_ssm', {}) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_aws_preflight_sets__: >-
+      {{
+        __credential_resolver_aws_preflight_sets__
+        + [{
+          'name': credential_resolver_aws_candidate.name,
+          'mode': __aws_profile__.aws_mode,
+          'profile': __aws_vars__.ansible_aws_ssm_profile | default(none),
+          'region': __aws_vars__.ansible_aws_ssm_region | default(none),
+          'endpoint_url': __aws_vars__.ansible_aws_ssm_endpoint_url
+                          | default(__aws_baseline__.ansible_aws_ssm_endpoint_url
+                                    | default(none)),
+          'bucket_endpoint_url': __aws_vars__.ansible_aws_ssm_bucket_endpoint_url
+                                 | default(
+                                     __aws_baseline__.ansible_aws_ssm_bucket_endpoint_url
+                                     | default(none)
+                                   )
+        }]
+      }}
+
+- name: 'BEGIN | Resolve The Host Operating System'
+  ansible.builtin.set_fact:
+    __credential_resolver_os__: >-
+      {%- if (platform | default('') | string | lower | trim) == 'windows' -%}
+        windows
+      {%- elif (platform | default('') | string | lower | trim) == 'linux' -%}
+        posix
+      {%- elif (ansible_shell_type | default('') | string | lower | trim) == 'powershell' -%}
+        windows
+      {%- elif (ansible_connection | default('') | string | lower | trim)
+      in ['winrm', 'psrp', 'ansible.builtin.winrm', 'ansible.builtin.psrp'] -%}
+        windows
+      {%- else -%}
+        posix
+      {%- endif -%}
+
+- name: 'BEGIN | Require Windows For A Boot Floor'
+  when:
+    - (credential_resolver_boot_time_after | default('') | string | trim | length) > 0
+    - __credential_resolver_os__ != 'windows'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{ __credential_resolver_validation_errors__
+         + [inventory_hostname ~ ': rule 8 permits a boot floor only on Windows'] }}
+
+- name: 'BEGIN | Derive Protected Variable Names'
+  no_log: true
+  vars:
+    __fixed_groups__: >-
+      {{ credential_resolver_option_groups
+         | selectattr('class', 'in', ['identity', 'secret', 'selector', 'escalation'])
+         | list }}
+    __varying_groups__: >-
+      {{ credential_resolver_option_groups
+         | selectattr('class', 'equalto', 'plumbing')
+         | selectattr('canonical', 'in', __credential_resolver_varying_plumbing__)
+         | list }}
+  ansible.builtin.set_fact:
+    __credential_resolver_protected_variables__: >-
+      {{ ((__fixed_groups__ + __varying_groups__) | map(attribute='aliases') | flatten
+          + __credential_resolver_catalog__.credential_resolver_resolver_owned_vars
+          + ['ansible_become']) | unique | list }}
+
+- name: 'BEGIN | Run Controller And Endpoint Preflight'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_preflight__: >-
+      {{ lookup(
+           'credential_resolver_preflight',
+           __credential_resolver_aws_preflight_sets__
+         ) }}
+
+- name: 'BEGIN | Record Controller Preflight Violations'
+  no_log: true
+  vars:
+    __extra_collisions__: >-
+      {{ __credential_resolver_preflight__.extra_var_names
+         | intersect(__credential_resolver_protected_variables__) }}
+    __forbidden_flags__: >-
+      {{
+        []
+        + (['--ask-pass'] if __credential_resolver_preflight__.ask_pass else [])
+        + (['--ask-become-pass'] if __credential_resolver_preflight__.become_ask_pass else [])
+        + (['--private-key'] if __credential_resolver_preflight__.private_key_file else [])
+        + (['--connection-password-file']
+           if __credential_resolver_preflight__.connection_password_file else [])
+        + (['--become-password-file']
+           if __credential_resolver_preflight__.become_password_file else [])
+      }}
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + (['credential_resolver: rule 7 refuses extra variables on '
+            ~ (__extra_collisions__ | join(','))]
+           if (__extra_collisions__ | length) > 0 else [])
+        + (['credential_resolver: rule 7 refuses command-line credential flags '
+            ~ (__forbidden_flags__ | join(','))]
+           if (__forbidden_flags__ | length) > 0 else [])
+        + (['credential_resolver: rule 7 requires CONNECTION_PASSWORD_FILE empty']
+           if __credential_resolver_preflight__.connection_password_setting else [])
+        + (['credential_resolver: rule 7 requires BECOME_PASSWORD_FILE empty']
+           if __credential_resolver_preflight__.become_password_setting else [])
+      }}
+
+- name: 'BEGIN | Resolve Available Controller Dependencies'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_available_dependencies__: >-
+      {{ __credential_resolver_preflight__.dependencies | dict2items
+         | selectattr('value', 'equalto', true) | map(attribute='key') | list }}
+
+- name: 'BEGIN | Validate Effective Candidate Floors'
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_candidate'
+    label: "{{ credential_resolver_candidate.name | default('<unnamed>') }}"
+  ansible.builtin.include_tasks:
+    file: 'validate_runtime_candidate.yml'
+
+- name: 'BEGIN | Validate AWS Endpoint Preflight'
+  no_log: true
+  loop: "{{ __credential_resolver_preflight__.aws }}"
+  loop_control:
+    loop_var: 'credential_resolver_aws_report'
+    label: "{{ credential_resolver_aws_report.name }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_validation_errors__: >-
+      {{
+        __credential_resolver_validation_errors__
+        + ([credential_resolver_aws_report.name
+            ~ ': rule 4 could not construct the local '
+            ~ (credential_resolver_aws_report.errors | join(' and ')) ~ ' client']
+           if (credential_resolver_aws_report.errors | length) > 0 else [])
+        + ([credential_resolver_aws_report.name
+            ~ ': rule 4 requires effective HTTPS SSM and S3 endpoints']
+           if (not credential_resolver_aws_report.ssm_https
+               or not credential_resolver_aws_report.s3_https
+               or not credential_resolver_aws_report.bucket_https) else [])
+        + ([credential_resolver_aws_report.name
+            ~ ': rule 4 refuses ambient AWS profile and access keys together']
+           if credential_resolver_aws_report.ambient_conflict else [])
+        + ([credential_resolver_aws_report.name
+            ~ ': rule 4 refuses static AWS credentials while an environment profile is set']
+           if credential_resolver_aws_report.static_profile_conflict else [])
+      }}
+
+- name: 'BEGIN | Require Validated Resolver Inputs'
+  ansible.builtin.assert:
+    fail_msg: >-
+      Credential resolution validation failed for '{{ inventory_hostname }}':
+      {{ __credential_resolver_validation_errors__ | join('; ') }}
+    quiet: true
+    that:
+      - (__credential_resolver_validation_errors__ | length) == 0
+
+- name: 'BEGIN | Reset Invocation State'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_observations__: {}
+    __credential_resolver_password_tallies__: >-
+      {{ __credential_resolver_password_tallies__ | default({}) }}
+    __credential_resolver_profile__: ''
+    __credential_resolver_selected__: ''
+
+- name: 'PROCESS | Walk Credential Rounds'
+  loop: "{{ range(1, credential_resolver_rounds | int + 1) | list }}"
+  loop_control:
+    loop_var: '__credential_resolver_round__'
+    label: "round {{ __credential_resolver_round__ }}"
+    break_when:
+      - (__credential_resolver_selected__ | length) > 0
+        or (__credential_resolver_round_eligible__ | default(0) | int) == 0
+  ansible.builtin.include_tasks:
+    file: 'round.yml'
+
+- name: 'PROCESS | Reset An SSH Winner Connection'
+  when:
+    - (__credential_resolver_selected__ | length) > 0
+    - >-
+      __credential_resolver_catalog__.credential_resolver_connection_profiles[
+        __credential_resolver_profile__
+      ].plugin == 'ansible.builtin.ssh'
+  ansible.builtin.include_tasks:
+    file: 'reset_ssh.yml'
+
+- name: 'END | Report The Working Credential Set'
+  when: (__credential_resolver_selected__ | length) > 0
+  vars:
+    __winner__: >-
+      {{ credential_resolver_candidates
+         | selectattr('name', 'equalto', __credential_resolver_selected__) | first }}
+    __winner_user__: >-
+      {{ __winner__.vars.ansible_user
+         | default(__winner__.vars.ansible_aws_ssm_profile
+                   | default(__winner__.vars.ansible_lxd_remote | default('<none>'))) }}
+  ansible.builtin.debug:
+    msg: >-
+      '{{ inventory_hostname }}' works as '{{ __credential_resolver_selected__ }}'
+      ({{ __credential_resolver_profile__ }}, user '{{ __winner_user__ }}')
+    verbosity: 0
+
+- name: 'END | Initialize Failure Summary'
+  when: (__credential_resolver_selected__ | length) == 0
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_failure_summary__: []
+
+- name: 'END | Add Each Set To Failure Summary'
+  when: (__credential_resolver_selected__ | length) == 0
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_failed_candidate'
+    label: "{{ credential_resolver_failed_candidate.name }}"
+  vars:
+    __observation__: >-
+      {{ __credential_resolver_observations__.get(
+           credential_resolver_failed_candidate.name, {}
+         ) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_failure_summary__: >-
+      {{ __credential_resolver_failure_summary__
+         + [credential_resolver_failed_candidate.name
+            ~ ' (rounds ' ~ (__observation__.get('rounds', 0) | string)
+            ~ ', ' ~ __observation__.get('category', 'not-attempted') ~ ')'] }}
+
+- name: 'END | Fail When No Credential Set Works'
+  when: (__credential_resolver_selected__ | length) == 0
+  ansible.builtin.fail:
+    msg: >-
+      No credential set worked for '{{ inventory_hostname }}':
+      {{ __credential_resolver_failure_summary__ | join('; ') }}

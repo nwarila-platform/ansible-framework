@@ -1,0 +1,519 @@
+---
+- name: 'PROCESS | Try One Eligible Credential Set'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - >-
+      (__credential_resolver_round__ | int)
+      <= (
+        __credential_resolver_candidate__.attempts
+        | default(
+            1
+            if (
+              (__credential_resolver_catalog__.credential_resolver_connection_profiles[
+                __credential_resolver_candidate__.profile
+              ].password_cost | int) > 0
+              and (__credential_resolver_candidate__.vars.ansible_password
+                   | default('') | string | length) > 0
+            )
+            else credential_resolver_rounds
+          )
+        | int
+      )
+  block:
+    - name: 'PROCESS | Resolve Attempt Profile And Password Cost'
+      no_log: true
+      vars:
+        __catalog_profile__: >-
+          {{ __credential_resolver_catalog__.credential_resolver_connection_profiles[
+               __credential_resolver_candidate__.profile
+             ] }}
+      ansible.builtin.set_fact:
+        __credential_resolver_attempt_profile__: "{{ __catalog_profile__ }}"
+        __credential_resolver_attempt_cost__: >-
+          {{
+            (__catalog_profile__.password_cost | int)
+            if (__credential_resolver_candidate__.vars.ansible_password
+                | default('') | string | length) > 0
+            else 0
+          }}
+        __credential_resolver_attempt_account__: >-
+          {{ __credential_resolver_candidate__.account | default('') | string }}
+
+    - name: 'PROCESS | Initialize Password Budget Snapshot'
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_budget_ahead__: 0
+        __credential_resolver_budget_used__: 0
+
+    - name: 'PROCESS | Sum Prior Password Tallies Across Hosts'
+      when: (__credential_resolver_attempt_cost__ | int) > 0
+      no_log: true
+      loop: "{{ ansible_play_hosts_all }}"
+      loop_control:
+        loop_var: 'credential_resolver_tally_host'
+        label: "{{ credential_resolver_tally_host }}"
+      ansible.builtin.set_fact:
+        __credential_resolver_budget_used__: >-
+          {{
+            __credential_resolver_budget_used__ | int
+            + (
+              hostvars[credential_resolver_tally_host].__credential_resolver_password_tallies__
+              | default({})
+            ).get(__credential_resolver_attempt_account__, 0) | int
+          }}
+
+    - name: 'PROCESS | Reserve Password Cost In Batch Order'
+      when: (__credential_resolver_attempt_cost__ | int) > 0
+      no_log: true
+      loop: "{{ ansible_play_batch }}"
+      loop_control:
+        loop_var: 'credential_resolver_ahead_host'
+        label: "{{ credential_resolver_ahead_host }}"
+      ansible.builtin.include_tasks:
+        file: 'budget_ahead.yml'
+
+    - name: 'PROCESS | Decide Password Budget Grant'
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_budget_granted__: >-
+          {{
+            (__credential_resolver_attempt_cost__ | int) == 0
+            or (
+              __credential_resolver_budget_used__ | int
+              + __credential_resolver_budget_ahead__ | int
+              + __credential_resolver_attempt_cost__ | int
+              <= credential_resolver_password_budget | int
+            )
+          }}
+
+    - name: 'PROCESS | Record A Budget-Exhausted Attempt'
+      when: not (__credential_resolver_budget_granted__ | bool)
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_observations__: >-
+          {{ __credential_resolver_observations__
+             | combine({
+                 __credential_resolver_candidate__.name: {
+                   'rounds': __credential_resolver_round__,
+                   'category': 'budget-exhausted'
+                 }
+               }) }}
+
+    - name: 'PROCESS | Book This Host Password Submission'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - (__credential_resolver_attempt_cost__ | int) > 0
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_password_tallies__: >-
+          {{ __credential_resolver_password_tallies__
+             | combine({
+                 __credential_resolver_attempt_account__:
+                   (__credential_resolver_password_tallies__.get(
+                      __credential_resolver_attempt_account__, 0
+                    ) | int + __credential_resolver_attempt_cost__ | int)
+               }) }}
+
+    - name: 'PROCESS | Initialize Attempt Variable Map'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_attempt_map__: {}
+
+    - name: 'PROCESS | Build Connection Option Groups'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      loop: >-
+        {{
+          (
+            credential_resolver_option_groups
+            | selectattr('plugin', 'equalto', __credential_resolver_attempt_profile__.plugin)
+            | rejectattr('class', 'equalto', 'plumbing')
+            | rejectattr('aliases', 'equalto', [])
+            | list
+          )
+          +
+          (
+            credential_resolver_option_groups
+            | selectattr('plugin', 'equalto', __credential_resolver_attempt_profile__.plugin)
+            | selectattr('class', 'equalto', 'plumbing')
+            | selectattr('canonical', 'in', __credential_resolver_varying_plumbing__)
+            | rejectattr('aliases', 'equalto', [])
+            | list
+          )
+          +
+          (
+            credential_resolver_option_groups
+            | selectattr('plugin_type', 'equalto', 'magic')
+            | selectattr('class', 'equalto', 'plumbing')
+            | selectattr('canonical', 'in', __credential_resolver_varying_plumbing__)
+            | rejectattr('aliases', 'equalto', [])
+            | list
+          )
+        }}
+      loop_control:
+        loop_var: 'credential_resolver_attempt_group'
+        label: "{{ credential_resolver_attempt_group.canonical }}"
+      ansible.builtin.include_tasks:
+        file: 'build_group.yml'
+
+    - name: 'PROCESS | Build The SSH Authentication Prefix'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'
+      no_log: true
+      vars:
+        __profile_name__: "{{ __credential_resolver_candidate__.profile }}"
+        __pkcs11__: >-
+          {{ (__credential_resolver_candidate__.vars.ansible_ssh_pkcs11_provider
+              | default('') | string | length) > 0 }}
+        __certificate__: >-
+          {{ __credential_resolver_candidate__.certificate_file | default('') | string }}
+        __static_prefixes__:
+          ssh_password: >-
+            -F /dev/null -o PreferredAuthentications=password -o PubkeyAuthentication=no
+            -o BatchMode=no
+          ssh_gssapi: >-
+            -F /dev/null -o PreferredAuthentications=gssapi-with-mic
+            -o GSSAPIAuthentication=yes -o BatchMode=yes
+          ssh_hostbased: >-
+            -F /dev/null -o PreferredAuthentications=hostbased -o HostbasedAuthentication=yes
+            -o EnableSSHKeysign=yes -o BatchMode=yes
+        __base_prefix__: >-
+          {{ (
+               '-F /dev/null -o PreferredAuthentications=publickey -o IdentitiesOnly=yes '
+               ~ '-o BatchMode=' ~ ('no' if __pkcs11__ else 'yes')
+             )
+             if __profile_name__ == 'ssh_publickey'
+             else __static_prefixes__[__profile_name__] }}
+        __prefix__: >-
+          {{ __base_prefix__
+             ~ ((' -o CertificateFile=' ~ (__certificate__ | quote))
+                if (__certificate__ | length) > 0 else '') }}
+        __baseline_args__: >-
+          {{ __credential_resolver_baseline__['ansible.builtin.ssh'].ansible_ssh_args
+             | default('') | string }}
+      ansible.builtin.set_fact:
+        __credential_resolver_ssh_args__: >-
+          {{ (__prefix__ | trim) ~ ((' ' ~ __baseline_args__) if __baseline_args__ else '') }}
+
+    - name: 'PROCESS | Resolve Attempt Pins'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_attempt_pins__: >-
+          {{
+            __credential_resolver_attempt_profile__.pins
+            | combine(
+                {'ansible_ssh_args': __credential_resolver_ssh_args__}
+                if __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'
+                else {}
+              )
+          }}
+
+    - name: 'PROCESS | Add Attempt Pins'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      loop: "{{ __credential_resolver_attempt_pins__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_pin'
+        label: "{{ credential_resolver_pin.key }}"
+      ansible.builtin.include_tasks:
+        file: 'build_pin.yml'
+
+    - name: 'PROCESS | Neutralize Every Become Credential And Selector'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      loop: >-
+        {{
+          (
+            credential_resolver_option_groups
+            | selectattr('plugin_type', 'equalto', 'become')
+            | selectattr('class', 'in', ['secret', 'escalation'])
+            | rejectattr('aliases', 'equalto', [])
+            | list
+          )
+          +
+          (
+            credential_resolver_option_groups
+            | selectattr('plugin_type', 'equalto', 'magic')
+            | selectattr('canonical', 'in', [
+                'ansible_become_method', 'ansible_become_user',
+                'ansible_become_password', 'ansible_become_exe',
+                'ansible_become_flags'
+              ])
+            | list
+          )
+        }}
+      loop_control:
+        loop_var: 'credential_resolver_become_group'
+        label: >-
+          {{ credential_resolver_become_group.plugin }}.{{
+             credential_resolver_become_group.option }}
+      ansible.builtin.include_tasks:
+        file: 'build_become_neutral.yml'
+
+    - name: 'PROCESS | Resolve Selected Become Profile'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_candidate__.become | default(none) is mapping
+      no_log: true
+      vars:
+        __block__: "{{ __credential_resolver_candidate__.become }}"
+        __profile__: >-
+          {{ __credential_resolver_catalog__.credential_resolver_become_profiles[
+               __block__.profile
+             ] }}
+      ansible.builtin.set_fact:
+        __credential_resolver_attempt_become_profile__: "{{ __profile__ }}"
+        __credential_resolver_attempt_become_pins__: >-
+          {{
+            __profile__.defaults
+            | combine(
+                {'ansible_become_user': __block__.user}
+                if __block__.user is defined else {}
+              )
+            | combine(
+                {'ansible_become_flags': __block__.flags}
+                if __block__.flags is defined else {}
+              )
+            | combine(__profile__.pins)
+          }}
+
+    - name: 'PROCESS | Add Selected Become Profile'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_candidate__.become | default(none) is mapping
+      no_log: true
+      loop: "{{ __credential_resolver_attempt_become_pins__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_become_pin'
+        label: "{{ credential_resolver_become_pin.key }}"
+      ansible.builtin.include_tasks:
+        file: 'build_become_pin.yml'
+
+    # Dynamic keys are the reviewed plugin aliases; a static role prefix would change their API.
+    - name: 'PROCESS | Apply The Complete Attempt Map'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      loop: "{{ __credential_resolver_attempt_map__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_attempt_entry'
+        label: "{{ credential_resolver_attempt_entry.key }}"
+      ansible.builtin.set_fact:  # noqa var-naming[no-role-prefix]
+        "{{ credential_resolver_attempt_entry.key }}": >-
+          {{ credential_resolver_attempt_entry.value }}
+
+    - name: 'PROCESS | Require Effective Attempt Values'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      loop: "{{ __credential_resolver_attempt_map__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_effective_entry'
+        label: "{{ credential_resolver_effective_entry.key }}"
+      ansible.builtin.assert:
+        fail_msg: >-
+          {{ __credential_resolver_candidate__.name }}: effective-value check failed for
+          {{ credential_resolver_effective_entry.key }} before probe traffic
+        quiet: true
+        that:
+          - >-
+            lookup('ansible.builtin.vars', credential_resolver_effective_entry.key)
+            == credential_resolver_effective_entry.value
+
+    - name: 'PROCESS | Require The Effective Windows Become Switch'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_os__ == 'windows'
+      no_log: true
+      vars:
+        ansible_become: false
+      ansible.builtin.assert:
+        fail_msg: >-
+          {{ __credential_resolver_candidate__.name }}: effective ansible_become is not false
+          before the Windows probe
+        quiet: true
+        that:
+          - not (ansible_become | bool)
+
+    - name: 'PROCESS | Probe One Windows Session'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_os__ == 'windows'
+      become: false
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      no_log: true
+      register: '__credential_resolver_windows_probe__'
+      vars:
+        ansible_become: false
+        ansible_control_path: 'none'
+      ansible.builtin.raw: >-
+        powershell -NoProfile -NonInteractive -Command
+        "whoami /user /groups /fo csv /nh{{
+          '; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
+          if (credential_resolver_boot_time_after | default('') | string | trim | length) > 0
+          else ''
+        }}"
+
+    - name: 'PROCESS | Require The Effective POSIX Become Switch'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_os__ != 'windows'
+      no_log: true
+      vars:
+        ansible_become: >-
+          {{ __credential_resolver_candidate__.become | default(none) is mapping }}
+      ansible.builtin.assert:
+        fail_msg: >-
+          {{ __credential_resolver_candidate__.name }}: effective ansible_become does not match
+          the POSIX probe before traffic
+        quiet: true
+        that:
+          - >-
+            (ansible_become | bool)
+            == (__credential_resolver_candidate__.become | default(none) is mapping)
+
+    - name: 'PROCESS | Probe One POSIX Session'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_os__ != 'windows'
+      become: >-
+        {{ __credential_resolver_candidate__.become | default(none) is mapping }}
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      no_log: true
+      register: '__credential_resolver_posix_probe__'
+      vars:
+        ansible_become: >-
+          {{ __credential_resolver_candidate__.become | default(none) is mapping }}
+        ansible_control_path: 'none'
+      # The mapping is required to pin raw's shell; the linter expects only its shorthand form.
+      ansible.builtin.raw:  # noqa no-free-form[raw-non-string]
+        _raw_params: >-
+          {{ 'id -u'
+             if (
+               __credential_resolver_candidate__.become | default(none) is mapping
+               or credential_resolver_require_elevated | bool
+             )
+             else 'echo ready' }}
+        executable: '/bin/sh'
+
+    - name: 'PROCESS | Derive Non-Secret Probe Status'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      vars:
+        __probe__: >-
+          {{ __credential_resolver_windows_probe__
+             if __credential_resolver_os__ == 'windows'
+             else __credential_resolver_posix_probe__ }}
+        __probe_ok__: >-
+          {{ __probe__ is not unreachable
+             and __probe__ is not failed
+             and (__probe__.rc | default(1) | int) == 0 }}
+        __windows_high__: >-
+          {{ (__probe__.stdout_lines | default([])
+              | select('match', '^"[^"]*","[^"]*","S-1-16-12288","[^"]*"$')
+              | list | length) > 0 }}
+        __windows_admin__: >-
+          {{ (__probe__.stdout_lines | default([])
+              | select('match', '^"[^"]*","[^"]*","S-1-5-32-544","[^"]*"$')
+              | list | length) > 0 }}
+        __windows_boot__: >-
+          {{ (__probe__.stdout_lines | default([])
+              | select('match', '^[0-9]+$') | map('int') | list | last | default(0)) }}
+        __boot_ok__: >-
+          {{ (credential_resolver_boot_time_after | default('') | string | trim | length) == 0
+             or (__windows_boot__ | int) > (credential_resolver_boot_time_after | int) }}
+        __elevated_ok__: >-
+          {{
+            (
+              (__windows_high__ and __windows_admin__)
+              if __credential_resolver_os__ == 'windows'
+              else ((__probe__.stdout | default('') | trim) == '0')
+            )
+            if (
+              credential_resolver_require_elevated | bool
+              or __credential_resolver_candidate__.become | default(none) is mapping
+            )
+            else true
+          }}
+        __message__: "{{ __probe__.msg | default('') | string }}"
+        __category__: >-
+          {{ 'boot-floor'
+             if (__probe_ok__ and not __boot_ok__)
+             else (
+               'not-elevated'
+               if (__probe_ok__ and not __elevated_ok__)
+               else (
+                 'worked'
+                 if __probe_ok__
+                 else (
+                   'login-refused'
+                   if __message__ is search('Permission denied')
+                   else (
+                     'credentials-rejected'
+                     if __message__ is search('credentials were rejected|failed to authenticate')
+                     else (
+                       'access-denied'
+                       if __message__ is search('Access is denied')
+                       else (
+                         'configuration'
+                         if __message__ is search(
+                           'Host key verification failed|Too many authentication failures'
+                           ~ '|is not installed|Cannot utilize private_key|must install'
+                         )
+                         else ('not-ready' if __probe__ is unreachable else 'probe-failed')
+                       )
+                     )
+                   )
+                 )
+               )
+             ) }}
+      ansible.builtin.set_fact:
+        __credential_resolver_probe_ran__: "{{ __probe__.rc is defined }}"
+        __credential_resolver_probe_worked__: >-
+          {{ __probe_ok__ and __boot_ok__ and __elevated_ok__ }}
+        __credential_resolver_probe_category__: "{{ __category__ | trim }}"
+
+    - name: 'PROCESS | Refund An Authenticated Password Attempt'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - (__credential_resolver_attempt_cost__ | int) > 0
+        - __credential_resolver_probe_ran__ | bool
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_password_tallies__: >-
+          {{ __credential_resolver_password_tallies__
+             | combine({
+                 __credential_resolver_attempt_account__:
+                   (__credential_resolver_password_tallies__.get(
+                      __credential_resolver_attempt_account__, 0
+                    ) | int - __credential_resolver_attempt_cost__ | int)
+               }) }}
+
+    - name: 'PROCESS | Record The Attempt Observation'
+      when: __credential_resolver_budget_granted__ | bool
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_observations__: >-
+          {{ __credential_resolver_observations__
+             | combine({
+                 __credential_resolver_candidate__.name: {
+                   'rounds': __credential_resolver_round__,
+                   'category': __credential_resolver_probe_category__
+                 }
+               }) }}
+
+    - name: 'PROCESS | Publish The First Working Credential Set'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_probe_worked__ | bool
+      no_log: true
+      ansible.builtin.set_fact:
+        __credential_resolver_profile__: "{{ __credential_resolver_candidate__.profile }}"
+        __credential_resolver_selected__: "{{ __credential_resolver_candidate__.name }}"

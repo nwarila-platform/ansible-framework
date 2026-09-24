@@ -1,0 +1,95 @@
+---
+- name: 'PROCESS | Count Sets Eligible This Round'
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_round_eligible__: 0
+
+- name: 'PROCESS | Add Eligible Sets This Round'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - >-
+      (__credential_resolver_round__ | int)
+      <= (
+        credential_resolver_round_candidate.attempts
+        | default(
+            1
+            if (
+              (__credential_resolver_catalog__.credential_resolver_connection_profiles[
+                credential_resolver_round_candidate.profile
+              ].password_cost | int) > 0
+              and (credential_resolver_round_candidate.vars.ansible_password
+                   | default('') | string | length) > 0
+            )
+            else credential_resolver_rounds
+          )
+        | int
+      )
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_round_candidate'
+    label: "{{ credential_resolver_round_candidate.name }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_round_eligible__: >-
+      {{ __credential_resolver_round_eligible__ | int + 1 }}
+
+- name: 'PROCESS | Try Eligible Sets In Caller Order'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - (__credential_resolver_round_eligible__ | int) > 0
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: '__credential_resolver_candidate__'
+    label: "{{ __credential_resolver_candidate__.name }}"
+  ansible.builtin.include_tasks:
+    file: 'attempt.yml'
+
+- name: 'PROCESS | Count Sets Eligible Next Round'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - (__credential_resolver_round_eligible__ | int) > 0
+    - (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
+  no_log: true
+  ansible.builtin.set_fact:
+    __credential_resolver_next_round_eligible__: 0
+
+- name: 'PROCESS | Add Sets Eligible Next Round'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - (__credential_resolver_round_eligible__ | int) > 0
+    - (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
+    - >-
+      (__credential_resolver_round__ | int + 1)
+      <= (
+        credential_resolver_next_candidate.attempts
+        | default(
+            1
+            if (
+              (__credential_resolver_catalog__.credential_resolver_connection_profiles[
+                credential_resolver_next_candidate.profile
+              ].password_cost | int) > 0
+              and (credential_resolver_next_candidate.vars.ansible_password
+                   | default('') | string | length) > 0
+            )
+            else credential_resolver_rounds
+          )
+        | int
+      )
+  no_log: true
+  loop: "{{ credential_resolver_candidates }}"
+  loop_control:
+    loop_var: 'credential_resolver_next_candidate'
+    label: "{{ credential_resolver_next_candidate.name }}"
+  ansible.builtin.set_fact:
+    __credential_resolver_next_round_eligible__: >-
+      {{ __credential_resolver_next_round_eligible__ | int + 1 }}
+
+- name: 'PROCESS | Pause Before A Follow-Up Round'
+  when:
+    - (__credential_resolver_selected__ | length) == 0
+    - (__credential_resolver_round_eligible__ | int) > 0
+    - (__credential_resolver_round__ | int) < (credential_resolver_rounds | int)
+    - (__credential_resolver_next_round_eligible__ | default(0) | int) > 0
+  ansible.builtin.pause:
+    seconds: "{{ credential_resolver_pause_seconds | int }}"

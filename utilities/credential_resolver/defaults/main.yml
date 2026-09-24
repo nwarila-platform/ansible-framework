@@ -1,0 +1,7 @@
+---
+credential_resolver_candidates: []
+credential_resolver_rounds: 60
+credential_resolver_pause_seconds: 15
+credential_resolver_require_elevated: false
+credential_resolver_boot_time_after: ''
+credential_resolver_password_budget: 2

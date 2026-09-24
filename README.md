@@ -94,6 +94,7 @@ modified.
 
 | Role             | Description                                                          | Status |
 |------------------|----------------------------------------------------------------------|--------|
+| `credential_resolver` | Tries declared credential profiles and publishes the first working identity | In Progress |
 | `host_readiness` | Proves the transport answers before anything that assumes it runs     | Stable |
 | `os_bootstrap`   | Detects the OS and includes that role's `bootstrap.yml` entry point   | Stable |
 
@@ -137,6 +138,32 @@ make pre-commit
   roles:
     - python3_pip
 ```
+
+Credential-changing deployments use the resolver as a play-level caller contract. Candidate
+inputs, elevation requirements and `ssh_trusted_principals` are play variables, never role
+parameters; resolving plays retain the `linear` strategy, and later plays declare no identity:
+
+```yaml
+roles:
+  - { role: 'credential_resolver', tags: ['always'] }
+  - role: 'host_readiness'
+  - role: 'os_bootstrap'
+  - role: 'domain_member'
+  - role: 'credential_resolver'
+    tags: ['always']
+    when: __domain_member_boot_time__ is defined
+    vars:
+      credential_resolver_boot_time_after: "{{ __domain_member_boot_time__ }}"
+  - role: 'host_readiness'
+    when: __domain_member_boot_time__ is defined
+  - role: 'domain_member'
+    when: __domain_member_boot_time__ is defined
+```
+
+The play supplies `credential_resolver_candidates` and optional
+`credential_resolver_require_elevated`. `os_bootstrap` consumes `ssh_trusted_principals`; the
+first `domain_member` call uses `restart_wait: false`. The second resolver call proves an identity
+on the new boot before readiness and membership are proved again.
 
 ### Overriding Defaults
 

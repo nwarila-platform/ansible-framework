@@ -1,0 +1,35 @@
+---
+- name: 'PROCESS | Add One Connection Option Group'
+  no_log: true
+  vars:
+    __selected__: >-
+      {{ __credential_resolver_candidate__.vars[
+           credential_resolver_attempt_group.canonical
+         ] if credential_resolver_attempt_group.canonical
+              in __credential_resolver_candidate__.vars else none }}
+    __baseline__: >-
+      {{ __credential_resolver_baseline__.get(__credential_resolver_attempt_profile__.plugin, {})
+         .get(credential_resolver_attempt_group.canonical, none) }}
+    __aws_neutral__: >-
+      {{ none
+         if __credential_resolver_attempt_profile__.aws_mode | default('') == 'ambient'
+         else '' }}
+    __neutral__: >-
+      {{ __aws_neutral__
+         if (__credential_resolver_attempt_profile__.plugin == 'amazon.aws.aws_ssm'
+             and credential_resolver_attempt_group.class in ['identity', 'secret', 'selector'])
+         else credential_resolver_attempt_group.neutral }}
+    __value__: >-
+      {{ __selected__
+         if credential_resolver_attempt_group.canonical
+              in __credential_resolver_candidate__.vars
+         else (__baseline__
+               if credential_resolver_attempt_group.class == 'plumbing'
+               else __neutral__) }}
+  ansible.builtin.set_fact:
+    __credential_resolver_attempt_map__: >-
+      {{ __credential_resolver_attempt_map__
+         | combine(dict(
+             credential_resolver_attempt_group.aliases
+             | zip([__value__] * (credential_resolver_attempt_group.aliases | length))
+           )) }}

@@ -1,0 +1,3 @@
+---
+- name: 'END | Stop A Pre-Resolver SSH Control Master'
+  ansible.builtin.meta: reset_connection
