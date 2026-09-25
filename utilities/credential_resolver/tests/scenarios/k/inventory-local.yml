@@ -75,6 +75,10 @@ all:
       ansible_lxd_remote: poison-inventory-remote
       ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
+      - name: k-lxd-absent
+        profile: lxd
+        vars:
+          ansible_host: k-lxd-absent-target
       - name: k-lxd
         profile: lxd
         vars:

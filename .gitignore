@@ -308,15 +308,8 @@
 !/utilities/credential_resolver/tests/stubs/bin/session-manager-plugin
 !/utilities/credential_resolver/tests/stubs/bin/ssh
 !/utilities/credential_resolver/tests/stubs/bin/ssh-keysign
-!/utilities/credential_resolver/tests/stubs/bin/zlogin
-!/utilities/credential_resolver/tests/stubs/bin/zoneadm
 !/utilities/credential_resolver/tests/stubs/python/
 !/utilities/credential_resolver/tests/stubs/python/credential_resolver_local_stub.py
-!/utilities/credential_resolver/tests/stubs/python/func/
-!/utilities/credential_resolver/tests/stubs/python/func/__init__.py
-!/utilities/credential_resolver/tests/stubs/python/func/overlord/
-!/utilities/credential_resolver/tests/stubs/python/func/overlord/__init__.py
-!/utilities/credential_resolver/tests/stubs/python/func/overlord/client.py
 !/utilities/credential_resolver/tests/stubs/python/gssapi/
 !/utilities/credential_resolver/tests/stubs/python/gssapi/__init__.py
 !/utilities/credential_resolver/tests/stubs/python/kerberos/

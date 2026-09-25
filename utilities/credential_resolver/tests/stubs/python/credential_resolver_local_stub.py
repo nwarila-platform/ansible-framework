@@ -28,7 +28,8 @@ def main(kind):
         sys.stdout.write("stub-uuid\n")
     elif kind == "jls":
         sys.stdout.write("k-jail-target ioc-stub-uuid\n")
-    elif kind == "zoneadm" and argv == ["list", "-ip"]:
-        sys.stdout.write("1:k-zone-target:running:/zones/k:stub:native:shared\n")
+    elif kind == "lxd" and argv[1:2] == ["local:k-lxd-absent-target"]:
+        sys.stderr.write("error: not found\n")
+        raise SystemExit(1)
     else:
         sys.stdout.write(response(" ".join(argv) + " " + stdin))

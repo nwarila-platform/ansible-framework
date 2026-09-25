@@ -36,7 +36,20 @@ all:
           profile: ssh_publickey
           vars:
             ansible_user: u
-            ansible_private_key: KEY-CONTENT-SECRET-CANARY-AGENT
+            ansible_private_key: >-
+              {{ lookup('ansible.builtin.file',
+                        lookup('ansible.builtin.env', 'CREDRES_INPUT') ~ '/agent-key') }}
+    i-rule6-bcrypt.invalid:
+      ansible_host: 192.0.2.77
+      credential_resolver_candidates:
+        - name: i-rule6-bcrypt
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key: >-
+              {{ lookup('ansible.builtin.file',
+                        lookup('ansible.builtin.env', 'CREDRES_INPUT') ~ '/passphrase-key') }}
+            ansible_private_key_passphrase: KEY-PASSPHRASE-SECRET-CANARY-I6
     i-rule6-ticket.invalid:
       ansible_host: 192.0.2.55
       credential_resolver_candidates:

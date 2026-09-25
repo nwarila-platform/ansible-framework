@@ -21,17 +21,20 @@
 - name: 'BEGIN | Validate Controller Prerequisites And Host OS'
   no_log: true
   vars:
+    __active_conditions__: >-
+      {{
+        (['managed_password']
+         if (__credential_resolver_runtime_vars__.ansible_password | default('')
+             | string | length) > 0 else [])
+        + (['passphrase']
+           if (__credential_resolver_runtime_vars__.ansible_private_key_passphrase | default('')
+               | string | length) > 0 else [])
+      }}
     __runtime_prerequisites__: >-
       {{ __credential_resolver_runtime_profile__.prerequisites | default([])
-         + (
-             __credential_resolver_runtime_profile__.conditional_prerequisites.managed_password
-             if (
-               credential_resolver_candidate.profile | default('') == 'winrm_kerberos'
-               and (__credential_resolver_runtime_vars__.ansible_password | default('')
-                    | string | length) > 0
-             )
-             else []
-           ) }}
+         + (__credential_resolver_runtime_profile__.conditional_prerequisites | default({})
+            | dict2items | selectattr('key', 'in', __active_conditions__)
+            | map(attribute='value') | flatten) }}
     __missing_dependencies__: >-
       {{ __runtime_prerequisites__
          | reject('in', __credential_resolver_available_dependencies__) | list }}

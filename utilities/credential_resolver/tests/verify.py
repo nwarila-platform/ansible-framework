@@ -190,8 +190,10 @@ def write_config(path: Path, overrides: dict, inputs: Path, directory: Path) -> 
         parser.write(stream)
 
 
-def generate_key(path: Path, passphrase: str) -> list[bytes]:
-    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", passphrase, "-C", "", "-f", str(path)],
+def generate_key(path: Path, passphrase: str, key_format: str | None) -> list[bytes]:
+    # ssh-keygen writes an ed25519 key in the OpenSSH format whatever -m names.
+    key_type = ["-t", "rsa", "-m", key_format] if key_format else ["-t", "ed25519"]
+    subprocess.run(["ssh-keygen", "-q", *key_type, "-N", passphrase, "-C", "", "-f", str(path)],
                    check=True, stdin=subprocess.DEVNULL)
     body = path.read_bytes().splitlines()[1:-1]
     return [line for line in body[2:] if len(line) > 40]
@@ -266,7 +268,7 @@ def execute(letter: str, run: dict, root: Path, markers: list[bytes]) -> Evidenc
     for name in run.get("executables", ()):
         (inputs / name).chmod(0o755)
     for name, passphrase in run.get("keys", {}).items():
-        markers.extend(generate_key(inputs / name, passphrase))
+        markers.extend(generate_key(inputs / name, passphrase, run.get("key_format")))
     for name, content in run.get("user_ssh", {}).items():
         path = inputs / "user-ssh" / name
         path.write_text(expand(content, inputs, directory), encoding="utf-8")

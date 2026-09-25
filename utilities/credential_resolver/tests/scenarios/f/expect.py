@@ -3,7 +3,7 @@ the set's identities under poisoned user and system configurations and conflicti
 identity and control-path options in any argument string are refused, while the default
 ControlMaster/ControlPersist ssh_args stay accepted; password attempts arm one askpass segment and
 never retry; PKCS#11, agent/FIDO .pub, certificate and key-content sets; an encrypted key file fails
-fast under BatchMode."""
+fast under BatchMode; key content in PEM format is refused before traffic."""
 
 FIXTURES = "utilities/credential_resolver/tests/fixtures"
 SYSTEM_CONFIG = """EnableSSHKeysign yes
@@ -37,7 +37,11 @@ RUNS = [
      "playbook": "identity-options.yml"},
     {"name": "keysign-equals-spelling", "inventory": "inventory-hostbased.yml",
      "global_ssh_config": "EnableSSHKeysign=yes\n"},
+    {"name": "key-content-format", "env": {"ANSIBLE_SSH_AGENT": "auto"}, "keys": {"content-key": ""},
+     "key_format": "PEM", "args": ["--limit", "f-content.invalid"], "expected_rc": 2},
 ]
+PEM_REFUSED = ("Credential resolution validation failed for 'f-content.invalid': f-content: rule 2 requires "
+               "OpenSSH-format key content, the only format core loads\"")
 BASELINE = ["-C", "-o", "ControlMaster=auto", "-o", "ControlPersist=60s", "-o", "BatchMode=yes",
             "-o", "PreferredAuthentications=keyboard-interactive", "-o", "IdentitiesOnly=no",
             "-o", "PubkeyAuthentication=yes", "-o", "PasswordAuthentication=yes",
@@ -156,4 +160,11 @@ def check(evidence, require):
     require("F-WINNER f-hostbased" in equals.log and len(equals.ssh(mode="exec")) == 1,
             "EnableSSHKeysign=yes spelling not accepted")
     lines.append("hostbased: global 'EnableSSHKeysign yes' and 'EnableSSHKeysign=yes' both accepted")
+
+    pem = evidence["key-content-format"]
+    content = (pem.directory / "input" / "content-key").read_bytes()
+    require(content and b"OPENSSH" not in content, "the generated key content is in OpenSSH format")
+    require(PEM_REFUSED in pem.log and not pem.traffic(), "PEM key content was not refused before traffic")
+    lines.append("key-content-format: RSA key content in PEM format refused before traffic, naming the OpenSSH "
+                 "format core requires")
     return lines

@@ -3,10 +3,12 @@ ordinary module through the real SDK client construction; the profile mode ignor
 environment keys; static is refused under AWS_PROFILE or AWS_DEFAULT_PROFILE and without its secret;
 the ambient profile-plus-keys conflict fails that attempt before traffic and the walk continues; the
 effective SSM and S3 endpoints must be HTTPS for every source and precedence, SSM and S3 separately;
-publishing opens no session beyond the probe's and the next task's; every community local transport
-runs with its user or remote at null under poisoned keyword, CLI, environment, configuration and
-inventory values, including inventory ansible_ssh_user and, for jail, iocage and qubes, the user a
-preceding SSH attempt wrote; a static winner's session token presigns its later transfers, as
+publishing opens no session beyond the probe's and the next task's; every accepted community local
+transport runs with its user or remote at null under poisoned keyword, CLI, environment,
+configuration and inventory values, including inventory ansible_ssh_user and, for jail, iocage and
+qubes, the user a preceding SSH attempt wrote; a set naming an absent LXD instance does not work and
+the next set wins; funcd and zone are refused by validation, and so are jail and iocage sets on a
+controller without jls; a static winner's session token presigns its later transfers, as
 documented."""
 import hashlib
 import json
@@ -77,6 +79,10 @@ RUNS = [
     {"name": "local-transports", "inventory": "inventory-local.yml", "playbook": "local.yml",
      "args": ["-u", "poison-cli-user"], "env": {"ANSIBLE_REMOTE_USER": "poison-env-user"},
      "files": {"chroot/bin/sh": "#!/bin/sh\n"}, "executables": ["chroot/bin/sh"], "expected_rc": 2},
+    {"name": "local-without-jls", "inventory": "inventory-local.yml", "playbook": "local.yml",
+     "args": limit("k-jail", "k-iocage"), "env": {"PATH": "{input}/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+     "files": {"bin/jexec": "#!/bin/sh\nexit 97\n", "bin/iocage": "#!/bin/sh\nexit 97\n"},
+     "executables": ["bin/jexec", "bin/iocage"], "expected_rc": 2},
 ]
 FLOOR = "rule 4 requires effective HTTPS SSM and S3 endpoints"
 # run: {host: expected SSM host, S3 bucket-lookup host, S3 transfer host} or the refusal
@@ -123,15 +129,29 @@ LOCAL = {
     "jexec": lambda argv: "-U" not in argv and argv[0] in ("k-jail-target", "ioc-stub-uuid"),
     "iocage": lambda argv: argv == ["get", "host_hostuuid", "k-iocage-target"],
     "lxc": lambda argv: argv[0] == "k-lxc-target",
-    "lxd": lambda argv: argv[:2] == ["exec", "local:k-lxd-target"],
+    "lxd": lambda argv: argv[0] == "exec" and argv[1] in ("local:k-lxd-absent-target", "local:k-lxd-target"),
     "qubes": lambda argv: "-u" not in argv and "k-qubes-target" in argv,
     "saltstack": lambda argv: argv[:2] == ["192.0.2.68", "cmd.exec_code_all"],
-    "zoneadm": lambda argv: argv == ["list", "-ip"],
 }
-UPSTREAM = {
-    "k-funcd": "the connection plugin 'community.general.funcd' was not found",
-    "k-zone": "a bytes-like object is required, not 'str'",
+REFUSED_LOCAL = {
+    "k-funcd": "k-funcd: rule 5 refuses funcd because community.general 7.5.9 leaves its plugin abstract, "
+               "so ansible-core cannot load it",
+    "k-zone": "k-zone: rule 5 refuses zone because community.general 7.5.9 fails listing zones "
+              "(it splits bytes with a string)",
 }
+WITHOUT_JLS = {
+    "k-jail": "k-jail: rule 6 missing controller dependency jls",
+    "k-iocage": "k-iocage: rule 6 missing controller dependency jls",
+}
+
+
+def validation_failure(run, host):
+    """The message of the host's failed validation task, or ''."""
+    for block in run.task("Require Validated Resolver Inputs"):
+        for line in block.splitlines():
+            if line.startswith(f"fatal: [{host}.invalid]: FAILED! => "):
+                return json.loads(line.split(" => ", 1)[1])["msg"]
+    return ""
 
 
 def refused(run, host):
@@ -253,9 +273,21 @@ def check(evidence, require):
     lines.append("local-transports: no poison-keyword/cli/env/config/inventory user (ansible_ssh_user included) "
                  "or remote in any record; jail, iocage and qubes ran without a user after a losing SSH attempt "
                  "wrote ansible_ssh_user; every success line names the inventory host")
-    for host, error in UPSTREAM.items():
-        failures = local.task("Require Effective Attempt Values")
-        require(any(f"[ERROR]: Task failed: {error}" in block and f"failed: [{host}.invalid]" in block
-                    for block in failures), f"{host} did not fail with the upstream error {error!r}")
-        lines.append(f"OBSERVED (upstream, open for the planner): {host} cannot run on this controller: {error}")
+    lxd = [r["argv"][1] for r in local.records["misc"] if r["kind"] == "lxd"]
+    require(lxd[:1] == ["local:k-lxd-absent-target"] and lxd[1:] and set(lxd[1:]) == {"local:k-lxd-target"}
+            and "container not found: k-lxd-absent-target" in local.log, f"lxd walk {lxd}")
+    lines.append("local-transports: k-lxd-absent named an LXD instance that does not exist, its probe failed "
+                 "(container not found) and the walk continued: k-lxd won")
+    for host, message in REFUSED_LOCAL.items():
+        require(message in validation_failure(local, host), f"{host} not refused with {message!r}")
+    require(not local.touched("k-func-target") and not local.touched("k-zone-target"),
+            "a refused funcd or zone set reached a stub")
+    lines.append("local-transports: funcd and zone refused by validation, naming the upstream defect in "
+                 "community.general 7.5.9; no stub record for either")
+    missing = evidence["local-without-jls"]
+    for host, message in WITHOUT_JLS.items():
+        require(message in validation_failure(missing, host), f"{host} not refused with {message!r}")
+    require(not missing.traffic(), "a set refused for a missing jls produced traffic")
+    lines.append("local-without-jls: with jexec and iocage present but no jls, the jail and iocage sets are "
+                 "refused before traffic, naming jls")
     return lines

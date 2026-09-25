@@ -7,9 +7,7 @@
     },
     "responses": {
       "m-ssh-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
-      "m-pkcs11-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
-      "m-key-content-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
-      "m-key-file-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+      "m-pkcs11-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
     }
   },
   "winrm": {

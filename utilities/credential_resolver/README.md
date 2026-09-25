@@ -115,7 +115,8 @@ Each fragment below is one independent candidate example. Keep only profiles sui
 host's OS.
 
 ```yaml
-# ssh_publickey: key content; ANSIBLE_SSH_AGENT must not be "none".
+# ssh_publickey: OpenSSH-format key content; ANSIBLE_SSH_AGENT must not be "none", and a
+# passphrase needs bcrypt in the controller's Python.
 - name: 'ssh-content'
   profile: 'ssh_publickey'
   vars:
@@ -246,10 +247,6 @@ host's OS.
   profile: 'chroot'
   vars: {ansible_host: '/srv/chroot'}
 
-- name: 'func-minion'
-  profile: 'funcd'
-  vars: {ansible_host: 'minion.example'}
-
 - name: 'iocage-jail'
   profile: 'iocage'
   vars: {ansible_host: 'jail-name', ansible_user: 'root'}
@@ -273,10 +270,6 @@ host's OS.
 - name: 'salt-minion'
   profile: 'saltstack'
   vars: {}
-
-- name: 'solaris-zone'
-  profile: 'zone'
-  vars: {ansible_host: 'zone-name'}
 ```
 
 AWS ambient mode deliberately leaves every AWS credential option `null` so the default chain can
@@ -321,8 +314,10 @@ put required non-identity options in `ansible_ssh_common_args`. Identity options
 `-S` in any effective argument string are refused: a control path there would let a probe reuse
 another connection. Non-PKCS#11 key, GSSAPI and hostbased attempts use `BatchMode=yes`;
 password and PKCS#11 attempts explicitly use `BatchMode=no`. Every probe disables connection
-sharing. An encrypted private-key file fails fast because core cannot supply its passphrase: use
-key content with `ansible_private_key_passphrase`, or load the key in an agent.
+sharing. An encrypted private-key file fails fast because core cannot supply its passphrase: give
+OpenSSH-format key content with `ansible_private_key_passphrase` (which needs `bcrypt`), or load the
+key in an agent. Key content must be in the OpenSSH format that `ssh-keygen` writes by default: core
+loads no other, so PEM and PKCS#8 content is refused.
 
 WinRM NTLM and Kerberos over HTTP require `message_encryption: always`; Basic and certificate
 profiles require HTTPS. PSRP Kerberos over HTTP has the same encryption requirement, and PSRP
@@ -331,21 +326,31 @@ a server-trust guarantee.
 
 Prerequisites are checked before traffic:
 
-- SSH key content needs configured SSH-agent support; GSSAPI needs a valid controller ticket;
-  hostbased needs `ssh-keysign` and `EnableSSHKeysign yes` in global `/etc/ssh/ssh_config`.
+- SSH key content needs configured SSH-agent support, and a passphrase also needs `bcrypt` in the
+  controller's own Python; GSSAPI needs a valid controller ticket; hostbased needs `ssh-keysign`
+  and `EnableSSHKeysign yes` in global `/etc/ssh/ssh_config`.
 - WinRM needs `pywinrm`; NTLM needs its NTLM library; Kerberos needs its Python backend and
   `kinit`.
 - PSRP needs `pypsrp`; Kerberos also needs a GSSAPI or krb5 backend.
 - AWS SSM needs `boto3`, `session-manager-plugin`, a region and transfer bucket.
-- Local community transports need their corresponding controller binary or library (`chroot`,
-  Func, iocage/jexec, LXC/LXD, Qubes, Salt or zlogin).
+- Local community transports need their controller binary or Python library: `chroot`; `jls` and
+  `jexec` for jail, and `iocage` as well for iocage; the LXC bindings; the `lxc` client for LXD;
+  `qvm-run`; or Salt. Jail and iocage also need a root controller.
+
+Jail, iocage and chroot inspect their target whenever a task constructs their connection, so a
+missing target (for jail and iocage, also a stopped one) ends that host's resolution at that set's
+attempt. The other local transports report a missing target at the probe, and the walk continues.
 
 Refused connection forms are SSH keyboard-interactive, WinRM CredSSP, every PSRP password form
 (`basic`, `ntlm`, `negotiate`, `credssp`, or Kerberos with a password), and encrypted PSRP
 certificate keys. Their login-submission bounds or secret handling are not established here.
 Refused become forms are every become password and `runas`, `su`, `dzdo`, `ksu`, `machinectl`,
 `pbrun`, `pmrun`, `sesu`, and `sudosu`; each either prompts, has unproven non-interactive behavior,
-depends on target PAM behavior, or cannot be verified by the raw probe.
+depends on target PAM behavior, or cannot be verified by the raw probe. The secret-less forms of
+these mechanisms remain: certificates, unencrypted keys, Kerberos caches and passwordless
+escalation. The local transports `funcd` and `zone` are also refused, because community.general
+7.5.9 breaks both: ansible-core cannot load its `funcd` plugin, and `zone` fails while listing
+zones. A fixed collection would enable them.
 
 ## Elevation, boot floor and trust boundaries
 
@@ -364,9 +369,13 @@ verbose output or process arguments and must never carry a secret.
 With controller debug refused, caller-supplied passwords, PINs, key content, passphrases, AWS secret
 keys and session tokens are protected by `no_log`, never cached, and never placed in resolver
 output or argv. They remain in `hostvars` for the run. Two derived surfaces are outside that
-guarantee: managed WinRM Kerberos creates a private 0600 credential-cache file for the connection
-lifetime, and the SSM plugin places the session token returned by AWS in its child argv and shows
-that argv at `-vvvv`.
+guarantee. Managed WinRM Kerberos writes a private (0600) credential-cache file in the controller's
+`TMPDIR` for each managed-Kerberos connection: the probe's, and one per later task once such a set
+is published. The plugin never closes that file and the task's worker exits without cleanup, so the
+file persists after the run whenever the worker still references the connection at exit, as it does
+for any task with a templated `when`, the probe included. Point `TMPDIR` at a per-run directory and
+remove it after the run. The SSM plugin places the session token returned by AWS in its child argv
+and shows that argv at `-vvvv`.
 
 Two further surfaces belong to the plugins after publication, not to the resolver. An
 `aws_ssm_static` winner's own session token signs the S3 presigned URLs inside the remote transfer

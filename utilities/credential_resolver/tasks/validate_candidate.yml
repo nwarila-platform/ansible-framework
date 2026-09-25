@@ -133,6 +133,9 @@
     __has_content__: >-
       {{ (__credential_resolver_candidate_vars__.ansible_private_key | default('')
           | string | length) > 0 }}
+    __openssh_content__: >-
+      {{ __credential_resolver_candidate_vars__.ansible_private_key | default('') | string
+         is search('-----BEGIN OPENSSH PRIVATE KEY-----') }}
     __has_file__: >-
       {{ (__credential_resolver_candidate_vars__.ansible_private_key_file | default('')
           | string | length) > 0 }}
@@ -161,6 +164,9 @@
         + ([__credential_resolver_candidate_name__
             ~ ': rule 2 permits a passphrase only with key content']
            if (__has_passphrase__ and not __has_content__) else [])
+        + ([__credential_resolver_candidate_name__
+            ~ ': rule 2 requires OpenSSH-format key content, the only format core loads']
+           if (__has_content__ and not __openssh_content__) else [])
       }}
 
 - name: 'BEGIN | Validate Profile-Specific Exclusivity'

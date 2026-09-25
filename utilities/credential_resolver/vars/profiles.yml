@@ -93,6 +93,8 @@ credential_resolver_connection_profiles:
       ansible_connection: 'ssh'
     password_cost: 0
     prerequisites: []
+    conditional_prerequisites:
+      passphrase: ['bcrypt']
     floor: 'ssh'
   ssh_password:
     <<: *ssh_contract
@@ -492,16 +494,6 @@ credential_resolver_connection_profiles:
     password_cost: 0
     prerequisites: ['chroot']
     floor: 'local'
-  funcd:
-    <<: *local_transport_contract
-    plugin: 'community.general.funcd'
-    os: 'posix'
-    allowed_vars: ['ansible_host']
-    required: ['ansible_host']
-    pins: {ansible_connection: 'community.general.funcd'}
-    password_cost: 0
-    prerequisites: ['funcd']
-    floor: 'local'
   iocage:
     <<: *local_transport_contract
     plugin: 'community.general.iocage'
@@ -510,7 +502,7 @@ credential_resolver_connection_profiles:
     required: ['ansible_host']
     pins: {ansible_connection: 'community.general.iocage'}
     password_cost: 0
-    prerequisites: ['iocage']
+    prerequisites: ['root', 'iocage', 'jls', 'jexec']
     floor: 'local'
   jail:
     <<: *local_transport_contract
@@ -520,7 +512,7 @@ credential_resolver_connection_profiles:
     required: ['ansible_host']
     pins: {ansible_connection: 'community.general.jail'}
     password_cost: 0
-    prerequisites: ['jail']
+    prerequisites: ['root', 'jls', 'jexec']
     floor: 'local'
   lxc:
     <<: *local_transport_contract
@@ -565,16 +557,6 @@ credential_resolver_connection_profiles:
     pins: {ansible_connection: 'community.general.saltstack'}
     password_cost: 0
     prerequisites: ['saltstack']
-    floor: 'local'
-  zone:
-    <<: *local_transport_contract
-    plugin: 'community.general.zone'
-    os: 'posix'
-    allowed_vars: ['ansible_host']
-    required: ['ansible_host']
-    pins: {ansible_connection: 'community.general.zone'}
-    password_cost: 0
-    prerequisites: ['zone']
     floor: 'local'
 
 credential_resolver_become_profiles:
@@ -651,6 +633,8 @@ credential_resolver_refused_connection_profiles:
   psrp_credssp: 'it delegates a password and its lockout bound is not established here'
   psrp_kerberos_password: 'PSRP password authentication has no established lockout bound here'
   psrp_encrypted_certificate: 'encrypted PSRP key handling is unverified on this controller'
+  funcd: 'community.general 7.5.9 leaves its plugin abstract, so ansible-core cannot load it'
+  zone: 'community.general 7.5.9 fails listing zones (it splits bytes with a string)'
 
 credential_resolver_refused_become_profiles:
   runas: 'raw does not exercise the Windows runas plugin'

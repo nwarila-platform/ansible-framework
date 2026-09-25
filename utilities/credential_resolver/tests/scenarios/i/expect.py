@@ -21,7 +21,8 @@ RUNS = [
     {"name": "rule0-strategy-configuration", **SINGLE, "config": {"defaults": {"strategy": "free"}}},
     {"name": "shape", "inventory": "inventory-shape.yml", "playbook": "refusal.yml"},
     {"name": "hosts", "inventory": "inventory-hosts.yml", "playbook": "hosts.yml",
-     "table": {"klist": {"rc": 1}}, "expected_rc": 2},
+     "table": {"klist": {"rc": 1}}, "keys": {"agent-key": "", "passphrase-key": "KEY-PASSPHRASE-SECRET-CANARY-I6"},
+     "expected_rc": 2},
     {"name": "rule7-extra-written", **SINGLE, "args": ["-e", "ansible_user=i-single-IDENTITY-CANARY"]},
     {"name": "rule7-extra-alias", **SINGLE, "args": ["-e", "ansible_ssh_pass=EXTRA-VAR-SECRET-CANARY"]},
     {"name": "rule7-extra-become", **BECOME, "args": ["-e", "ansible_become=false"]},
@@ -100,6 +101,7 @@ HOSTS = {
     "i-rule4": "i-rule4: rule 4 requires HTTPS",
     "i-rule6-hostbased": "i-rule6-hostbased: rule 6 missing controller dependency hostbased",
     "i-rule6-agent": "i-rule6-agent: rule 6 requires SSH agent support for key content",
+    "i-rule6-bcrypt": "i-rule6-bcrypt: rule 6 missing controller dependency bcrypt",
     "i-rule6-ticket": "i-rule6-ticket: rule 6 missing controller dependency gssapi_ticket",
     "i-rule8": "i-rule8.invalid: rule 8 permits a boot floor only on Windows",
 }
@@ -181,6 +183,6 @@ def check(evidence, require):
         require(any(f"{host}: effective-value check failed for {key} before probe traffic" in block
                     and f"[{host}.invalid]" in block for block in checks), f"{host} collision not refused")
     require(not hosts.records["ssh"] and not hosts.records["winrm"], "a refused host produced traffic")
-    lines.append("rules 3, 4, 6 (real hostbased check, agent none, no ticket), 8, include and role parameter "
-                 "collisions refused before traffic")
+    lines.append("rules 3, 4, 6 (real hostbased and bcrypt checks, agent none, no ticket), 8, include and role "
+                 "parameter collisions refused before traffic")
     return lines
