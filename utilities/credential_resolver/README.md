@@ -55,8 +55,11 @@ play's escalation switch.
 
 Controller debug mode is refused before a candidate value is templated. Extra variables on anything
 the resolver writes, connection/elevation password prompts and files, and `--private-key` are also
-refused. Later plays declare no connection identity: the winning non-cacheable facts remain the
-host's identity for the run. Invoke the role again when a restart can change which set works.
+refused. When a set carries a become block, extra variables on `ansible_become` and on the accepted
+become plugins' variables are refused too; without one, a fleet's own become extra variables (for
+example a runas password) stay allowed. Later plays declare no connection identity: the winning
+non-cacheable facts remain the host's identity for the run. Invoke the role again when a restart can
+change which set works.
 Inventory and play variables use canonical connection names and carry plumbing only; every
 credential and identity belongs in a declared set. Do not enable a persistent fact cache on a
 resolving controller.
@@ -85,10 +88,26 @@ authenticated probe refunds only its own booking. Tallies survive a second role 
 same run. The default budget of two stays below a lockout threshold of three; it cannot account for
 failures outside this run or a dishonest `account` partition.
 
-Success publishes `__credential_resolver_selected__` and `__credential_resolver_profile__`, plus
-the winning connection and become selectors at `set_fact` precedence. The role never publishes
-`ansible_become`. Failure names each set, rounds tried and its last category; remote message text
-never controls or stops the walk.
+Success publishes `__credential_resolver_selected__` and `__credential_resolver_profile__`. Every
+key an attempt writes stays at `set_fact` precedence for the rest of the run:
+
+- every alias of the attempt plugin's identity, secret and selector groups;
+- `ansible_connection`, by short name for a builtin plugin (`ssh`, `winrm`, `psrp`, `local`) as
+  `host_readiness` and `os_bootstrap` compare it, and `ansible_ssh_args` for SSH;
+- every pin key of the plugin (`ansible_ssh_password_mechanism`, `ansible_ssh_retries`,
+  `ansible_winrm_transport`, `ansible_psrp_auth`): the profile's value, else the baseline;
+- plumbing that any set names: the set's value, else the baseline;
+- the play-context names the plugin reads: `ansible_ssh_pass: ''` for WinRM and PSRP, and
+  `ansible_ssh_user` (the set's user, else `null`) for jail, iocage and qubes.
+
+The winner's attempt rewrites every key of its own plugin, so a losing attempt of the same plugin
+leaves nothing behind. A losing attempt of another plugin leaves the keys only it wrote in place
+(for example `ansible_winrm_pass`, `ansible_winrm_transport` or
+`ansible_aws_ssm_secret_access_key`). A later task or block variable of any of these names is
+ignored for the run; a different value needs a role or include parameter. No become setting is ever
+written, and the switch never is: a later task's or block's own escalation settings stay its own.
+Failure names each set, rounds tried and its last category; remote message text never controls or
+stops the walk.
 
 ## Connection profile examples
 
@@ -271,10 +290,14 @@ preflight.
 
 ## Become profiles
 
-Become is passwordless, POSIX-only and always verified with `id -u == 0`. A set with a block writes
-every selector group, including defaults; a set without one leaves all become selectors `null`.
-The executable and method are pinned, every become password alias is `''`, and the switch remains a
-probe task variable.
+Become is passwordless, POSIX-only and always verified with `id -u == 0`. None of it is written as
+a fact. The probe of a set with a block carries, as its own task variables, the switch, the pinned
+method and executable, and every alias of the plugin's user, flags and password groups: the block's
+user and flags, else the profile defaults, and `''` for every password. A fact, an `include_vars`
+file, a role or include parameter, or an extra variable that overrides any of them fails the host
+before traffic. Plugin-specific options (`sudo_chdir`, `prompt_l10n`, `wrap_exe`) are plumbing and
+never written. A block proves that the set can elevate that way; later escalation is the play's own
+configuration.
 
 ```yaml
 # sudo: flags are restricted to argument-less options and must include -n.
@@ -294,8 +317,9 @@ become: {profile: 'pfexec'}
 
 The SSH profiles prepend their scalar pins to `ansible_ssh_args`, starting with `-F /dev/null`, then
 append the original configured `ssh_args`. No user or system `ssh_config` is read after selection;
-put required non-identity options in `ansible_ssh_common_args`. Identity options in any effective
-argument string are refused. Non-PKCS#11 key, GSSAPI and hostbased attempts use `BatchMode=yes`;
+put required non-identity options in `ansible_ssh_common_args`. Identity options, `ControlPath` and
+`-S` in any effective argument string are refused: a control path there would let a probe reuse
+another connection. Non-PKCS#11 key, GSSAPI and hostbased attempts use `BatchMode=yes`;
 password and PKCS#11 attempts explicitly use `BatchMode=no`. Every probe disables connection
 sharing. An encrypted private-key file fails fast because core cannot supply its passphrase: use
 key content with `ansible_private_key_passphrase`, or load the key in an agent.
@@ -343,3 +367,9 @@ output or argv. They remain in `hostvars` for the run. Two derived surfaces are 
 guarantee: managed WinRM Kerberos creates a private 0600 credential-cache file for the connection
 lifetime, and the SSM plugin places the session token returned by AWS in its child argv and shows
 that argv at `-vvvv`.
+
+Two further surfaces belong to the plugins after publication, not to the resolver. An
+`aws_ssm_static` winner's own session token signs the S3 presigned URLs inside the remote transfer
+command of later file transfers, and the plugin prints that command in full at `-vvvvv`. A
+key-content set's private key is added to the configured SSH agent with no lifetime; with an
+external agent (`ANSIBLE_SSH_AGENT` naming a socket) it outlives the run.

@@ -1,13 +1,17 @@
 """g. WinRM and PSRP: one Protocol/WSMan per attempt and fresh per task with exactly the profile's
 transport/auth and credential arguments; certificate without a user; manual Kerberos without a
 password or kinit; Basic/certificate over HTTPS accepted and over HTTP refused; the encryption floor
-for NTLM/Kerberos/PSRP over HTTP, including HTTP derived from port 5985."""
+for NTLM/Kerberos/PSRP over HTTP, including HTTP derived from port 5985; pass-through arguments one set
+names reach another set's pywinrm as pywinrm's defaults (the stub applies pywinrm's argument checks); a
+WinRM and a PSRP winner with no platform or shell hint are classified as Windows by host_readiness and
+os_bootstrap."""
 import hashlib
 
 FIXTURES = "utilities/credential_resolver/tests/fixtures"
 RUNS = [
     {"name": "profiles"},
     {"name": "floors", "inventory": "inventory-floors.yml", "playbook": "floors.yml"},
+    {"name": "classification", "inventory": "inventory-classify.yml", "playbook": "classify.yml"},
 ]
 HTTPS = "rule 4 requires HTTPS"
 ENCRYPTED = "rule 4 requires message_encryption=always over HTTP"
@@ -32,8 +36,11 @@ def digest(value):
 def check(evidence, require):
     lines = []
     run = evidence["profiles"]
-    for name in ("g-ntlm", "g-kerberos-manual", "g-basic", "g-certificate", "g-psrp-kerberos", "g-psrp-certificate"):
+    for name in ("g-ntlm", "g-kerberos-manual", "g-basic", "g-certificate", "g-psrp-kerberos", "g-psrp-certificate",
+                 "g-pass-certificate"):
         require(f"G-WINNER {name}" in run.log, f"{name} did not win")
+    require(not [p for p in run.of("winrm", kind="Protocol") if "construction_error" in p],
+            "pywinrm refused a Protocol's arguments")
     winrm = {
         "http://192.0.2.15:5985/wsman": ("ntlm", "g-ntlm-IDENTITY-CANARY", digest("PASSWORD-SECRET-CANARY-GN")),
         "https://192.0.2.16:5986/wsman": ("kerberos", "g-kerberos-IDENTITY-CANARY@TEST.INVALID", digest("")),
@@ -75,6 +82,14 @@ def check(evidence, require):
             f"PSRP certificate {certificate}")
     lines.append("psrp kerberos (http + always) and certificate (https): 2 WSMan each, no password")
 
+    arguments = ("message_encryption", "read_timeout_sec", "operation_timeout_sec", "send_cbt", "ca_trust_path")
+    passed = [tuple(p[a] for a in arguments) for p in run.of("winrm", kind="Protocol") if "192.0.2.22" in p["endpoint"]]
+    require(passed == [("always", 50, 40, False, "/x/ca-bundle.pem"), ("auto", 30, 20, True, "legacy_requests"),
+                       ("auto", 30, 20, True, "legacy_requests")], f"pass-through arguments {passed}")
+    lines.append(f"pass-through: g-pass-ntlm names {dict(zip(arguments, passed[0]))}; the certificate winner's probe "
+                 f"and ordinary task pass pywinrm's defaults {dict(zip(arguments, passed[1]))} and pywinrm's "
+                 "argument checks accept them")
+
     floors = evidence["floors"]
     messages = [m for m in floors.messages() if m.startswith("G-REFUSED")]
     for host, (name, rule) in REFUSALS.items():
@@ -82,4 +97,19 @@ def check(evidence, require):
                 f"{host} not refused with {rule}")
     require(not floors.records["winrm"] and not floors.records["psrp"], "a refused floor produced traffic")
     lines.append("floors refused before traffic: " + ", ".join(f"{h}={r.split()[-1]}" for h, (_, r) in REFUSALS.items()))
+
+    classification = evidence["classification"]
+    for host, connection in (("g-classify-winrm", "winrm"), ("g-classify-psrp", "psrp")):
+        line = (f"G-CLASSIFIED {host}.invalid {connection} windows Windows "
+                f"(connection hint ansible_connection={connection})")
+        require(line in classification.log, f"{host} was not classified as Windows")
+        require(f"G-DISPATCH {host}.invalid windows_server_2025" in classification.log,
+                f"{host} was not routed to the Windows bootstrap role")
+        lines.append(line)
+    scripts = ([r["script"] for r in classification.of("winrm", kind="run_command")]
+               + [r["script"] for r in classification.of("psrp", kind="PowerShell.invoke")])
+    require(sum("Win32_ComputerSystem" in s for s in scripts) == 2 and not any("sys_vendor" in s for s in scripts),
+            f"host_readiness platform probes {scripts}")
+    lines.append("classification: ansible_connection published by short name; host_readiness sent its Windows "
+                 "platform probe to both hosts and os_bootstrap routed both to windows_server_2025")
     return lines

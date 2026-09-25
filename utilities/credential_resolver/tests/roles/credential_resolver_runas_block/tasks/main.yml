@@ -1,0 +1,14 @@
+---
+# The shape of the pdq_deploy runas tasks: escalation keywords on the block, and the flags and
+# password as the block's own variables.
+- name: 'Runas Block | Escalate As The Block Declares'
+  become: true
+  become_method: 'ansible.builtin.runas'
+  become_user: "{{ credential_resolver_runas_block_user }}"
+  no_log: true
+  vars:
+    ansible_become_flags: 'logon_type=batch'
+    ansible_become_password: "{{ credential_resolver_runas_block_password }}"
+  block:
+    - name: 'Runas Block | Record The Escalation Core Resolved'
+      credential_resolver_become_record: {}

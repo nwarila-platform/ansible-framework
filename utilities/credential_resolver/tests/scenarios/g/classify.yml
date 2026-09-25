@@ -1,0 +1,42 @@
+---
+- name: 'Scenario G | WinRM And PSRP Winners Without A Platform Or Shell Hint'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    host_readiness_attempts: 1
+    host_readiness_pause_seconds: 0
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario G | Prove The Transport'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'host_readiness'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+
+    - name: 'Scenario G | Dispatch The Bootstrap'
+      block:
+        - name: 'Scenario G | Detect The Operating System'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'os_bootstrap'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario G | Record The Undispatched Bootstrap Role'
+          ansible.builtin.debug:
+            msg: 'G-DISPATCH {{ inventory_hostname }} {{ __os_bootstrap_target_role__ }}'
+            verbosity: 0
+
+    - name: 'Scenario G | Report The Classification'
+      ansible.builtin.debug:
+        msg: >-
+          G-CLASSIFIED {{ inventory_hostname }} {{ ansible_connection }}
+          {{ __host_readiness_os__ }} {{ __os_bootstrap_detected_os__ }}
+          ({{ __os_bootstrap_detection_signal__ }})
+        verbosity: 0

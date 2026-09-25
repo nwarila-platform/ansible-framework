@@ -894,6 +894,8 @@ credential_resolver_option_groups:
   - ansible_winrm_password
   class: secret
   neutral: null
+  play_context_neutral:
+    ansible_ssh_pass: ''
 - plugin_type: connection
   plugin: ansible.builtin.psrp
   option: remote_user
@@ -902,7 +904,7 @@ credential_resolver_option_groups:
   - ansible_user
   - ansible_psrp_user
   class: identity
-  neutral: null
+  neutral: ''
 - plugin_type: connection
   plugin: ansible.builtin.ssh
   option: control_path
@@ -1211,6 +1213,7 @@ credential_resolver_option_groups:
   - ansible_winrm_ca_trust_path
   class: plumbing
   neutral: null
+  protocol_default: legacy_requests
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.cert_key_pem
@@ -1219,6 +1222,7 @@ credential_resolver_option_groups:
   - ansible_winrm_cert_key_pem
   class: selector
   neutral: null
+  protocol_default: null
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.cert_pem
@@ -1227,6 +1231,7 @@ credential_resolver_option_groups:
   - ansible_winrm_cert_pem
   class: selector
   neutral: null
+  protocol_default: null
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.credssp_disable_tlsv1_2
@@ -1235,6 +1240,7 @@ credential_resolver_option_groups:
   - ansible_winrm_credssp_disable_tlsv1_2
   class: plumbing
   neutral: null
+  protocol_default: false
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.kerberos_delegation
@@ -1243,6 +1249,7 @@ credential_resolver_option_groups:
   - ansible_winrm_kerberos_delegation
   class: plumbing
   neutral: null
+  protocol_default: false
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.kerberos_hostname_override
@@ -1251,6 +1258,7 @@ credential_resolver_option_groups:
   - ansible_winrm_kerberos_hostname_override
   class: plumbing
   neutral: null
+  protocol_default: null
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.keytab
@@ -1259,6 +1267,7 @@ credential_resolver_option_groups:
   - ansible_winrm_keytab
   class: plumbing
   neutral: null
+  protocol_default: null
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.message_encryption
@@ -1267,6 +1276,7 @@ credential_resolver_option_groups:
   - ansible_winrm_message_encryption
   class: plumbing
   neutral: null
+  protocol_default: auto
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.operation_timeout_sec
@@ -1275,6 +1285,7 @@ credential_resolver_option_groups:
   - ansible_winrm_operation_timeout_sec
   class: plumbing
   neutral: null
+  protocol_default: 20
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.proxy
@@ -1283,6 +1294,7 @@ credential_resolver_option_groups:
   - ansible_winrm_proxy
   class: plumbing
   neutral: null
+  protocol_default: legacy_requests
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.read_timeout_sec
@@ -1291,6 +1303,7 @@ credential_resolver_option_groups:
   - ansible_winrm_read_timeout_sec
   class: plumbing
   neutral: null
+  protocol_default: 30
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.realm
@@ -1299,6 +1312,7 @@ credential_resolver_option_groups:
   - ansible_winrm_realm
   class: plumbing
   neutral: null
+  protocol_default: null
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.send_cbt
@@ -1307,6 +1321,7 @@ credential_resolver_option_groups:
   - ansible_winrm_send_cbt
   class: plumbing
   neutral: null
+  protocol_default: true
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.server_cert_validation
@@ -1315,6 +1330,7 @@ credential_resolver_option_groups:
   - ansible_winrm_server_cert_validation
   class: plumbing
   neutral: null
+  protocol_default: validate
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: protocol.service
@@ -1323,6 +1339,7 @@ credential_resolver_option_groups:
   - ansible_winrm_service
   class: plumbing
   neutral: null
+  protocol_default: HTTP
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: remote_addr
@@ -1343,6 +1360,8 @@ credential_resolver_option_groups:
   - ansible_winrm_password
   class: secret
   neutral: null
+  play_context_neutral:
+    ansible_ssh_pass: ''
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: remote_user
@@ -1351,7 +1370,7 @@ credential_resolver_option_groups:
   - ansible_user
   - ansible_winrm_user
   class: identity
-  neutral: null
+  neutral: ''
 - plugin_type: connection
   plugin: ansible.builtin.winrm
   option: scheme
@@ -1428,6 +1447,8 @@ credential_resolver_option_groups:
   - ansible_iocage_user
   class: identity
   neutral: null
+  play_context_aliases:
+  - ansible_ssh_user
 - plugin_type: connection
   plugin: community.general.jail
   option: remote_addr
@@ -1447,6 +1468,8 @@ credential_resolver_option_groups:
   - ansible_jail_user
   class: identity
   neutral: null
+  play_context_aliases:
+  - ansible_ssh_user
 - plugin_type: connection
   plugin: community.general.lxc
   option: executable
@@ -1517,6 +1540,8 @@ credential_resolver_option_groups:
   - ansible_user
   class: identity
   neutral: null
+  play_context_aliases:
+  - ansible_ssh_user
 - plugin_type: connection
   plugin: community.general.zone
   option: remote_addr

@@ -163,7 +163,8 @@ roles:
 The play supplies `credential_resolver_candidates` and optional
 `credential_resolver_require_elevated`. `os_bootstrap` consumes `ssh_trusted_principals`; the
 first `domain_member` call uses `restart_wait: false`. The second resolver call proves an identity
-on the new boot before readiness and membership are proved again.
+on the new boot before readiness and membership are proved again. The resolver writes connection
+settings only, never escalation; its README lists the names it holds for the rest of the run.
 
 ### Overriding Defaults
 

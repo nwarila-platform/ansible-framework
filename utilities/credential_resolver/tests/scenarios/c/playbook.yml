@@ -1,5 +1,5 @@
 ---
-- name: 'Scenario C | Elevation Policy And Control Master Reset'
+- name: 'Scenario C | Windows Elevation Policy, Control Master Reset And A Later Runas Block'
   hosts: 'c-ssh.invalid'
   gather_facts: false
   vars:
@@ -41,6 +41,17 @@
       ansible.builtin.debug:
         msg: 'C-WINNER {{ __credential_resolver_selected__ }}'
         verbosity: 0
+
+    - name: 'Scenario C | Run A Runas Block After The Winner'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver_runas_block'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+      vars:
+        credential_resolver_runas_block_user: 'C-RUNAS-USER'
+        credential_resolver_runas_block_password: 'RUNAS-PASSWORD-SECRET-CANARY-C'
 
 - name: 'Scenario C | A Non-SSH Winner Is Not Reset'
   hosts: 'c-local.invalid'

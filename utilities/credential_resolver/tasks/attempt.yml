@@ -159,14 +159,24 @@
     - name: 'PROCESS | Resolve Attempt Pins'
       when: __credential_resolver_budget_granted__ | bool
       no_log: true
+      vars:
+        __plugin__: "{{ __credential_resolver_attempt_profile__.plugin }}"
+        __plugin_pin_keys__: >-
+          {{ __credential_resolver_catalog__.credential_resolver_connection_profiles.values()
+             | selectattr('plugin', 'equalto', __plugin__)
+             | map(attribute='pins') | map('list') | flatten | unique | list }}
+        __plugin_baseline__: "{{ __credential_resolver_baseline__.get(__plugin__, {}) }}"
       ansible.builtin.set_fact:
         __credential_resolver_attempt_pins__: >-
           {{
-            __credential_resolver_attempt_profile__.pins
+            dict(__plugin_pin_keys__ | zip([none] * (__plugin_pin_keys__ | length)))
+            | combine(__plugin_baseline__ | dict2items
+                      | selectattr('key', 'in', __plugin_pin_keys__) | items2dict)
+            | combine(__credential_resolver_attempt_profile__.pins)
             | combine(
                 {'ansible_ssh_password_mechanism': 'ssh_askpass'}
                 if (
-                  __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'
+                  __plugin__ == 'ansible.builtin.ssh'
                   and (__credential_resolver_candidate__.vars.ansible_ssh_pkcs11_provider
                        | default('') | string | length) > 0
                 )
@@ -174,7 +184,7 @@
               )
             | combine(
                 {'ansible_ssh_args': __credential_resolver_ssh_args__}
-                if __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'
+                if __plugin__ == 'ansible.builtin.ssh'
                 else {}
               )
           }}
@@ -188,77 +198,6 @@
         label: "{{ credential_resolver_pin.key }}"
       ansible.builtin.include_tasks:
         file: 'build_pin.yml'
-
-    - name: 'PROCESS | Neutralize Every Become Credential And Selector'
-      when: __credential_resolver_budget_granted__ | bool
-      no_log: true
-      loop: >-
-        {{
-          (
-            credential_resolver_option_groups
-            | selectattr('plugin_type', 'equalto', 'become')
-            | selectattr('class', 'in', ['secret', 'escalation'])
-            | rejectattr('aliases', 'equalto', [])
-            | list
-          )
-          +
-          (
-            credential_resolver_option_groups
-            | selectattr('plugin_type', 'equalto', 'magic')
-            | selectattr('canonical', 'in', [
-                'ansible_become_method', 'ansible_become_user',
-                'ansible_become_password', 'ansible_become_exe',
-                'ansible_become_flags'
-              ])
-            | list
-          )
-        }}
-      loop_control:
-        loop_var: 'credential_resolver_become_group'
-        label: >-
-          {{ credential_resolver_become_group.plugin }}.{{
-             credential_resolver_become_group.option }}
-      ansible.builtin.include_tasks:
-        file: 'build_become_neutral.yml'
-
-    - name: 'PROCESS | Resolve Selected Become Profile'
-      when:
-        - __credential_resolver_budget_granted__ | bool
-        - __credential_resolver_candidate__.become | default(none) is mapping
-      no_log: true
-      vars:
-        __block__: "{{ __credential_resolver_candidate__.become }}"
-        __profile__: >-
-          {{ __credential_resolver_catalog__.credential_resolver_become_profiles[
-               __block__.profile
-             ] }}
-      ansible.builtin.set_fact:
-        __credential_resolver_attempt_become_profile__: "{{ __profile__ }}"
-        __credential_resolver_attempt_become_pins__: >-
-          {{
-            __profile__.defaults
-            | combine(
-                {'ansible_become_user': __block__.user}
-                if __block__.user is defined else {}
-              )
-            | combine(
-                {'ansible_become_flags': __block__.flags}
-                if __block__.flags is defined else {}
-              )
-            | combine(__profile__.pins)
-          }}
-
-    - name: 'PROCESS | Add Selected Become Profile'
-      when:
-        - __credential_resolver_budget_granted__ | bool
-        - __credential_resolver_candidate__.become | default(none) is mapping
-      no_log: true
-      loop: "{{ __credential_resolver_attempt_become_pins__ | dict2items }}"
-      loop_control:
-        loop_var: 'credential_resolver_become_pin'
-        label: "{{ credential_resolver_become_pin.key }}"
-      ansible.builtin.include_tasks:
-        file: 'build_become_pin.yml'
 
     # Dynamic keys are the reviewed plugin aliases; a static role prefix would change their API.
     - name: 'PROCESS | Apply The Complete Attempt Map'
@@ -289,20 +228,102 @@
             lookup('ansible.builtin.vars', credential_resolver_effective_entry.key)
             == credential_resolver_effective_entry.value
 
-    - name: 'PROCESS | Require The Effective Windows Become Switch'
-      when:
-        - __credential_resolver_budget_granted__ | bool
-        - __credential_resolver_os__ == 'windows'
+    - name: 'PROCESS | Resolve The Probe Settings'
+      when: __credential_resolver_budget_granted__ | bool
       no_log: true
       vars:
+        __block__: "{{ __credential_resolver_candidate__.become | default(none) }}"
+        __become_profile__: >-
+          {{ __credential_resolver_catalog__.credential_resolver_become_profiles[
+               __block__.profile
+             ] if __block__ is mapping else {} }}
+        __become_values__:
+          become_exe: "{{ __become_profile__.pins.ansible_become_exe }}"
+          become_flags: >-
+            {{ __block__.flags | default(__become_profile__.defaults.ansible_become_flags) }}
+          become_pass: ''
+          become_user: >-
+            {{ __block__.user | default(__become_profile__.defaults.ansible_become_user) }}
+      ansible.builtin.set_fact:
+        __credential_resolver_probe_settings__: >-
+          {%- set settings = {'ansible_become': __block__ is mapping,
+                              'ansible_control_path': 'none'} -%}
+          {%- if __block__ is mapping -%}
+          {%- set _ = settings.update(
+                {'ansible_become_method': __become_profile__.pins.ansible_become_method}) -%}
+          {%- for group in credential_resolver_option_groups
+                if group.plugin == __become_profile__.plugin and group.class != 'plumbing' -%}
+          {%- for alias in group.aliases -%}
+          {%- set _ = settings.update({alias: __become_values__[group.option]}) -%}
+          {%- endfor -%}
+          {%- endfor -%}
+          {%- endif -%}
+          {{ settings }}
+
+    - name: 'PROCESS | Require The Effective Probe Settings'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_candidate__.become | default(none) is not mapping
+      no_log: true
+      loop: "{{ __credential_resolver_probe_settings__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_probe_setting'
+        label: "{{ credential_resolver_probe_setting.key }}"
+      vars: &credential_resolver_plain_probe_vars
         ansible_become: false
+        ansible_control_path: 'none'
       ansible.builtin.assert:
         fail_msg: >-
-          {{ __credential_resolver_candidate__.name }}: effective ansible_become is not false
-          before the Windows probe
+          {{ __credential_resolver_candidate__.name }}: effective
+          {{ credential_resolver_probe_setting.key }} differs from the probe before traffic
         quiet: true
         that:
-          - not (ansible_become | bool)
+          - >-
+            (lookup('ansible.builtin.vars', credential_resolver_probe_setting.key) | to_json)
+            == (credential_resolver_probe_setting.value | to_json)
+
+    - name: 'PROCESS | Require The Effective Become Probe Settings'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_candidate__.become | default(none) is mapping
+      no_log: true
+      loop: "{{ __credential_resolver_probe_settings__ | dict2items }}"
+      loop_control:
+        loop_var: 'credential_resolver_probe_setting'
+        label: "{{ credential_resolver_probe_setting.key }}"
+      # Task variable names cannot be templated. The names below are every alias the accepted
+      # become plugins read; the loop checks each name the table gives the selected plugin.
+      vars: &credential_resolver_become_probe_vars
+        __settings__: "{{ __credential_resolver_probe_settings__ }}"
+        ansible_become: true
+        ansible_control_path: 'none'
+        ansible_become_method: "{{ __settings__.ansible_become_method }}"
+        ansible_become_user: "{{ __settings__.get('ansible_become_user') }}"
+        ansible_sudo_user: "{{ __settings__.get('ansible_sudo_user') }}"
+        ansible_doas_user: "{{ __settings__.get('ansible_doas_user') }}"
+        ansible_pfexec_user: "{{ __settings__.get('ansible_pfexec_user') }}"
+        ansible_become_exe: "{{ __settings__.get('ansible_become_exe') }}"
+        ansible_sudo_exe: "{{ __settings__.get('ansible_sudo_exe') }}"
+        ansible_doas_exe: "{{ __settings__.get('ansible_doas_exe') }}"
+        ansible_pfexec_exe: "{{ __settings__.get('ansible_pfexec_exe') }}"
+        ansible_become_flags: "{{ __settings__.get('ansible_become_flags') }}"
+        ansible_sudo_flags: "{{ __settings__.get('ansible_sudo_flags') }}"
+        ansible_doas_flags: "{{ __settings__.get('ansible_doas_flags') }}"
+        ansible_pfexec_flags: "{{ __settings__.get('ansible_pfexec_flags') }}"
+        ansible_become_password: "{{ __settings__.get('ansible_become_password') }}"
+        ansible_become_pass: "{{ __settings__.get('ansible_become_pass') }}"
+        ansible_sudo_pass: "{{ __settings__.get('ansible_sudo_pass') }}"
+        ansible_doas_pass: "{{ __settings__.get('ansible_doas_pass') }}"
+        ansible_pfexec_pass: "{{ __settings__.get('ansible_pfexec_pass') }}"
+      ansible.builtin.assert:
+        fail_msg: >-
+          {{ __credential_resolver_candidate__.name }}: effective
+          {{ credential_resolver_probe_setting.key }} differs from the probe before traffic
+        quiet: true
+        that:
+          - >-
+            (lookup('ansible.builtin.vars', credential_resolver_probe_setting.key) | to_json)
+            == (credential_resolver_probe_setting.value | to_json)
 
     - name: 'PROCESS | Probe One Windows Session'
       when:
@@ -315,9 +336,7 @@
       ignore_unreachable: true
       no_log: true
       register: '__credential_resolver_windows_probe__'
-      vars:
-        ansible_become: false
-        ansible_control_path: 'none'
+      vars: *credential_resolver_plain_probe_vars
       ansible.builtin.raw: >-
         powershell -NoProfile -NonInteractive -Command
         "whoami /user /groups /fo csv /nh{{
@@ -326,49 +345,40 @@
           else ''
         }}"
 
-    - name: 'PROCESS | Require The Effective POSIX Become Switch'
-      when:
-        - __credential_resolver_budget_granted__ | bool
-        - __credential_resolver_os__ != 'windows'
-      no_log: true
-      vars:
-        ansible_become: >-
-          {{ __credential_resolver_candidate__.become | default(none) is mapping }}
-      ansible.builtin.assert:
-        fail_msg: >-
-          {{ __credential_resolver_candidate__.name }}: effective ansible_become does not match
-          the POSIX probe before traffic
-        quiet: true
-        that:
-          - >-
-            (ansible_become | bool)
-            == (__credential_resolver_candidate__.become | default(none) is mapping)
-
     - name: 'PROCESS | Probe One POSIX Session'
       when:
         - __credential_resolver_budget_granted__ | bool
         - __credential_resolver_os__ != 'windows'
-      become: >-
-        {{ __credential_resolver_candidate__.become | default(none) is mapping }}
+        - __credential_resolver_candidate__.become | default(none) is not mapping
+      become: false
       changed_when: false
       check_mode: false
       ignore_errors: true
       ignore_unreachable: true
       no_log: true
       register: '__credential_resolver_posix_probe__'
-      vars:
-        ansible_become: >-
-          {{ __credential_resolver_candidate__.become | default(none) is mapping }}
-        ansible_control_path: 'none'
+      vars: *credential_resolver_plain_probe_vars
       # The mapping is required to pin raw's shell; the linter expects only its shorthand form.
       ansible.builtin.raw:  # noqa no-free-form[raw-non-string]
         _raw_params: >-
-          {{ 'id -u'
-             if (
-               __credential_resolver_candidate__.become | default(none) is mapping
-               or credential_resolver_require_elevated | bool
-             )
-             else 'echo ready' }}
+          {{ 'id -u' if credential_resolver_require_elevated | bool else 'echo ready' }}
+        executable: '/bin/sh'
+
+    - name: 'PROCESS | Probe One Become Session'
+      when:
+        - __credential_resolver_budget_granted__ | bool
+        - __credential_resolver_candidate__.become | default(none) is mapping
+      become: true
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      no_log: true
+      register: '__credential_resolver_become_probe__'
+      vars: *credential_resolver_become_probe_vars
+      # The mapping is required to pin raw's shell; the linter expects only its shorthand form.
+      ansible.builtin.raw:  # noqa no-free-form[raw-non-string]
+        _raw_params: 'id -u'
         executable: '/bin/sh'
 
     - name: 'PROCESS | Derive Non-Secret Probe Status'
@@ -378,7 +388,9 @@
         __probe__: >-
           {{ __credential_resolver_windows_probe__
              if __credential_resolver_os__ == 'windows'
-             else __credential_resolver_posix_probe__ }}
+             else (__credential_resolver_become_probe__
+                   if __credential_resolver_candidate__.become | default(none) is mapping
+                   else __credential_resolver_posix_probe__) }}
         __probe_ok__: >-
           {{ __probe__ is not unreachable
              and __probe__ is not failed

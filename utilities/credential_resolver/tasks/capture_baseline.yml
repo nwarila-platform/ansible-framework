@@ -23,7 +23,9 @@
       {{ lookup('ansible.builtin.vars', credential_resolver_group_alias) }}
     __credential_resolver_baseline_variable_seen__: true
 
-# The config lookup finds a builtin plugin's settings only under its short name.
+# The config lookup finds a builtin plugin's settings only under its short name. A WinRM
+# pass-through argument has no setting and reaches pywinrm as written, so its baseline is the
+# pywinrm default the generator recorded.
 - name: 'BEGIN | Read Configured Plugin Baseline'
   when: not (__credential_resolver_baseline_variable_seen__ | bool)
   no_log: true
@@ -36,7 +38,8 @@
            plugin_name=credential_resolver_baseline_group.plugin
              | regex_replace('^ansible[.]builtin[.]', ''),
            on_missing='skip'
-         ) | first | default(none) }}
+         ) | first
+         | default(credential_resolver_baseline_group.protocol_default | default(none)) }}
 
 - name: 'BEGIN | Store One Baseline Group'
   no_log: true

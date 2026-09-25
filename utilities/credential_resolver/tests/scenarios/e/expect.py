@@ -1,5 +1,7 @@
 """e. lower sources suppressed: remote_user = root, ANSIBLE_PRIVATE_KEY_FILE, inventory key files and
-users, and ambient WinRM/PSRP certificate pairs never reach an attempt whose set did not name them."""
+users, and ambient WinRM/PSRP certificate pairs never reach an attempt whose set did not name them; the
+user-less WinRM and PSRP certificate attempts send an empty user, not remote_user, and no password
+under an inventory ansible_ssh_pass."""
 
 RUNS = [{
     "name": "lower-sources",
@@ -28,11 +30,13 @@ def check(evidence, require):
     require(len(ntlm) == 1 and ntlm[0]["cert_pem"] is None and ntlm[0]["cert_key_pem"] is None
             and ntlm[0]["username"] == "e-winrm-ntlm-IDENTITY-CANARY", f"NTLM Protocol {ntlm}")
     require(len(certificate) == 1 and certificate[0]["transport"] == "certificate"
-            and certificate[0]["cert_pem"] == "utilities/credential_resolver/tests/fixtures/client.pem",
+            and certificate[0]["cert_pem"] == "utilities/credential_resolver/tests/fixtures/client.pem"
+            and certificate[0]["username"] == "" and not certificate[0]["password_given"],
             f"certificate Protocol {certificate}")
     wsman = [r for r in run.of("psrp", kind="WSMan") if r["arguments"]["server"] == "192.0.2.11"]
     require(len(wsman) == 1 and wsman[0]["arguments"]["auth"] == "certificate"
-            and wsman[0]["arguments"]["certificate_pem"].endswith("/tests/fixtures/client.pem"),
+            and wsman[0]["arguments"]["certificate_pem"].endswith("/tests/fixtures/client.pem")
+            and wsman[0]["arguments"]["username"] == "" and wsman[0]["arguments"]["password_bytes"] == 0,
             f"PSRP WSMan {wsman}")
     records = [r for kind in ("ssh", "winrm", "psrp") for r in run.records[kind]]
     for record in records:
@@ -48,7 +52,7 @@ def check(evidence, require):
         f"winrm certificate: cert_pem={certificate[0]['cert_pem']} (ambient pair absent)",
         f"psrp certificate: auth={wsman[0]['arguments']['auth']} (ambient pair absent)",
         "no /poison/ path or inventory user in any attempt record; no SSH attempt ran as root",
-        "OBSERVED (plan conflict, open for the planner): remote_user = root reaches the username of user-less"
-        f" attempts through the remote_user keyword: winrm_certificate={certificate[0]['username']!r},"
-        f" psrp_certificate={wsman[0]['arguments']['username']!r}",
+        "user-less attempts under remote_user = root and an inventory ansible_ssh_pass: winrm_certificate "
+        f"username {certificate[0]['username']!r} and no password, psrp_certificate username "
+        f"{wsman[0]['arguments']['username']!r} and {wsman[0]['arguments']['password_bytes']} password bytes",
     ]

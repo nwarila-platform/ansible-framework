@@ -28,9 +28,11 @@
                else __neutral__) }}
     # inventory_hostname names the host, not a setting; the later aliases decide the option.
     __aliases__: >-
-      {{ credential_resolver_attempt_group.aliases
+      {{ (credential_resolver_attempt_group.aliases
+          + (credential_resolver_attempt_group.play_context_aliases | default([])))
          | reject('equalto', 'inventory_hostname') | list }}
   ansible.builtin.set_fact:
     __credential_resolver_attempt_map__: >-
       {{ __credential_resolver_attempt_map__
-         | combine(dict(__aliases__ | zip([__value__] * (__aliases__ | length)))) }}
+         | combine(dict(__aliases__ | zip([__value__] * (__aliases__ | length))))
+         | combine(credential_resolver_attempt_group.play_context_neutral | default({})) }}

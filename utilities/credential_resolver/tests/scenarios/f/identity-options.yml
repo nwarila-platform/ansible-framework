@@ -1,5 +1,5 @@
 ---
-- name: 'Scenario F | Identity Options In Any Argument String Are Refused'
+- name: 'Scenario F | Identity And Control-Path Options In Any Argument String Are Refused'
   hosts: 'all'
   gather_facts: false
   vars:
@@ -19,6 +19,10 @@
       - ['ansible_ssh_extra_args', '-i/x/set-key']
       - ['ansible_ssh_common_args', '-F /x/set-config']
       - ['ansible_sftp_extra_args', '-F/x/set-config']
+      - ['ansible_ssh_common_args', '-o ControlPath=/x/shared-%C']
+      - ['ansible_ssh_extra_args', '-o controlpath /x/shared-%C']
+      - ['ansible_ssh_common_args', '-S /x/shared-socket']
+      - ['ansible_ssh_extra_args', '-S/x/shared-socket']
     credential_resolver_candidates: >-
       {%- set sets = [] -%}
       {%- for carrier in carriers -%}

@@ -5,7 +5,9 @@ the ambient profile-plus-keys conflict fails that attempt before traffic and the
 effective SSM and S3 endpoints must be HTTPS for every source and precedence, SSM and S3 separately;
 publishing opens no session beyond the probe's and the next task's; every community local transport
 runs with its user or remote at null under poisoned keyword, CLI, environment, configuration and
-inventory values."""
+inventory values, including inventory ansible_ssh_user and, for jail, iocage and qubes, the user a
+preceding SSH attempt wrote; a static winner's session token presigns its later transfers, as
+documented."""
 import hashlib
 import json
 from urllib.parse import urlparse
@@ -185,10 +187,9 @@ def check(evidence, require):
         require(presigned == expected, f"{host} presigned transfer token {presigned}")
         lines.append(f"modes: {host} signs every request with {key}; 2 sessions (probe + ordinary module); "
                      f"module output k-ordinary-module")
-    lines.append("OBSERVED (derived surface outside the resolver, open for the planner): the ordinary module's "
-                 "S3 transfer URL is presigned with the static set's session token (X-Amz-Security-Token), "
-                 "which the plugin hands to the remote curl command line; the resolver's raw probe transfers "
-                 "nothing")
+    lines.append("documented surface after publication: the ordinary module's S3 transfer URL is presigned with "
+                 "the static winner's own session token (X-Amz-Security-Token) on the remote curl command line; "
+                 "the resolver's raw probe transfers nothing")
     require("k-static-missing: rule 2 is missing a required variable" in refused(modes, "k-static-missing")
             and not requests(modes, "k-static-missing"), "static without its secret key was not refused")
     lines.append("modes: a static set without its secret key is refused before traffic")
@@ -244,11 +245,16 @@ def check(evidence, require):
         found = [r for r in local.records["misc"] if r["kind"] == kind]
         require(found and all(accepted(r["argv"]) for r in found), f"{kind} records {[r['argv'] for r in found]}")
         lines.append(f"local-transports: {kind} {found[-1]['argv']}")
-    require(not any("poison" in json.dumps(r) for r in local.records["misc"]), "a poisoned user or remote reached")
-    lines.append("local-transports: no poison-keyword/cli/env/config/inventory user or remote in any record; "
-                 "every success line names the inventory host")
+    require(not any("poison" in json.dumps(r) or "preceding" in json.dumps(r) for r in local.records["misc"]),
+            "a poisoned or preceding user or remote reached a local transport")
+    preceding = sorted(r["user"] for r in local.ssh(mode="exec"))
+    require(preceding == [f"k-{p}-preceding-ssh-IDENTITY-CANARY" for p in ("iocage", "jail", "qubes")]
+            and all(r["rc"] == 255 for r in local.ssh(mode="exec")), f"preceding SSH attempts {preceding}")
+    lines.append("local-transports: no poison-keyword/cli/env/config/inventory user (ansible_ssh_user included) "
+                 "or remote in any record; jail, iocage and qubes ran without a user after a losing SSH attempt "
+                 "wrote ansible_ssh_user; every success line names the inventory host")
     for host, error in UPSTREAM.items():
-        failures = local.task("Apply The Complete Attempt Map")
+        failures = local.task("Require Effective Attempt Values")
         require(any(f"[ERROR]: Task failed: {error}" in block and f"failed: [{host}.invalid]" in block
                     for block in failures), f"{host} did not fail with the upstream error {error!r}")
         lines.append(f"OBSERVED (upstream, open for the planner): {host} cannot run on this controller: {error}")

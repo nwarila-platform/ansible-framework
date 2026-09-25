@@ -1,10 +1,16 @@
 """h. escalation: plain probes stay unescalated under play become and --become; include/role
-parameters forcing the switch fail before traffic; a root login wins require_elevated with no become
-and a non-root login does not; each accepted become profile's command shape under poisoned keyword,
-CLI, environment and ini selectors, executables and passwords, including omitted user or flags;
-adversarial selectors and every refused form refused before traffic; host_readiness stays
-unescalated after resolution."""
+parameters forcing the switch (true, false or null) or a shared control path fail before traffic; a
+root login wins require_elevated with no become and a non-root login does not; each accepted become
+profile's command shape under poisoned keyword, CLI, environment and ini selectors, executables and
+passwords and play canaries in every alias the table gives the accepted become plugins, including
+omitted user or flags; a fact, a vars file or an include parameter on the sudo flags or password fails
+before traffic; adversarial selectors and every refused form refused before traffic; host_readiness
+stays unescalated after resolution; a later runas-shaped block keeps its own escalation."""
+import hashlib
+from pathlib import Path
 import re
+
+import yaml
 
 POISON_INI = {
     "privilege_escalation": {"become_user": "poison-ini-user", "become_flags": "--poison-ini-flags",
@@ -36,6 +42,10 @@ RUNS = [
     {"name": "ini-sources", "inventory": "inventory-plain-sources.yml", "playbook": "plain-sources.yml",
      "config": POISON_INI},
     {"name": "switch", "inventory": "inventory-switch.yml", "playbook": "switch.yml", "expected_rc": 2},
+    {"name": "overrides", "inventory": "inventory-overrides.yml", "playbook": "overrides.yml",
+     "files": {"sudo-flags.yml": "ansible_sudo_flags: '-H -S'\n",
+               "sudo-pass.yml": "ansible_sudo_pass: 'BECOME-VARS-SECRET-CANARY-H'\n"},
+     "planted_facts": {"h-fact-flags.invalid": ["ansible_sudo_flags"], "h-fact-pass.invalid": ["ansible_sudo_pass"]}},
     {"name": "adversarial", "inventory": "inventory-adversarial.yml", "playbook": "adversarial.yml"},
 ]
 SHAPES = {
@@ -68,6 +78,19 @@ ADVERSARIAL = {
 }
 
 
+HERE = Path(__file__).resolve().parent
+BECOME_PLUGINS = ("ansible.builtin.sudo", "community.general.doas", "community.general.pfexec")
+TABLE = yaml.safe_load((HERE.parents[2] / "vars" / "main.yml").read_text(encoding="utf-8"))
+PROBE_ALIASES = {alias for group in TABLE["credential_resolver_option_groups"]
+                 if group["plugin"] in BECOME_PLUGINS and group["class"] != "plumbing"
+                 for alias in group["aliases"]} | {"ansible_become_method"}
+OVERRIDES = {"h-fact-flags": "ansible_sudo_flags", "h-fact-pass": "ansible_sudo_pass",
+             "h-include-vars-flags": "ansible_sudo_flags", "h-include-vars-pass": "ansible_sudo_pass",
+             "h-parameter-flags": "ansible_sudo_flags", "h-parameter-pass": "ansible_sudo_pass"}
+PRE_PROBE = "PROCESS | Require The Effective Probe Settings"
+BECOME_PRE_PROBE = "PROCESS | Require The Effective Become Probe Settings"
+
+
 def probe_command(run, address):
     probes = [c for c in run.ssh(host=address, mode="exec") if "echo ready" not in c["command"]
               or address == "192.0.2.28"]
@@ -77,13 +100,18 @@ def probe_command(run, address):
 def check(evidence, require):
     lines = []
     run = evidence["keyword-sources"]
+    planted = set(yaml.safe_load((HERE / "playbook.yml").read_text(encoding="utf-8"))[0]["vars"])
+    require(PROBE_ALIASES <= planted, f"aliases without a play canary: {sorted(PROBE_ALIASES - planted)}")
+    lines.append(f"play canaries in all {len(PROBE_ALIASES)} aliases the table gives sudo, doas and pfexec "
+                 "(user, executable, flags, password) and ansible_become_method")
     for address, shape in SHAPES.items():
         command = probe_command(run, address)
         require(re.match(shape, command), f"{address} probe command {command!r}")
         lines.append(f"{address}: {command}")
     for record in run.records["ssh"]:
         visible = f"{record['argv']} {record['command']}"
-        require("poison" not in visible and " su " not in visible, f"a poisoned selector reached {visible}")
+        require("poison" not in visible and " su " not in visible and "ksu" not in visible,
+                f"a poisoned selector reached {visible}")
     require("H-NOT-WORKING h-nonroot.invalid No credential set worked for 'h-nonroot.invalid': "
             "h-nonroot (rounds 1, not-elevated)" in run.log, "non-root login without become won")
     for name in ("h-sudo", "h-sudo-defaults", "h-doas", "h-doas-user", "h-pfexec", "h-root", "h-plain"):
@@ -93,6 +121,16 @@ def check(evidence, require):
                                             for word in ("sudo", "doas", "pfexec", "BECOME-SUCCESS")),
             f"host_readiness probes {[c['command'] for c in readiness]}")
     lines.append("host_readiness after resolution: 7 unescalated 'echo ready' probes under play become: true")
+    runas = {"enabled": True, "plugin": "ansible.builtin.runas", "user": "H-RUNAS-USER",
+             "flags": "logon_type=batch",
+             "password_sha256": hashlib.sha256(b"RUNAS-PASSWORD-SECRET-CANARY-H").hexdigest()}
+    hosts = ("h-sudo", "h-sudo-defaults", "h-doas", "h-doas-user", "h-pfexec", "h-root", "h-nonroot", "h-plain")
+    for host in hosts:
+        records = run.become(f"{host}.invalid")
+        require(len(records) == 1 and all(records[0].get(k) == v for k, v in runas.items()),
+                f"{host}: the later runas block did not keep its own escalation: {records}")
+    lines.append(f"later runas-style block on all {len(hosts)} hosts: its own switch, method, user, flags "
+                 "and password under the --become/su CLI, environment and ini poisons")
 
     for name in ("environment-sources", "ini-sources"):
         plain = evidence[name]
@@ -104,15 +142,27 @@ def check(evidence, require):
         lines.append(f"{name}: sudo/doas/pfexec omitted-field shapes unchanged; no poison in any attempt")
 
     switch = evidence["switch"]
-    require("H-SWITCH-REFUSED h-force-true.invalid PROCESS | Require The Effective POSIX Become Switch"
-            in switch.log, "include parameter forcing become true was not refused")
-    checks = switch.task("Require The Effective POSIX Become Switch")
-    require(any("h-force-false: effective ansible_become does not match the POSIX probe before traffic" in block
-                and "fatal: [h-force-false.invalid]" in block for block in checks),
-            "role parameter forcing become false was not refused")
+    for host, key in (("h-force-true", "ansible_become"), ("h-force-null", "ansible_become"),
+                      ("h-force-control-path", "ansible_control_path"), ("h-force-false", "ansible_become")):
+        require(f"{host}: effective {key} differs from the probe before traffic" in switch.log,
+                f"{host}: {key} was not refused")
+    for host in ("h-force-true", "h-force-null", "h-force-control-path"):
+        require(f"H-SWITCH-REFUSED {host}.invalid {PRE_PROBE}" in switch.log, f"{host} not refused before traffic")
+    checks = switch.task("Require The Effective Become Probe Settings")
+    require(any("failed: [h-force-false.invalid]" in block for block in checks),
+            "role parameter forcing become false was not refused at the become probe check")
     require(not switch.records["ssh"], "a forced switch produced probe traffic")
-    lines.append("switch: include parameter (true) and role parameter (false) failed at the effective-switch "
-                 "check; zero ssh records")
+    lines.append("switch: include parameters (true, null under play become, a shared control path) and a role "
+                 "parameter (false) each failed at the pre-probe check naming the key; zero ssh records")
+
+    overrides = evidence["overrides"]
+    for host, key in OVERRIDES.items():
+        require(f"H-OVERRIDE-REFUSED {host}.invalid {BECOME_PRE_PROBE}" in overrides.log
+                and f"h-override: effective {key} differs from the probe before traffic" in overrides.log,
+                f"{host}: {key} not refused at the pre-probe check")
+    require(not overrides.records["ssh"], "an overridden become setting produced traffic")
+    lines.append("overrides: a fact, an include_vars file and an include parameter on ansible_sudo_flags and on "
+                 "ansible_sudo_pass each failed at the pre-probe check naming the key; zero ssh records")
 
     adversarial = evidence["adversarial"]
     refusal = next(m for m in adversarial.messages() if m.startswith("H-REFUSED"))

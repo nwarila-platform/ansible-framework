@@ -97,19 +97,20 @@
       {{ [
            __ssh_args__, __common_args__, __extra_args__, __scp_args__, __sftp_args__
          ] | join(' ') }}
-    __identity_pattern__: >-
+    __refused_option_pattern__: >-
       (?x) (
-        (^|\s) (-i|-F) ($|\s|=|[^\s])
+        (^|\s) (-i|-F|-S) ($|\s|=|[^\s])
         |
-        (?i: (IdentityFile|IdentityAgent|CertificateFile|PKCS11Provider|SecurityKeyProvider)
+        (?i: (IdentityFile|IdentityAgent|CertificateFile|PKCS11Provider|SecurityKeyProvider
+              |ControlPath)
         (\s|=) )
       )
   ansible.builtin.set_fact:
     __credential_resolver_validation_errors__: >-
       {{ __credential_resolver_validation_errors__
          + ([__credential_resolver_runtime_name__
-             ~ ': rule 3 found an identity option in effective SSH arguments']
-            if __effective_args__ is search(__identity_pattern__) else []) }}
+             ~ ': rule 3 found an identity or control-path option in effective SSH arguments']
+            if __effective_args__ is search(__refused_option_pattern__) else []) }}
 
 - name: 'BEGIN | Validate Effective WinRM Floor'
   when:

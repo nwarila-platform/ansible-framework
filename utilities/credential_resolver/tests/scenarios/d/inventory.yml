@@ -7,20 +7,18 @@ all:
     ansible_winrm_pass: D-GROUP-WINRM_PASS-SECRET-CANARY
     ansible_winrm_password: D-GROUP-WINRM_PASSWORD-SECRET-CANARY
     ansible_ssh_pass: D-GROUP-SSH_PASS-SECRET-CANARY
+    ansible_ssh_password: D-GROUP-SSH_PASSWORD-SECRET-CANARY
+    ansible_private_key: D-GROUP-PRIVATE_KEY-SECRET-CANARY
+    ansible_ssh_private_key: D-GROUP-SSH_PRIVATE_KEY-SECRET-CANARY
+    ansible_private_key_passphrase: D-GROUP-PASSPHRASE-SECRET-CANARY
+    ansible_ssh_private_key_passphrase: D-GROUP-SSH_PASSPHRASE-SECRET-CANARY
+    ansible_private_key_file: /poison/d-group-private-key-file
+    ansible_ssh_private_key_file: /poison/d-group-ssh-private-key-file
+    ansible_ssh_pkcs11_provider: /poison/d-group-provider.so
     ansible_winrm_kinit_mode: D-GROUP-WINRM_KINIT_MODE-SELECTOR-CANARY
     ansible_winrm_transport: D-GROUP-WINRM_TRANSPORT-SELECTOR-CANARY
     ansible_winrm_cert_pem: D-GROUP-WINRM_CERT_PEM-SELECTOR-CANARY
     ansible_winrm_cert_key_pem: D-GROUP-WINRM_CERT_KEY_PEM-SELECTOR-CANARY
-    ansible_become_method: D-GROUP-BECOME_METHOD-SELECTOR-CANARY
-    ansible_become_user: D-GROUP-BECOME_USER-SELECTOR-CANARY
-    ansible_become_exe: D-GROUP-BECOME_EXE-SELECTOR-CANARY
-    ansible_become_flags: D-GROUP-BECOME_FLAGS-SELECTOR-CANARY
-    ansible_become_password: D-GROUP-BECOME_PASSWORD-SECRET-CANARY
-    ansible_become_pass: D-GROUP-BECOME_PASS-SECRET-CANARY
-    ansible_runas_user: D-GROUP-RUNAS_USER-SELECTOR-CANARY
-    ansible_runas_flags: D-GROUP-RUNAS_FLAGS-SELECTOR-CANARY
-    ansible_runas_pass: D-GROUP-RUNAS_PASS-SECRET-CANARY
-    ansible_sudo_pass: D-GROUP-SUDO_PASS-SECRET-CANARY
   hosts:
     d-windows.invalid:
       ansible_host: 192.0.2.6
@@ -37,17 +35,15 @@ all:
       ansible_winrm_pass: D-HOST-WINRM_PASS-SECRET-CANARY
       ansible_winrm_password: D-HOST-WINRM_PASSWORD-SECRET-CANARY
       ansible_ssh_pass: D-HOST-SSH_PASS-SECRET-CANARY
+      ansible_ssh_password: D-HOST-SSH_PASSWORD-SECRET-CANARY
+      ansible_private_key: D-HOST-PRIVATE_KEY-SECRET-CANARY
+      ansible_ssh_private_key: D-HOST-SSH_PRIVATE_KEY-SECRET-CANARY
+      ansible_private_key_passphrase: D-HOST-PASSPHRASE-SECRET-CANARY
+      ansible_ssh_private_key_passphrase: D-HOST-SSH_PASSPHRASE-SECRET-CANARY
+      ansible_private_key_file: /poison/d-host-private-key-file
+      ansible_ssh_private_key_file: /poison/d-host-ssh-private-key-file
+      ansible_ssh_pkcs11_provider: /poison/d-host-provider.so
       ansible_winrm_kinit_mode: D-HOST-WINRM_KINIT_MODE-SELECTOR-CANARY
       ansible_winrm_transport: D-HOST-WINRM_TRANSPORT-SELECTOR-CANARY
       ansible_winrm_cert_pem: D-HOST-WINRM_CERT_PEM-SELECTOR-CANARY
       ansible_winrm_cert_key_pem: D-HOST-WINRM_CERT_KEY_PEM-SELECTOR-CANARY
-      ansible_become_method: D-HOST-BECOME_METHOD-SELECTOR-CANARY
-      ansible_become_user: D-HOST-BECOME_USER-SELECTOR-CANARY
-      ansible_become_exe: D-HOST-BECOME_EXE-SELECTOR-CANARY
-      ansible_become_flags: D-HOST-BECOME_FLAGS-SELECTOR-CANARY
-      ansible_become_password: D-HOST-BECOME_PASSWORD-SECRET-CANARY
-      ansible_become_pass: D-HOST-BECOME_PASS-SECRET-CANARY
-      ansible_runas_user: D-HOST-RUNAS_USER-SELECTOR-CANARY
-      ansible_runas_flags: D-HOST-RUNAS_FLAGS-SELECTOR-CANARY
-      ansible_runas_pass: D-HOST-RUNAS_PASS-SECRET-CANARY
-      ansible_sudo_pass: D-HOST-SUDO_PASS-SECRET-CANARY

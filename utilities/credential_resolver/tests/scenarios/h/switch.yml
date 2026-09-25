@@ -1,14 +1,16 @@
 ---
-- name: 'Scenario H | An Include Parameter Forcing The Switch On A Plain Probe'
-  hosts: 'h-force-true.invalid'
+- name: 'Scenario H | Include Parameters Overriding A Plain Probe'
+  hosts: 'h-force-true.invalid,h-force-null.invalid,h-force-control-path.invalid'
   gather_facts: false
+  become: true
   vars:
     credential_resolver_rounds: 1
     credential_resolver_pause_seconds: 0
   tasks:
-    - name: 'Scenario H | Expect The Effective-Switch Check To Fail'
+    - name: 'Scenario H | Expect The Pre-Probe Check To Fail'
       block:
         - name: 'Scenario H | Resolve With ansible_become Forced True'
+          when: inventory_hostname == 'h-force-true.invalid'
           ansible.builtin.include_role:
             allow_duplicates: true
             name: 'credential_resolver'
@@ -18,6 +20,30 @@
           vars:
             # The parameter under test outranks the probe's task variable.
             ansible_become: true  # noqa: var-naming[no-role-prefix]
+
+        - name: 'Scenario H | Resolve With ansible_become Forced Null Under Play Become'
+          when: inventory_hostname == 'h-force-null.invalid'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+          vars:
+            # The parameter under test outranks the probe's task variable.
+            ansible_become: null  # noqa: var-naming[no-role-prefix]
+
+        - name: 'Scenario H | Resolve With A Shared Control Path'
+          when: inventory_hostname == 'h-force-control-path.invalid'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+          vars:
+            # The parameter under test outranks the probe's task variable.
+            ansible_control_path: '/x/shared-%C'  # noqa: var-naming[no-role-prefix]
       rescue:
         - name: 'Scenario H | Record The Failed Check'
           ansible.builtin.debug:

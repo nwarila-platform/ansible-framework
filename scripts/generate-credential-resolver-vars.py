@@ -41,6 +41,7 @@ INTERNAL_WINRM = {
     "kinit_mode",
     "kinit_cmd",
 }
+PLAY_CONTEXT_KEYS = ("play_context_aliases", "play_context_neutral")
 
 
 def ansible_doc(*args: str) -> str:
@@ -104,6 +105,7 @@ def group(plugin_type: str, plugin: str, option: str, aliases: list[str], detail
         "aliases": aliases,
         "class": details["class"],
         "neutral": details.get("neutral"),
+        **{key: details[key] for key in PLAY_CONTEXT_KEYS if key in details},
     }
 
 
@@ -139,21 +141,23 @@ def main() -> None:
     for option, aliases in MAGIC_VARIABLE_MAPPING.items():
         groups.append(group("magic", "ansible.builtin.play_context", option, list(aliases), magic[option]))
 
-    protocol_args = [
-        name for name in inspect.signature(Protocol.__init__).parameters if name not in INTERNAL_WINRM
-    ]
+    parameters = inspect.signature(Protocol.__init__).parameters
+    protocol_args = [name for name in parameters if name not in INTERNAL_WINRM]
     protocol = flatten_classification(
         classification["winrm_protocol"], set(protocol_args), "winrm_protocol"
     )
     for option in sorted(protocol_args):
         groups.append(
-            group(
-                "connection",
-                "ansible.builtin.winrm",
-                f"protocol.{option}",
-                [f"ansible_winrm_{option}"],
-                protocol[option],
-            )
+            {
+                **group(
+                    "connection",
+                    "ansible.builtin.winrm",
+                    f"protocol.{option}",
+                    [f"ansible_winrm_{option}"],
+                    protocol[option],
+                ),
+                "protocol_default": parameters[option].default,
+            }
         )
 
     groups.sort(key=lambda item: (item["plugin_type"], item["plugin"], item["option"]))

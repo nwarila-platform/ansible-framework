@@ -11,6 +11,25 @@
     credential_resolver_rounds: 1
     credential_resolver_pause_seconds: 0
     ansible_shell_executable: '/poison/variable-shell'
+    # Lower-precedence canaries in every alias the accepted become plugins read.
+    ansible_become_user: 'poison-play-become-user'
+    ansible_become_exe: '/poison/play-become-exe'
+    ansible_become_flags: '--poison-play-become-flags'
+    ansible_become_pass: 'BECOME-PLAY-SECRET-CANARY-BECOME'
+    ansible_sudo_user: 'poison-play-sudo-user'
+    ansible_sudo_exe: '/poison/play-sudo-exe'
+    ansible_sudo_flags: '--poison-play-sudo-flags'
+    ansible_sudo_pass: 'BECOME-PLAY-SECRET-CANARY-SUDO'
+    ansible_doas_user: 'poison-play-doas-user'
+    ansible_doas_exe: '/poison/play-doas-exe'
+    ansible_doas_flags: '--poison-play-doas-flags'
+    ansible_doas_pass: 'BECOME-PLAY-SECRET-CANARY-DOAS'
+    ansible_pfexec_user: 'poison-play-pfexec-user'
+    ansible_pfexec_exe: '/poison/play-pfexec-exe'
+    ansible_pfexec_flags: '--poison-play-pfexec-flags'
+    ansible_pfexec_pass: 'BECOME-PLAY-SECRET-CANARY-PFEXEC'
+    ansible_become_password: 'BECOME-PLAY-SECRET-CANARY-PASSWORD'
+    ansible_become_method: 'community.general.ksu'
     host_readiness_attempts: 1
     host_readiness_pause_seconds: 0
     host_readiness_platform: 'declared'
@@ -44,3 +63,18 @@
       ansible.builtin.debug:
         msg: 'H-WINNER {{ __credential_resolver_selected__ }}'
         verbosity: 0
+
+- name: 'Scenario H | A Later Block Keeps Its Own Escalation'
+  hosts: 'all'
+  gather_facts: false
+  tasks:
+    - name: 'Scenario H | Run A Runas Block After Resolution'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver_runas_block'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+      vars:
+        credential_resolver_runas_block_user: 'H-RUNAS-USER'
+        credential_resolver_runas_block_password: 'RUNAS-PASSWORD-SECRET-CANARY-H'

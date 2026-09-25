@@ -1,9 +1,9 @@
 {
   "ssh": {
     "responses": {
-      "c-medium-one-IDENTITY-CANARY": [{"rc": 0, "stdout": "1000"}],
-      "c-medium-two-IDENTITY-CANARY": [{"rc": 0, "stdout": "1000"}],
-      "c-high-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}]
+      "c-medium-one-IDENTITY-CANARY": [{"rc": 0, "stdout": "\"host\\\\c-medium-one\",\"S-1-5-21-1\",\"S-1-16-8192\",\"Mandatory\"\n\"host\\\\c-medium-one\",\"BUILTIN\",\"S-1-5-32-545\",\"Group\""}],
+      "c-medium-two-IDENTITY-CANARY": [{"rc": 0, "stdout": "\"host\\\\c-medium-two\",\"S-1-5-21-2\",\"S-1-16-8192\",\"Mandatory\"\n\"host\\\\c-medium-two\",\"BUILTIN\",\"S-1-5-32-544\",\"Group\""}],
+      "c-high-IDENTITY-CANARY": [{"rc": 0, "stdout": "\"host\\\\c-high\",\"S-1-5-21-3\",\"S-1-16-12288\",\"Mandatory\"\n\"host\\\\c-high\",\"BUILTIN\",\"S-1-5-32-544\",\"Group\""}]
     }
   }
 }

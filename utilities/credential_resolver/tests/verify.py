@@ -33,6 +33,14 @@ DEFAULT_AWS_CREDENTIALS = (
     "[default]\naws_access_key_id = AMBIENT-ACCESS-CANARY\n"
     "aws_secret_access_key = AMBIENT-SECRET-CANARY\n"
 )
+TABLE = REPO / "utilities" / "credential_resolver" / "vars" / "main.yml"
+BECOME_NAMES = frozenset(
+    alias
+    for group in yaml.safe_load(TABLE.read_text(encoding="utf-8"))["credential_resolver_option_groups"]
+    if group["plugin_type"] == "become"
+    or (group["plugin_type"] == "magic" and group["option"].startswith("become"))
+    for alias in group["aliases"]
+)
 
 
 class ScenarioFailure(AssertionError):
@@ -54,10 +62,14 @@ class Evidence:
         self.elapsed = elapsed
         self.log = (directory / "ansible.log").read_text(encoding="utf-8", errors="replace")
         self.records = {}
-        for kind in RECORD_KINDS:
+        for kind in (*RECORD_KINDS, "observe"):
             path = directory / f"{kind}.jsonl"
             lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
             self.records[kind] = [json.loads(line) for line in lines if line.strip()]
+
+    def become(self, host: str) -> list[dict]:
+        """What core resolved for each escalating task the recorder ran on the host."""
+        return [r for r in self.records["observe"] if r["kind"] == "become" and r["host"] == host]
 
     def ssh(self, **match: object) -> list[dict]:
         return [r for r in self.records["ssh"] if all(r.get(k) == v for k, v in match.items())]
@@ -195,7 +207,9 @@ def environment(directory: Path, inputs: Path, run: dict) -> dict[str, str]:
         "PYTHONPATH": str(TESTS / "stubs" / "python"),
         "PYTHONDONTWRITEBYTECODE": "1",
         "ANSIBLE_CONFIG": str(inputs / "ansible.cfg"),
-        "ANSIBLE_ROLES_PATH": str(REPO / "utilities"),
+        "ANSIBLE_ROLES_PATH": f"{REPO / 'utilities'}:{TESTS / 'roles'}",
+        "ANSIBLE_CALLBACK_PLUGINS": str(TESTS / "callback_plugins"),
+        "ANSIBLE_CALLBACKS_ENABLED": "credential_resolver_facts",
         "ANSIBLE_COLLECTIONS_PATH": "/root/.ansible/collections",
         "ANSIBLE_HOME": str(directory / "ansible-home"),
         "ANSIBLE_LOCAL_TEMP": str(directory / "local"),
@@ -221,7 +235,8 @@ def environment(directory: Path, inputs: Path, run: dict) -> dict[str, str]:
         "CREDRES_STORE": str(directory / "store"),
         "CREDRES_INPUT": str(inputs),
     }
-    env.update({f"CREDRES_{kind.upper()}_LOG": str(directory / f"{kind}.jsonl") for kind in RECORD_KINDS})
+    env.update({f"CREDRES_{kind.upper()}_LOG": str(directory / f"{kind}.jsonl")
+                for kind in (*RECORD_KINDS, "observe")})
     env["CREDRES_RUN_ENV_NAMES"] = ",".join(run.get("env", {}))
     for name, value in run.get("env", {}).items():
         if value is None:
@@ -298,12 +313,24 @@ def load(letter: str):
     return module
 
 
+def audit_become_facts(run: dict, result: Evidence) -> int:
+    """No host holds a fact on the switch or any become alias, except those the scenario planted."""
+    audits = [r for r in result.records["observe"] if r["kind"] == "facts"]
+    require(len(audits) == 1, f"{run['name']}: {len(audits)} fact audits recorded")
+    planted = run.get("planted_facts", {})
+    for host, names in audits[0]["hosts"].items():
+        found = sorted(set(names) & BECOME_NAMES)
+        require(found == sorted(planted.get(host, [])), f"{run['name']}: become facts on {host}: {found}")
+    return len(audits[0]["hosts"])
+
+
 def run_scenario(letter: str, root: Path, markers: list[bytes]) -> tuple[bool, list[str]]:
     lines = []
     try:
         check_scenario_text(letter)
         scenario = load(letter)
         evidence = {}
+        audited = 0
         for run in scenario.RUNS:
             result = execute(letter, run, root, markers)
             evidence[run["name"]] = result
@@ -313,7 +340,10 @@ def run_scenario(letter: str, root: Path, markers: list[bytes]) -> tuple[bool, l
             faults = [r for kind in RECORD_KINDS for r in result.records[kind] if "stub_error" in r]
             require(not faults, f"{run['name']}: stub fault {faults[:1]}")
             require(not (root / "tripwire.log").exists(), f"{run['name']}: a real binary was reached")
+            audited += audit_become_facts(run, result)
         lines += scenario.check(evidence, require)
+        lines.append(f"become facts: none on {audited} audited host(s) across {len(scenario.RUNS)} run(s), "
+                     f"beyond those a scenario planted ({len(BECOME_NAMES)} names from the table)")
         return True, lines
     except ScenarioFailure as failure:
         return False, lines + [f"FAILURE: {failure}"]

@@ -14,6 +14,10 @@ class WinRMTransportError(WinRMError):
         super().__init__(f"Bad HTTP response returned from server. Code {code}")
 
 
+class InvalidCredentialsError(WinRMError):
+    pass
+
+
 class WSManFaultError(WinRMError):
     def __init__(self, code=0, message="", response="", reason="", wmierror_code=0,
                  fault_code="", fault_subcode=""):

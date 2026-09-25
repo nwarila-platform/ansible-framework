@@ -1,0 +1,15 @@
+all:
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  hosts:
+    i-become.invalid:
+      ansible_host: 192.0.2.59
+      credential_resolver_candidates:
+        - name: 'i-become'
+          profile: 'ssh_publickey'
+          become:
+            profile: 'sudo'
+          vars:
+            ansible_user: 'i-become-IDENTITY-CANARY'
+            ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'

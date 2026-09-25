@@ -1,6 +1,7 @@
 """f. SSH isolation: each profile's argv starts with its prefix; ssh -G of each attempt lists exactly
 the set's identities under poisoned user and system configurations and conflicting caller scalars;
-identity options in any argument string are refused; password attempts arm one askpass segment and
+identity and control-path options in any argument string are refused, while the default
+ControlMaster/ControlPersist ssh_args stay accepted; password attempts arm one askpass segment and
 never retry; PKCS#11, agent/FIDO .pub, certificate and key-content sets; an encrypted key file fails
 fast under BatchMode."""
 
@@ -138,16 +139,18 @@ def check(evidence, require):
     refusals = evidence["identity-options"]
     messages = [m for m in refusals.messages() if m.startswith("F-REFUSED")]
     sets = next(m for m in messages if m.startswith("F-REFUSED f3-sets.invalid"))
-    for index in range(1, 13):
-        require(f"f3-set-{index}: rule 3 found an identity option in effective SSH arguments" in sets,
-                f"f3-set-{index} not refused")
-    for host in ("f3-base-ssh-args", "f3-base-common", "f3-base-extra", "f3-base-scp", "f3-base-sftp"):
-        require(any(m.startswith(f"F-REFUSED {host}.invalid") and "f3-clean: rule 3" in m for m in messages),
+    rule = "rule 3 found an identity or control-path option in effective SSH arguments"
+    for index in range(1, 17):
+        require(f"f3-set-{index}: {rule}" in sets, f"f3-set-{index} not refused")
+    for host in ("f3-base-ssh-args", "f3-base-common", "f3-base-extra", "f3-base-scp", "f3-base-sftp",
+                 "f3-base-control-path", "f3-base-control-socket"):
+        require(any(m.startswith(f"F-REFUSED {host}.invalid") and f"f3-clean: {rule}" in m for m in messages),
                 f"{host} not refused")
     require(not refusals.records["ssh"], "a refused identity option produced ssh traffic")
-    lines.append("rule 3: 12 set-level forms (IdentityFile =/space/attached/lowercase, IdentityAgent, "
-                 "CertificateFile, PKCS11Provider, SecurityKeyProvider, -i, -i<path>, -F, -F<path>) and 5 "
-                 "baseline carriers refused; zero ssh records")
+    lines.append("rule 3: 16 set-level forms (IdentityFile =/space/attached/lowercase, IdentityAgent, "
+                 "CertificateFile, PKCS11Provider, SecurityKeyProvider, -i, -i<path>, -F, -F<path>, "
+                 "ControlPath =/space, -S, -S<path>) and 7 baseline carriers (including ControlPath in "
+                 "ssh_args and -S in common args) refused; zero ssh records")
 
     equals = evidence["keysign-equals-spelling"]
     require("F-WINNER f-hostbased" in equals.log and len(equals.ssh(mode="exec")) == 1,

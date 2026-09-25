@@ -1,0 +1,11 @@
+all:
+  hosts:
+    i-runas.invalid:
+      ansible_host: 192.0.2.60
+      platform: 'windows'
+      credential_resolver_candidates:
+        - name: 'i-runas'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'i-runas-IDENTITY-CANARY'
+            ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'

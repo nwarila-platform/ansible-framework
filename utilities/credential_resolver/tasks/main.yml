@@ -168,20 +168,39 @@
 - name: 'BEGIN | Derive Protected Variable Names'
   no_log: true
   vars:
-    __fixed_groups__: >-
+    __connection_groups__: >-
       {{ credential_resolver_option_groups
-         | selectattr('class', 'in', ['identity', 'secret', 'selector', 'escalation'])
+         | selectattr('plugin_type', 'in', ['connection', 'magic'])
+         | selectattr('class', 'in', ['identity', 'secret', 'selector'])
+         | rejectattr('option', 'match', 'become')
          | list }}
     __varying_groups__: >-
       {{ credential_resolver_option_groups
          | selectattr('class', 'equalto', 'plumbing')
          | selectattr('canonical', 'in', __credential_resolver_varying_plumbing__)
          | list }}
+    __become_plugins__: >-
+      {{ __credential_resolver_catalog__.credential_resolver_become_profiles.values()
+         | map(attribute='plugin') | list }}
+    __has_become_block__: >-
+      {{ credential_resolver_candidates | select('mapping')
+         | map(attribute='become', default='') | select('mapping') | list | length > 0 }}
+    __become_groups__: >-
+      {{ ((credential_resolver_option_groups
+           | selectattr('plugin', 'in', __become_plugins__)
+           | rejectattr('class', 'equalto', 'plumbing')
+           | list)
+          + (credential_resolver_option_groups
+             | selectattr('plugin_type', 'equalto', 'magic')
+             | selectattr('option', 'match', 'become')
+             | list))
+         if __has_become_block__ else [] }}
   ansible.builtin.set_fact:
     __credential_resolver_protected_variables__: >-
-      {{ ((__fixed_groups__ + __varying_groups__) | map(attribute='aliases') | flatten
-          + __credential_resolver_catalog__.credential_resolver_resolver_owned_vars
-          + ['ansible_become']) | unique | list }}
+      {{ ((__connection_groups__ + __varying_groups__ + __become_groups__)
+          | map(attribute='aliases') | flatten
+          + __credential_resolver_catalog__.credential_resolver_resolver_owned_vars)
+         | unique | list }}
 
 - name: 'BEGIN | Run Controller And Endpoint Preflight'
   no_log: true

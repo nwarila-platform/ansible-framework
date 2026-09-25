@@ -1,0 +1,73 @@
+---
+- name: 'Scenario H | Higher Sources On The sudo Flags And Password'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_require_elevated: true
+    inputs: "{{ lookup('ansible.builtin.env', 'CREDRES_INPUT') }}"
+  tasks:
+    - name: 'Scenario H | Plant A Fact On The sudo Flags'
+      when: inventory_hostname == 'h-fact-flags.invalid'
+      ansible.builtin.set_fact:
+        ansible_sudo_flags: '-H -S'
+        cacheable: false
+
+    - name: 'Scenario H | Plant A Fact On The sudo Password'
+      when: inventory_hostname == 'h-fact-pass.invalid'
+      no_log: true
+      ansible.builtin.set_fact:
+        ansible_sudo_pass: 'BECOME-FACT-SECRET-CANARY-H'
+        cacheable: false
+
+    - name: 'Scenario H | Load A Vars File On The sudo Flags'
+      when: inventory_hostname == 'h-include-vars-flags.invalid'
+      ansible.builtin.include_vars:
+        file: '{{ inputs }}/sudo-flags.yml'
+
+    - name: 'Scenario H | Load A Vars File On The sudo Password'
+      when: inventory_hostname == 'h-include-vars-pass.invalid'
+      no_log: true
+      ansible.builtin.include_vars:
+        file: '{{ inputs }}/sudo-pass.yml'
+
+    - name: 'Scenario H | Expect The Pre-Probe Check To Fail'
+      block:
+        - name: 'Scenario H | Resolve Under A Fact Or A Vars File'
+          when: inventory_hostname is not match('h-parameter-')
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+
+        - name: 'Scenario H | Resolve With The sudo Flags As An Include Parameter'
+          when: inventory_hostname == 'h-parameter-flags.invalid'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+          vars:
+            # The parameter under test outranks the probe's task variable.
+            ansible_sudo_flags: '-H -S'  # noqa: var-naming[no-role-prefix]
+
+        - name: 'Scenario H | Resolve With The sudo Password As An Include Parameter'
+          when: inventory_hostname == 'h-parameter-pass.invalid'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+          vars:
+            # The parameter under test outranks the probe's task variable.
+            ansible_sudo_pass: 'PARAM-SECRET-CANARY-H'  # noqa: var-naming[no-role-prefix]
+      rescue:
+        - name: 'Scenario H | Record The Failed Check'
+          ansible.builtin.debug:
+            msg: 'H-OVERRIDE-REFUSED {{ inventory_hostname }} {{ ansible_failed_task.name }}'
+            verbosity: 0

@@ -1,0 +1,28 @@
+all:
+  vars:
+    fixtures: 'utilities/credential_resolver/tests/fixtures'
+  hosts:
+    g-classify-winrm.invalid:
+      ansible_host: 192.0.2.23
+      ansible_connection: 'ansible.builtin.winrm'
+      credential_resolver_candidates:
+        - name: 'g-classify-winrm'
+          profile: 'winrm_ntlm'
+          account: 'g-classify-account'
+          vars:
+            ansible_user: 'g-classify-winrm-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GC'
+            ansible_port: 5985
+            ansible_winrm_scheme: 'http'
+            ansible_winrm_message_encryption: 'always'
+    g-classify-psrp.invalid:
+      ansible_host: 192.0.2.24
+      ansible_connection: 'psrp'
+      credential_resolver_candidates:
+        - name: 'g-classify-psrp'
+          profile: 'psrp_certificate'
+          vars:
+            ansible_psrp_certificate_pem: '{{ fixtures }}/client.pem'
+            ansible_psrp_certificate_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_psrp_protocol: 'https'

@@ -10,8 +10,9 @@ credential_resolver_profile_contracts:
       - 'ansible_private_key_file'
       - 'ansible_private_key_passphrase'
       - 'ansible_ssh_pkcs11_provider'
+      - 'ansible_ssh_password_mechanism'
+      - 'ansible_ssh_retries'
       - 'candidate_plumbing'
-      - 'become_credentials_and_selectors'
   winrm: &winrm_contract
     written_groups:
       - 'ansible_connection'
@@ -21,8 +22,8 @@ credential_resolver_profile_contracts:
       - 'ansible_winrm_kinit_mode'
       - 'ansible_winrm_cert_pem'
       - 'ansible_winrm_cert_key_pem'
+      - 'ansible_ssh_pass'
       - 'candidate_plumbing'
-      - 'become_credentials_and_selectors'
   psrp: &psrp_contract
     exclusive_groups: []
     written_groups:
@@ -33,8 +34,8 @@ credential_resolver_profile_contracts:
       - 'ansible_psrp_certificate_pem'
       - 'ansible_psrp_certificate_key_pem'
       - 'ansible_psrp_certificate_key_password'
+      - 'ansible_ssh_pass'
       - 'candidate_plumbing'
-      - 'become_credentials_and_selectors'
     password_owner: null
   aws_ssm: &aws_ssm_contract
     exclusive_groups:
@@ -46,7 +47,6 @@ credential_resolver_profile_contracts:
       - 'ansible_aws_ssm_session_token'
       - 'ansible_aws_ssm_profile'
       - 'candidate_plumbing'
-      - 'become_credentials_and_selectors'
     password_owner: null
   local_transport: &local_transport_contract
     exclusive_groups: []
@@ -54,7 +54,6 @@ credential_resolver_profile_contracts:
       - 'ansible_connection'
       - 'plugin_identity_or_selector_groups'
       - 'candidate_plumbing'
-      - 'become_credentials_and_selectors'
     password_owner: null
 
 credential_resolver_connection_profiles:
@@ -91,7 +90,7 @@ credential_resolver_connection_profiles:
       - ['key_content', 'key_file', 'pkcs11']
     password_owner: null
     pins:
-      ansible_connection: 'ansible.builtin.ssh'
+      ansible_connection: 'ssh'
     password_cost: 0
     prerequisites: []
     floor: 'ssh'
@@ -123,7 +122,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: 'account'
     pins:
-      ansible_connection: 'ansible.builtin.ssh'
+      ansible_connection: 'ssh'
       ansible_ssh_password_mechanism: 'ssh_askpass'
       ansible_ssh_retries: 0
     password_cost: 1
@@ -155,7 +154,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: null
     pins:
-      ansible_connection: 'ansible.builtin.ssh'
+      ansible_connection: 'ssh'
     password_cost: 0
     prerequisites: ['gssapi_ticket']
     floor: 'ssh'
@@ -185,7 +184,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: null
     pins:
-      ansible_connection: 'ansible.builtin.ssh'
+      ansible_connection: 'ssh'
     password_cost: 0
     prerequisites: ['hostbased']
     floor: 'ssh'
@@ -215,7 +214,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: 'account'
     pins:
-      ansible_connection: 'ansible.builtin.winrm'
+      ansible_connection: 'winrm'
       ansible_winrm_transport: ['ntlm']
     password_cost: 1
     prerequisites: ['pywinrm', 'ntlm']
@@ -253,7 +252,7 @@ credential_resolver_connection_profiles:
       - ['managed_password', 'manual_cache']
     password_owner: 'account_when_password'
     pins:
-      ansible_connection: 'ansible.builtin.winrm'
+      ansible_connection: 'winrm'
       ansible_winrm_transport: ['kerberos']
     password_cost: 1
     prerequisites: ['pywinrm', 'kerberos']
@@ -282,7 +281,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: 'account'
     pins:
-      ansible_connection: 'ansible.builtin.winrm'
+      ansible_connection: 'winrm'
       ansible_winrm_transport: ['basic']
     password_cost: 1
     prerequisites: ['pywinrm']
@@ -309,7 +308,7 @@ credential_resolver_connection_profiles:
     exclusive_groups: []
     password_owner: null
     pins:
-      ansible_connection: 'ansible.builtin.winrm'
+      ansible_connection: 'winrm'
       ansible_winrm_transport: ['certificate']
     password_cost: 0
     prerequisites: ['pywinrm']
@@ -344,7 +343,7 @@ credential_resolver_connection_profiles:
       - 'ansible_user'
     required: ['ansible_user']
     pins:
-      ansible_connection: 'ansible.builtin.psrp'
+      ansible_connection: 'psrp'
       ansible_psrp_auth: 'kerberos'
     password_cost: 0
     prerequisites: ['pypsrp', 'psrp_kerberos']
@@ -375,7 +374,7 @@ credential_resolver_connection_profiles:
       - 'ansible_psrp_reconnection_retries'
     required: ['ansible_psrp_certificate_pem', 'ansible_psrp_certificate_key_pem']
     pins:
-      ansible_connection: 'ansible.builtin.psrp'
+      ansible_connection: 'psrp'
       ansible_psrp_auth: 'certificate'
     password_cost: 0
     prerequisites: ['pypsrp']
@@ -475,7 +474,7 @@ credential_resolver_connection_profiles:
       - 'ansible_local_become_success_timeout'
       - 'ansible_pipelining'
     required: []
-    pins: {ansible_connection: 'ansible.builtin.local'}
+    pins: {ansible_connection: 'local'}
     password_cost: 0
     prerequisites: []
     floor: 'local'
@@ -584,7 +583,7 @@ credential_resolver_become_profiles:
     method: 'sudo'
     required: []
     exclusive_groups: []
-    written_groups:
+    probe_groups:
       - 'ansible_become_method'
       - 'ansible_become_user'
       - 'ansible_become_exe'
@@ -605,7 +604,7 @@ credential_resolver_become_profiles:
     method: 'community.general.doas'
     required: []
     exclusive_groups: []
-    written_groups:
+    probe_groups:
       - 'ansible_become_method'
       - 'ansible_become_user'
       - 'ansible_become_exe'
@@ -626,7 +625,7 @@ credential_resolver_become_profiles:
     method: 'community.general.pfexec'
     required: []
     exclusive_groups: []
-    written_groups:
+    probe_groups:
       - 'ansible_become_method'
       - 'ansible_become_user'
       - 'ansible_become_exe'

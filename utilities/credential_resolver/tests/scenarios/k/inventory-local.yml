@@ -4,6 +4,7 @@ all:
       ansible_host: 192.0.2.60
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-local
         profile: local
@@ -12,6 +13,7 @@ all:
       ansible_host: 192.0.2.61
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-chroot
         profile: chroot
@@ -21,6 +23,7 @@ all:
       ansible_host: 192.0.2.62
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-funcd
         profile: funcd
@@ -30,7 +33,13 @@ all:
       ansible_host: 192.0.2.63
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
+      - name: k-iocage-preceding-ssh
+        profile: ssh_publickey
+        vars:
+          ansible_user: k-iocage-preceding-ssh-IDENTITY-CANARY
+          ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
       - name: k-iocage
         profile: iocage
         vars:
@@ -39,7 +48,13 @@ all:
       ansible_host: 192.0.2.64
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
+      - name: k-jail-preceding-ssh
+        profile: ssh_publickey
+        vars:
+          ansible_user: k-jail-preceding-ssh-IDENTITY-CANARY
+          ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
       - name: k-jail
         profile: jail
         vars:
@@ -48,6 +63,7 @@ all:
       ansible_host: 192.0.2.65
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-lxc
         profile: lxc
@@ -57,6 +73,7 @@ all:
       ansible_host: 192.0.2.66
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-lxd
         profile: lxd
@@ -66,7 +83,13 @@ all:
       ansible_host: 192.0.2.67
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
+      - name: k-qubes-preceding-ssh
+        profile: ssh_publickey
+        vars:
+          ansible_user: k-qubes-preceding-ssh-IDENTITY-CANARY
+          ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
       - name: k-qubes
         profile: qubes
         vars:
@@ -75,6 +98,7 @@ all:
       ansible_host: 192.0.2.68
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-saltstack
         profile: saltstack
@@ -83,6 +107,7 @@ all:
       ansible_host: 192.0.2.69
       ansible_user: poison-inventory-user
       ansible_lxd_remote: poison-inventory-remote
+      ansible_ssh_user: poison-inventory-ssh-user
       credential_resolver_candidates:
       - name: k-zone
         profile: zone

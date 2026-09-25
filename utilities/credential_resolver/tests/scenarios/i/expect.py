@@ -1,9 +1,13 @@
 """i. baseline capture and validation: play-variable and configuration-only plumbing are captured and
 the second invocation reuses the first baseline; every rule 0-8 refuses before any stub traffic; a
-harmless plumbing extra variable is accepted; role and include parameters colliding with a written
-key fail the post-apply check before traffic."""
+harmless plumbing extra variable is accepted; rule 7 refuses become extra variables only when a set
+carries a become block, and a fleet without one keeps its runas password extra variable; role and
+include parameters colliding with a written key fail the post-apply check before traffic."""
+import hashlib
 
 SINGLE = {"inventory": "inventory-single.yml", "playbook": "refusal.yml"}
+BECOME = {"inventory": "inventory-become.yml", "playbook": "refusal.yml"}
+EXTRA_BECOME_PASSWORD = "EXTRA-BECOME-SECRET-CANARY-I"
 PASSWORD_FILE = {"password": "FILE-PASSWORD-SECRET-CANARY\n"}
 KEY_FILE = {"cli-key": "PLAIN-PATH-FIXTURE-NOT-A-CREDENTIAL\n"}
 RUNS = [
@@ -20,7 +24,10 @@ RUNS = [
      "table": {"klist": {"rc": 1}}, "expected_rc": 2},
     {"name": "rule7-extra-written", **SINGLE, "args": ["-e", "ansible_user=i-single-IDENTITY-CANARY"]},
     {"name": "rule7-extra-alias", **SINGLE, "args": ["-e", "ansible_ssh_pass=EXTRA-VAR-SECRET-CANARY"]},
-    {"name": "rule7-extra-become", **SINGLE, "args": ["-e", "ansible_become=false"]},
+    {"name": "rule7-extra-become", **BECOME, "args": ["-e", "ansible_become=false"]},
+    {"name": "rule7-extra-become-alias", **BECOME, "args": ["-e", "ansible_sudo_flags=-H"]},
+    {"name": "rule7-become-extra-without-block", "inventory": "inventory-runas.yml", "playbook": "runas.yml",
+     "args": ["-e", f"ansible_become_password={EXTRA_BECOME_PASSWORD}"]},
     {"name": "rule7-extra-pin", **SINGLE, "args": ["-e", "ansible_connection=ssh"]},
     {"name": "rule7-extra-harmless", **SINGLE, "args": ["-e", "ansible_ssh_timeout=13"]},
     {"name": "rule7-ask-pass", **SINGLE, "args": ["--ask-pass"], "stdin": "ASK-PASS-SECRET-CANARY\n"},
@@ -47,7 +54,6 @@ REFUSED = {
     "rule0-strategy-configuration": RULE0,
     "rule7-extra-written": "rule 7 refuses extra variables on ansible_user",
     "rule7-extra-alias": "rule 7 refuses extra variables on ansible_ssh_pass",
-    "rule7-extra-become": "rule 7 refuses extra variables on ansible_become",
     "rule7-extra-pin": "rule 7 refuses extra variables on ansible_connection",
     "rule7-ask-pass": "rule 7 refuses command-line credential flags --ask-pass",
     "rule7-ask-become-pass": "rule 7 refuses command-line credential flags --ask-become-pass",
@@ -58,6 +64,10 @@ REFUSED = {
     "rule7-become-password-file": "rule 7 refuses command-line credential flags --become-password-file",
     "rule7-connection-password-setting": "rule 7 requires CONNECTION_PASSWORD_FILE empty",
     "rule7-become-password-setting": "rule 7 requires BECOME_PASSWORD_FILE empty",
+}
+BECOME_REFUSED = {
+    "rule7-extra-become": "rule 7 refuses extra variables on ansible_become",
+    "rule7-extra-become-alias": "rule 7 refuses extra variables on ansible_sudo_flags",
 }
 BOUNDS = ("i-bounds-empty", "i-bounds-string", "i-bounds-rounds", "i-bounds-pause", "i-bounds-budget",
           "i-bounds-elevated", "i-bounds-floor")
@@ -86,7 +96,7 @@ SHAPE = {
     "account-not-string": "rule 1 requires a string account id",
 }
 HOSTS = {
-    "i-rule3": "i-rule3: rule 3 found an identity option in effective SSH arguments",
+    "i-rule3": "i-rule3: rule 3 found an identity or control-path option in effective SSH arguments",
     "i-rule4": "i-rule4: rule 4 requires HTTPS",
     "i-rule6-hostbased": "i-rule6-hostbased: rule 6 missing controller dependency hostbased",
     "i-rule6-agent": "i-rule6-agent: rule 6 requires SSH agent support for key content",
@@ -127,13 +137,25 @@ def check(evidence, require):
         run = evidence[name]
         require(any(message in m for m in refused(run, "i-single")), f"{name} not refused with {message!r}")
         require(not run.traffic(), f"{name} produced stub traffic")
+    for name, message in BECOME_REFUSED.items():
+        run = evidence[name]
+        require(any(message in m for m in refused(run, "i-become")), f"{name} not refused with {message!r}")
+        require(not run.traffic(), f"{name} produced stub traffic")
+    fleet = evidence["rule7-become-extra-without-block"]
+    runas = fleet.become("i-runas.invalid")
+    require("'i-runas.invalid' works as 'i-runas'" in fleet.log and len(runas) == 1 and runas[0]["enabled"]
+            and runas[0]["password_sha256"] == hashlib.sha256(EXTRA_BECOME_PASSWORD.encode()).hexdigest(),
+            f"the fleet's own become extra variables were not accepted and used: {runas}")
+    lines.append("rule 7 with a become-block set: '-e ansible_become=false' and '-e ansible_sudo_flags=-H' refused "
+                 "before traffic; without one, '-e ansible_become_password=...' is accepted, the set resolves, "
+                 "and the later runas block escalates with that password")
     debug = evidence["rule0-debug-environment"]
     require(": starting run" in debug.log and "SECRET-CANARY" not in debug.log,
             "debug output was not active or carried a secret canary")
     lines.append(f"rule 0: ANSIBLE_DEBUG=1 produced {debug.log.count(chr(10))} lines of core debug output and "
                  "the refusal came before any secret canary appeared")
     lines.append(f"rules 0 and 7: {len(REFUSED)} runs refused before traffic "
-                 "(debug env/ini, non-linear strategy env/ini, extra vars on written/alias/become/pin, "
+                 "(debug env/ini, non-linear strategy env/ini, extra vars on written/alias/pin, "
                  "--ask-pass, --ask-become-pass, --private-key, --private-k, --key-file=, "
                  "--connection-password-file, --become-password-file, both password-file settings)")
     harmless = evidence["rule7-extra-harmless"]

@@ -1,0 +1,23 @@
+all:
+  vars:
+    credential_resolver_candidates:
+      - name: h-override
+        profile: ssh_publickey
+        become:
+          profile: sudo
+        vars:
+          ansible_user: h-override-IDENTITY-CANARY
+          ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    h-fact-flags.invalid:
+      ansible_host: 192.0.2.34
+    h-fact-pass.invalid:
+      ansible_host: 192.0.2.35
+    h-include-vars-flags.invalid:
+      ansible_host: 192.0.2.36
+    h-include-vars-pass.invalid:
+      ansible_host: 192.0.2.37
+    h-parameter-flags.invalid:
+      ansible_host: 192.0.2.38
+    h-parameter-pass.invalid:
+      ansible_host: 192.0.2.39

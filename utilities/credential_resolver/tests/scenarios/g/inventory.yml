@@ -88,3 +88,26 @@ all:
             ansible_password: 'PASSWORD-SECRET-CANARY-GA'
             ansible_port: 5986
             ansible_winrm_scheme: 'https'
+    g-pass-through.invalid:
+      ansible_host: 192.0.2.22
+      credential_resolver_candidates:
+        - name: 'g-pass-ntlm'
+          profile: 'winrm_ntlm'
+          account: 'g-pass-account'
+          vars:
+            ansible_user: 'g-pass-ntlm-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GP'
+            ansible_port: 5985
+            ansible_winrm_scheme: 'http'
+            ansible_winrm_message_encryption: 'always'
+            ansible_winrm_read_timeout_sec: 50
+            ansible_winrm_operation_timeout_sec: 40
+            ansible_winrm_send_cbt: false
+            ansible_winrm_ca_trust_path: '/x/ca-bundle.pem'
+        - name: 'g-pass-certificate'
+          profile: 'winrm_certificate'
+          vars:
+            ansible_winrm_cert_pem: '{{ fixtures }}/client.pem'
+            ansible_winrm_cert_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'

@@ -46,6 +46,7 @@ all:
       ansible_shell_type: 'cmd'
       ansible_winrm_cert_pem: '/poison/ambient-cert.pem'
       ansible_winrm_cert_key_pem: '/poison/ambient-cert-key.pem'
+      ansible_ssh_pass: 'SSH-PASS-SECRET-CANARY-EW'
       credential_resolver_candidates:
         - name: 'e-winrm-certificate'
           profile: 'winrm_certificate'
@@ -60,6 +61,7 @@ all:
       ansible_shell_type: 'cmd'
       ansible_psrp_certificate_pem: '/poison/ambient-psrp-cert.pem'
       ansible_psrp_certificate_key_pem: '/poison/ambient-psrp-cert-key.pem'
+      ansible_ssh_pass: 'SSH-PASS-SECRET-CANARY-EP'
       credential_resolver_candidates:
         - name: 'e-psrp-certificate'
           profile: 'psrp_certificate'

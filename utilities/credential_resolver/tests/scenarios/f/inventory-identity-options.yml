@@ -18,3 +18,10 @@ all:
     f3-base-sftp.invalid:
       ansible_host: 192.0.2.35
       ansible_sftp_extra_args: -o IdentityAgent=/x/base-agent.sock
+    f3-base-control-path.invalid:
+      ansible_host: 192.0.2.36
+      ansible_ssh_args: >-
+        -C -o ControlMaster=auto -o ControlPersist=60s -o ControlPath=/x/base-%C
+    f3-base-control-socket.invalid:
+      ansible_host: 192.0.2.37
+      ansible_ssh_common_args: -S /x/base-socket
