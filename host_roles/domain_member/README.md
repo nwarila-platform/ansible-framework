@@ -157,9 +157,9 @@ When repair does not restore the channel, it writes the marker and runs
 
 A successful password reset requires a restart. With `restart_wait: true`, the role waits and
 retests. With `restart_wait: false`, it records the pre-restart FILETIME in
-`__domain_member_boot_time__`, schedules the restart, and ends the role. The caller's next play
-passes that fact as `credential_resolver_boot_time_after`, reconnects under the joined identity, and
-invokes this role again for its ordinary membership proof.
+`__domain_member_boot_time__`, schedules the restart, and ends the role. The same play then passes
+that fact to its gated resolver call as `credential_resolver_boot_time_after`, reconnects under the
+joined identity, and invokes this role again for its ordinary membership proof.
 
 The marker deliberately turns permanent damage into an operator decision. Replace the host; or,
 when the computer object is intact, keep it without relying on the broken channel: open an

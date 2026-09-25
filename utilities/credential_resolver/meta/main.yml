@@ -4,8 +4,7 @@ galaxy_info:
   namespace: 'ansible_framework'
   author: 'nwarila-platform'
   description: >-
-    Tries declared credential profiles in order and publishes the first identity whose fresh
-    session satisfies the requested elevation and boot predicates.
+    Tries the caller's credential sets in order and publishes the first that works.
   license: 'MIT'
   min_ansible_version: '2.21'
   platforms:

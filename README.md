@@ -94,7 +94,7 @@ modified.
 
 | Role             | Description                                                          | Status |
 |------------------|----------------------------------------------------------------------|--------|
-| `credential_resolver` | Tries declared credential profiles and publishes the first working identity | In Progress |
+| `credential_resolver` | Tries the caller's credential sets in order and publishes the first that works | In Progress |
 | `host_readiness` | Proves the transport answers before anything that assumes it runs     | Stable |
 | `os_bootstrap`   | Detects the OS and includes that role's `bootstrap.yml` entry point   | Stable |
 
