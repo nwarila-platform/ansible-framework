@@ -1,0 +1,47 @@
+---
+- name: 'Scenario F | Identity Options In Any Argument String Are Refused'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    key: 'utilities/credential_resolver/tests/fixtures/id_stub'
+    carriers:
+      - ['ansible_ssh_common_args', '-o IdentityFile=/x/set-key']
+      - ['ansible_ssh_common_args', '-o IdentityFile /x/set-key']
+      - ['ansible_ssh_extra_args', '-oIdentityFile=/x/set-key']
+      - ['ansible_ssh_common_args', '-o identityfile=/x/set-key']
+      - ['ansible_ssh_common_args', '-o IdentityAgent=/x/agent.sock']
+      - ['ansible_ssh_extra_args', '-o CertificateFile=/x/set-cert']
+      - ['ansible_scp_extra_args', '-o PKCS11Provider=/x/provider.so']
+      - ['ansible_sftp_extra_args', '-o SecurityKeyProvider=/x/sk.so']
+      - ['ansible_ssh_common_args', '-i /x/set-key']
+      - ['ansible_ssh_extra_args', '-i/x/set-key']
+      - ['ansible_ssh_common_args', '-F /x/set-config']
+      - ['ansible_sftp_extra_args', '-F/x/set-config']
+    credential_resolver_candidates: >-
+      {%- set sets = [] -%}
+      {%- for carrier in carriers -%}
+      {%- set _ = sets.append({'name': 'f3-set-' ~ loop.index, 'profile': 'ssh_publickey',
+            'vars': {'ansible_user': 'f3-IDENTITY-CANARY', 'ansible_private_key_file': key,
+                     carrier[0]: carrier[1]}}) -%}
+      {%- endfor -%}
+      {{ sets if inventory_hostname == 'f3-sets.invalid'
+         else [{'name': 'f3-clean', 'profile': 'ssh_publickey',
+                'vars': {'ansible_user': 'f3-IDENTITY-CANARY',
+                         'ansible_private_key_file': key}}] }}
+  tasks:
+    - name: 'Scenario F | Expect A Pre-Traffic Refusal'
+      block:
+        - name: 'Scenario F | Resolve'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario F | Record The Refusal'
+          ansible.builtin.debug:
+            msg: 'F-REFUSED {{ inventory_hostname }} {{ ansible_failed_result.msg }}'
+            verbosity: 0

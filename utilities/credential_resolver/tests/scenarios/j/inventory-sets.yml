@@ -1,0 +1,38 @@
+all:
+  hosts:
+    j-three-sets.invalid:
+      ansible_host: 192.0.2.37
+      credential_resolver_candidates:
+        - name: j-set-one
+          profile: ssh_password
+          account: j-sets-account
+          vars:
+            ansible_user: j-set-one-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-J1
+        - name: j-set-two
+          profile: ssh_password
+          account: j-sets-account
+          vars:
+            ansible_user: j-set-two-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-J2
+        - name: j-set-three
+          profile: ssh_password
+          account: j-sets-account
+          vars:
+            ansible_user: j-set-three-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-J3
+    j-refund.invalid:
+      ansible_host: 192.0.2.38
+      credential_resolver_candidates:
+        - name: j-refund-wrong
+          profile: ssh_password
+          account: j-refund-account
+          vars:
+            ansible_user: j-refund-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-JR-WRONG
+        - name: j-refund-right
+          profile: ssh_password
+          account: j-refund-account
+          vars:
+            ansible_user: j-refund-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-JR

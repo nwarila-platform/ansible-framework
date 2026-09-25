@@ -1,0 +1,11 @@
+#!/usr/bin/python3 -S
+import json
+import os
+from pathlib import Path
+import sys
+
+table = json.loads(Path(os.environ["CREDRES_TABLE"]).read_text(encoding="utf-8"))
+rc = int(table.get("klist", {}).get("rc", 0))
+with Path(os.environ["CREDRES_MISC_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({"kind": "klist", "argv": sys.argv[1:], "rc": rc}, sort_keys=True) + "\n")
+raise SystemExit(rc)

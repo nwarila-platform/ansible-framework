@@ -1,0 +1,40 @@
+---
+- name: 'Scenario K | AWS Systems Manager Sets'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario K | Resolve'
+      block:
+        - name: 'Scenario K | Walk'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario K | Record The Refusal'
+          ansible.builtin.debug:
+            msg: 'K-REFUSED {{ inventory_hostname }} {{ ansible_failed_result.msg }}'
+            verbosity: 0
+
+    - name: 'Scenario K | Run An Ordinary Module As The Winner'
+      when: (__credential_resolver_selected__ | default('') | length) > 0
+      changed_when: false
+      register: '__scenario_k_module__'
+      ansible.builtin.command:
+        argv: ['printf', '%s', 'k-ordinary-module']
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    - name: 'Scenario K | Report The Winner'
+      when: (__credential_resolver_selected__ | default('') | length) > 0
+      ansible.builtin.debug:
+        msg: >-
+          K-WINNER {{ inventory_hostname }} {{ __credential_resolver_selected__ }}
+          {{ __scenario_k_module__.stdout }} {{ __credential_resolver_observations__ | to_json }}
+        verbosity: 0

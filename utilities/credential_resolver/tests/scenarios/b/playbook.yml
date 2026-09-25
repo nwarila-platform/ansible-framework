@@ -1,0 +1,31 @@
+---
+- name: 'Scenario B | Fresh Publication'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'b-refused'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'b-refused-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      - name: 'b-winner'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'b-winner-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub.pub'
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario B | Run An Ordinary Task As The Winner'
+      changed_when: false
+      ansible.builtin.raw: 'echo b-ordinary'
+
+    - name: 'Scenario B | Report The Published Set'
+      ansible.builtin.debug:
+        msg: >-
+          B-PUBLISHED {{ __credential_resolver_selected__ }}
+          {{ __credential_resolver_profile__ }}
+        verbosity: 0

@@ -19,6 +19,7 @@
     __credential_resolver_attempt_intent__:
       account: "{{ __credential_resolver_candidate__.account | default('') | string }}"
       cost: "{{ __intent_cost__ | int }}"
+      decided: false
       eligible: >-
         {{ (__credential_resolver_selected__ | length) == 0
            and (__credential_resolver_round__ | int) <= (__intent_attempts__ | int) }}
@@ -162,6 +163,15 @@
         __credential_resolver_attempt_pins__: >-
           {{
             __credential_resolver_attempt_profile__.pins
+            | combine(
+                {'ansible_ssh_password_mechanism': 'ssh_askpass'}
+                if (
+                  __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'
+                  and (__credential_resolver_candidate__.vars.ansible_ssh_pkcs11_provider
+                       | default('') | string | length) > 0
+                )
+                else {}
+              )
             | combine(
                 {'ansible_ssh_args': __credential_resolver_ssh_args__}
                 if __credential_resolver_attempt_profile__.plugin == 'ansible.builtin.ssh'

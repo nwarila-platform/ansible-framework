@@ -1,0 +1,103 @@
+all:
+  vars:
+    platform: 'windows'
+    ansible_shell_type: 'cmd'
+    fixtures: 'utilities/credential_resolver/tests/fixtures'
+    user: 'g-floor-IDENTITY-CANARY'
+    password: 'PASSWORD-SECRET-CANARY-GF'
+  hosts:
+    g-basic-http.invalid:
+      ansible_host: 192.0.2.21
+      credential_resolver_candidates:
+        - name: 'basic-http'
+          profile: 'winrm_basic'
+          account: 'g-floor'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_password: '{{ password }}'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'http'
+    g-basic-port.invalid:
+      ansible_host: 192.0.2.22
+      credential_resolver_candidates:
+        - name: 'basic-port'
+          profile: 'winrm_basic'
+          account: 'g-floor'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_password: '{{ password }}'
+            ansible_port: 5985
+    g-certificate-http.invalid:
+      ansible_host: 192.0.2.23
+      credential_resolver_candidates:
+        - name: 'certificate-http'
+          profile: 'winrm_certificate'
+          vars:
+            ansible_winrm_cert_pem: '{{ fixtures }}/client.pem'
+            ansible_winrm_cert_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'http'
+    g-ntlm-http.invalid:
+      ansible_host: 192.0.2.24
+      credential_resolver_candidates:
+        - name: 'ntlm-http'
+          profile: 'winrm_ntlm'
+          account: 'g-floor'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_password: '{{ password }}'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'http'
+    g-ntlm-port.invalid:
+      ansible_host: 192.0.2.25
+      credential_resolver_candidates:
+        - name: 'ntlm-port'
+          profile: 'winrm_ntlm'
+          account: 'g-floor'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_password: '{{ password }}'
+            ansible_port: 5985
+    g-kerberos-http.invalid:
+      ansible_host: 192.0.2.26
+      credential_resolver_candidates:
+        - name: 'kerberos-http'
+          profile: 'winrm_kerberos'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_winrm_kinit_mode: 'manual'
+            ansible_winrm_scheme: 'http'
+    g-psrp-kerberos-http.invalid:
+      ansible_host: 192.0.2.27
+      credential_resolver_candidates:
+        - name: 'psrp-kerberos-http'
+          profile: 'psrp_kerberos'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_psrp_protocol: 'http'
+    g-psrp-kerberos-port.invalid:
+      ansible_host: 192.0.2.28
+      credential_resolver_candidates:
+        - name: 'psrp-kerberos-port'
+          profile: 'psrp_kerberos'
+          vars:
+            ansible_user: '{{ user }}'
+            ansible_port: 5985
+    g-psrp-certificate-http.invalid:
+      ansible_host: 192.0.2.29
+      credential_resolver_candidates:
+        - name: 'psrp-certificate-http'
+          profile: 'psrp_certificate'
+          vars:
+            ansible_psrp_certificate_pem: '{{ fixtures }}/client.pem'
+            ansible_psrp_certificate_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_psrp_protocol: 'http'
+    g-psrp-certificate-port.invalid:
+      ansible_host: 192.0.2.30
+      credential_resolver_candidates:
+        - name: 'psrp-certificate-port'
+          profile: 'psrp_certificate'
+          vars:
+            ansible_psrp_certificate_pem: '{{ fixtures }}/client.pem'
+            ansible_psrp_certificate_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5985

@@ -1,0 +1,8 @@
+{
+  "winrm": {
+    "responses": {
+      "d-old-IDENTITY-CANARY": {"stdout": "\"host\\\\d-old\",\"S-1-5-21-1\",\"S-1-16-12288\",\"Mandatory\"\n\"host\\\\d-old\",\"BUILTIN\",\"S-1-5-32-544\",\"Group\"\n90"},
+      "d-new-IDENTITY-CANARY": {"stdout": "\"host\\\\d-new\",\"S-1-5-21-2\",\"S-1-16-12288\",\"Mandatory\"\n\"host\\\\d-new\",\"BUILTIN\",\"S-1-5-32-544\",\"Group\"\n101"}
+    }
+  }
+}

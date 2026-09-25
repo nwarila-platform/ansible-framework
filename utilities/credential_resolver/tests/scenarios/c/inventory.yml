@@ -1,0 +1,6 @@
+all:
+  hosts:
+    c-ssh.invalid:
+      ansible_host: 192.0.2.4
+    c-local.invalid:
+      ansible_host: 192.0.2.5

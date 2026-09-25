@@ -1,0 +1,4 @@
+all:
+  hosts:
+    n-contract.invalid:
+      ansible_host: 192.0.2.47

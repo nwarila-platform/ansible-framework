@@ -1,0 +1,16 @@
+{
+  "ssh": {
+    "responses": {
+      "h-sudo-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-sudo-defaults-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-doas-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-doas-user-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-pfexec-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-root-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}],
+      "h-nonroot-IDENTITY-CANARY": [{"rc": 0, "stdout": "1000"}],
+      "h-plain-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "h-force-true-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "h-force-false-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}]
+    }
+  }
+}

@@ -1,4 +1,6 @@
 ---
+# Hosts whose sets differ reach this task one at a time; a host ahead that has already decided is
+# counted by its tally, never reserved again.
 - name: 'PROCESS | Decide Password Budget Grant'
   no_log: true
   vars:
@@ -18,12 +20,15 @@
       {%- set intent = hostvars[ahead_host].__credential_resolver_attempt_intent__
                        | default({}) -%}
       {%- if intent.get('eligible', false) | bool
+            and not (intent.get('decided', false) | bool)
             and (intent.get('account', '') | string) == __budget_account__ -%}
       {%- set reservation.total = reservation.total + (intent.get('cost', 0) | int) -%}
       {%- endif -%}
       {%- endfor -%}
       {{ reservation.total }}
   ansible.builtin.set_fact:
+    __credential_resolver_attempt_intent__: >-
+      {{ __credential_resolver_attempt_intent__ | combine({'decided': true}) }}
     __credential_resolver_budget_granted__: >-
       {{
         __credential_resolver_attempt_intent__.eligible | bool

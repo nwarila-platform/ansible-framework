@@ -1,0 +1,22 @@
+{
+  "ssh": {
+    "passwords": {
+      "a-password-one-IDENTITY-CANARY": "PASSWORD-SECRET-CANARY-A1",
+      "a-password-two-IDENTITY-CANARY": "PASSWORD-SECRET-CANARY-A2-ACCEPTED-ONLY"
+    },
+    "responses": {
+      "a-password-one-IDENTITY-CANARY": [{"rc": 255, "stderr": "Permission denied (password)."}],
+      "a-batch-first.invalid-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "a-batch-second.invalid-IDENTITY-CANARY": [
+        {"rc": 255, "stderr": "Permission denied (publickey)."},
+        {"rc": 255, "stderr": "Permission denied (publickey)."},
+        {"rc": 0, "stdout": "ready"}
+      ],
+      "a-third-IDENTITY-CANARY": [
+        {"rc": 255, "stderr": "Permission denied (publickey)."},
+        {"rc": 255, "stderr": "Permission denied (publickey)."},
+        {"rc": 0, "stdout": "ready"}
+      ]
+    }
+  }
+}

@@ -123,19 +123,19 @@
   vars:
     __port__: >-
       {{ __credential_resolver_runtime_vars__.ansible_port
-         | default(
-             __credential_resolver_runtime_baseline__.ansible_port | default(5986)
-           ) | int }}
-    __scheme_declared__: >-
-      {{ __credential_resolver_runtime_vars__.ansible_winrm_scheme
-         | default(__credential_resolver_runtime_baseline__.ansible_winrm_scheme | default(''))
-         | string | lower }}
+         | default(__credential_resolver_runtime_baseline__.ansible_port, true)
+         | default(5986, true) | int }}
     __scheme__: >-
-      {{ __scheme_declared__ or ((__port__ == 5985) | ternary('http', 'https')) }}
+      {{ __credential_resolver_runtime_vars__.ansible_winrm_scheme
+         | default(__credential_resolver_runtime_baseline__.ansible_winrm_scheme, true)
+         | default((__port__ | int == 5985) | ternary('http', 'https'), true)
+         | string | lower }}
     __encryption__: >-
       {{ __credential_resolver_runtime_vars__.ansible_winrm_message_encryption
-         | default(__credential_resolver_runtime_baseline__.ansible_winrm_message_encryption
-                   | default('auto')) | string | lower }}
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_winrm_message_encryption, true
+           )
+         | default('auto', true) | string | lower }}
     __floor__: "{{ __credential_resolver_runtime_profile__.floor }}"
   ansible.builtin.set_fact:
     __credential_resolver_validation_errors__: >-
@@ -153,14 +153,21 @@
     - __credential_resolver_runtime_profile__.floor | default('') in ['https', 'psrp_encrypted']
   no_log: true
   vars:
+    __port__: >-
+      {{ __credential_resolver_runtime_vars__.ansible_port
+         | default(__credential_resolver_runtime_baseline__.ansible_port, true)
+         | default('', true) | string }}
     __protocol__: >-
       {{ __credential_resolver_runtime_vars__.ansible_psrp_protocol
-         | default(__credential_resolver_runtime_baseline__.ansible_psrp_protocol
-                   | default('https'), true) | string | lower }}
+         | default(__credential_resolver_runtime_baseline__.ansible_psrp_protocol, true)
+         | default((__port__ == '5985') | ternary('http', 'https'), true)
+         | string | lower }}
     __encryption__: >-
       {{ __credential_resolver_runtime_vars__.ansible_psrp_message_encryption
-         | default(__credential_resolver_runtime_baseline__.ansible_psrp_message_encryption
-                   | default('auto')) | string | lower }}
+         | default(
+             __credential_resolver_runtime_baseline__.ansible_psrp_message_encryption, true
+           )
+         | default('auto', true) | string | lower }}
     __floor__: "{{ __credential_resolver_runtime_profile__.floor }}"
   ansible.builtin.set_fact:
     __credential_resolver_validation_errors__: >-

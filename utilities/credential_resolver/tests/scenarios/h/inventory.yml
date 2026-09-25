@@ -1,0 +1,83 @@
+all:
+  vars:
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+    credential_resolver_require_elevated: true
+  hosts:
+    h-sudo.invalid:
+      ansible_host: 192.0.2.21
+      credential_resolver_candidates:
+        - name: h-sudo
+          profile: ssh_publickey
+          become:
+            profile: sudo
+            user: SELECTOR-CANARY
+            flags: -H -S -n
+          vars:
+            ansible_user: h-sudo-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-sudo-defaults.invalid:
+      ansible_host: 192.0.2.22
+      credential_resolver_candidates:
+        - name: h-sudo-defaults
+          profile: ssh_publickey
+          become:
+            profile: sudo
+          vars:
+            ansible_user: h-sudo-defaults-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-doas.invalid:
+      ansible_host: 192.0.2.23
+      credential_resolver_candidates:
+        - name: h-doas
+          profile: ssh_publickey
+          become:
+            profile: doas
+          vars:
+            ansible_user: h-doas-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-doas-user.invalid:
+      ansible_host: 192.0.2.24
+      credential_resolver_candidates:
+        - name: h-doas-user
+          profile: ssh_publickey
+          become:
+            profile: doas
+            user: SELECTOR-CANARY-DOAS
+          vars:
+            ansible_user: h-doas-user-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-pfexec.invalid:
+      ansible_host: 192.0.2.25
+      credential_resolver_candidates:
+        - name: h-pfexec
+          profile: ssh_publickey
+          become:
+            profile: pfexec
+          vars:
+            ansible_user: h-pfexec-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-root.invalid:
+      ansible_host: 192.0.2.26
+      credential_resolver_candidates:
+        - name: h-root
+          profile: ssh_publickey
+          vars:
+            ansible_user: h-root-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-nonroot.invalid:
+      ansible_host: 192.0.2.27
+      credential_resolver_candidates:
+        - name: h-nonroot
+          profile: ssh_publickey
+          vars:
+            ansible_user: h-nonroot-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-plain.invalid:
+      ansible_host: 192.0.2.28
+      credential_resolver_require_elevated: false
+      credential_resolver_candidates:
+        - name: h-plain
+          profile: ssh_publickey
+          vars:
+            ansible_user: h-plain-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'

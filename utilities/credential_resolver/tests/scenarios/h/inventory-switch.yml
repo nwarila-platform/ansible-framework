@@ -1,0 +1,22 @@
+all:
+  vars:
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    h-force-true.invalid:
+      ansible_host: 192.0.2.29
+      credential_resolver_candidates:
+        - name: h-force-true
+          profile: ssh_publickey
+          vars:
+            ansible_user: h-force-true-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-force-false.invalid:
+      ansible_host: 192.0.2.30
+      credential_resolver_candidates:
+        - name: h-force-false
+          profile: ssh_publickey
+          become:
+            profile: sudo
+          vars:
+            ansible_user: h-force-false-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'

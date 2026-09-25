@@ -1,0 +1,13 @@
+all:
+  hosts:
+    m-aws-ambient.invalid:
+      ansible_host: 192.0.2.76
+      ansible_python_interpreter: /root/.local/share/pipx/venvs/ansible-core/bin/python
+      credential_resolver_candidates:
+        - name: m-aws-ambient
+          profile: aws_ssm_ambient
+          vars:
+            ansible_aws_ssm_instance_id: i-m-ambient
+            ansible_aws_ssm_region: us-test-1
+            ansible_aws_ssm_bucket_name: bucket-m-ambient
+            ansible_aws_ssm_endpoint_url: https://ssm.invalid

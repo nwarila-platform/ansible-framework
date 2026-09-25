@@ -1,0 +1,42 @@
+---
+- name: 'Scenario I | Baseline From Play Variables'
+  hosts: 'i-play.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    ansible_ssh_timeout: 17
+  tasks: &baseline_tasks
+    - name: 'Scenario I | Resolve'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+
+    - name: 'Scenario I | Change The Plumbing Between Invocations'
+      ansible.builtin.set_fact:
+        ansible_ssh_timeout: 99
+        cacheable: false
+
+    - name: 'Scenario I | Resolve Again'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+
+    - name: 'Scenario I | Report The Winner'
+      ansible.builtin.debug:
+        msg: 'I-BASELINE {{ inventory_hostname }} {{ __credential_resolver_selected__ }}'
+        verbosity: 0
+
+- name: 'Scenario I | Baseline From Configuration Only'
+  hosts: 'i-config.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks: *baseline_tasks

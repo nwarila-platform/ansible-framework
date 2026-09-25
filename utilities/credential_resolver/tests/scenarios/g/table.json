@@ -1,0 +1,9 @@
+{
+  "winrm": {
+    "responses": {
+      "g-named-host-rejected-IDENTITY-CANARY": {"reject": true},
+      "g-named-host-accepted-IDENTITY-CANARY": {"stdout": "ready"}
+    }
+  },
+  "psrp": {"responses": {}}
+}

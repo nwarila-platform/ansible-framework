@@ -1,0 +1,22 @@
+all:
+  vars:
+    credential_resolver_candidates:
+      - name: 'j-shared'
+        profile: 'ssh_password'
+        account: 'j-shared-account'
+        vars:
+          ansible_user: 'j-shared-IDENTITY-CANARY'
+          ansible_password: 'PASSWORD-SECRET-CANARY-J-WRONG'
+  hosts:
+    j-1.invalid:
+      ansible_host: 192.0.2.31
+    j-2.invalid:
+      ansible_host: 192.0.2.32
+    j-3.invalid:
+      ansible_host: 192.0.2.33
+    j-4.invalid:
+      ansible_host: 192.0.2.34
+    j-5.invalid:
+      ansible_host: 192.0.2.35
+    j-6.invalid:
+      ansible_host: 192.0.2.36

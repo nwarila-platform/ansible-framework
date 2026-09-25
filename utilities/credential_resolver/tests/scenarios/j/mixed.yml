@@ -1,0 +1,58 @@
+---
+- name: 'Scenario J | A Host Outside The Later Play Spends The Budget First'
+  hosts: 'outside'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_password_budget: 3
+  tasks:
+    - name: 'Scenario J | Resolve Outside'
+      block:
+        - name: 'Scenario J | Walk'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record The Outside Observation'
+          ansible.builtin.debug:
+            msg: >-
+              J-MIXED {{ inventory_hostname }}
+              {{ __credential_resolver_observations__ | to_json }}
+            verbosity: 0
+
+- name: 'Scenario J | Mixed Accounts With A Winner Ahead'
+  hosts: 'batch'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_password_budget: 3
+  tasks:
+    - name: 'Scenario J | Resolve The Batch'
+      block:
+        - name: 'Scenario J | Walk'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record A Batch Failure'
+          ansible.builtin.debug:
+            msg: >-
+              J-MIXED {{ inventory_hostname }}
+              {{ __credential_resolver_observations__ | to_json }}
+            verbosity: 0
+
+    - name: 'Scenario J | Record A Batch Winner'
+      when: (__credential_resolver_selected__ | length) > 0
+      ansible.builtin.debug:
+        msg: >-
+          J-MIXED {{ inventory_hostname }}
+          {{ __credential_resolver_observations__ | to_json }}
+        verbosity: 0

@@ -26,10 +26,11 @@
          else (__baseline__
                if credential_resolver_attempt_group.class == 'plumbing'
                else __neutral__) }}
+    # inventory_hostname names the host, not a setting; the later aliases decide the option.
+    __aliases__: >-
+      {{ credential_resolver_attempt_group.aliases
+         | reject('equalto', 'inventory_hostname') | list }}
   ansible.builtin.set_fact:
     __credential_resolver_attempt_map__: >-
       {{ __credential_resolver_attempt_map__
-         | combine(dict(
-             credential_resolver_attempt_group.aliases
-             | zip([__value__] * (credential_resolver_attempt_group.aliases | length))
-           )) }}
+         | combine(dict(__aliases__ | zip([__value__] * (__aliases__ | length)))) }}

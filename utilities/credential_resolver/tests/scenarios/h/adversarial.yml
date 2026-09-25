@@ -1,0 +1,71 @@
+---
+- name: 'Scenario H | Adversarial Selectors And Refused Forms'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    ssh_vars:
+      ansible_user: 'h-adversarial-IDENTITY-CANARY'
+      ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+    blocks:
+      sudo-flags-command: {'profile': 'sudo', 'flags': '-n; sudo'}
+      sudo-flags-swallow: {'profile': 'sudo', 'flags': '-u -n'}
+      sudo-flags-end-options: {'profile': 'sudo', 'flags': '-- -n'}
+      sudo-flags-quoted: {'profile': 'sudo', 'flags': "'-n'"}
+      sudo-flags-without-n: {'profile': 'sudo', 'flags': '-H -S'}
+      sudo-user-space: {'profile': 'sudo', 'user': 'a b'}
+      sudo-user-semicolon: {'profile': 'sudo', 'user': 'a;b'}
+      sudo-user-backslash: {'profile': 'sudo', 'user': 'a\b'}
+      sudo-user-dash: {'profile': 'sudo', 'user': '-root'}
+      sudo-exe: {'profile': 'sudo', 'exe': '/usr/bin/sudo'}
+      sudo-password: {'profile': 'sudo', 'password': 'BECOME-PASSWORD-SECRET-CANARY-BLOCK'}
+      doas-flags: {'profile': 'doas', 'flags': '-n'}
+      pfexec-user: {'profile': 'pfexec', 'user': 'root'}
+      pfexec-flags: {'profile': 'pfexec', 'flags': '-P'}
+      become-su: {'profile': 'su'}
+      become-ksu: {'profile': 'ksu'}
+      become-machinectl: {'profile': 'machinectl'}
+      become-pbrun: {'profile': 'pbrun'}
+      become-pmrun: {'profile': 'pmrun'}
+      become-sesu: {'profile': 'sesu'}
+      become-dzdo: {'profile': 'dzdo'}
+      become-sudosu: {'profile': 'sudosu'}
+      become-runas: {'profile': 'runas'}
+    refused_profiles: ['ssh_keyboard_interactive', 'winrm_credssp', 'psrp_basic', 'psrp_ntlm',
+                       'psrp_negotiate', 'psrp_credssp', 'psrp_kerberos_password',
+                       'psrp_encrypted_certificate']
+    credential_resolver_candidates: >-
+      {%- set sets = [] -%}
+      {%- for name, block in blocks.items() -%}
+      {%- set _ = sets.append({'name': name, 'profile': 'ssh_publickey',
+                               'vars': ssh_vars, 'become': block}) -%}
+      {%- endfor -%}
+      {%- for profile in refused_profiles -%}
+      {%- set _ = sets.append({'name': 'profile-' ~ profile, 'profile': profile,
+                               'vars': {'ansible_user': 'h-adversarial-IDENTITY-CANARY'}}) -%}
+      {%- endfor -%}
+      {%- set _ = sets.append({'name': 'become-password-variable', 'profile': 'ssh_publickey',
+            'vars': ssh_vars | combine(
+              {'ansible_become_password': 'BECOME-PASSWORD-SECRET-CANARY-VARIABLE'})}) -%}
+      {%- set _ = sets.append({'name': 'psrp-encrypted-key', 'profile': 'psrp_certificate',
+            'vars': {'ansible_psrp_certificate_pem': '/x/client.pem',
+                     'ansible_psrp_certificate_key_pem': '/x/key.pem',
+                     'ansible_psrp_certificate_key_password':
+                       'PSRP-KEY-PASSWORD-SECRET-CANARY'}}) -%}
+      {{ sets }}
+  tasks:
+    - name: 'Scenario H | Expect A Pre-Traffic Refusal'
+      block:
+        - name: 'Scenario H | Resolve'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario H | Record The Refusal'
+          ansible.builtin.debug:
+            msg: 'H-REFUSED {{ ansible_failed_result.msg }}'
+            verbosity: 0

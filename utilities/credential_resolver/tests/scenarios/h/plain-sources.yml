@@ -1,0 +1,15 @@
+---
+- name: 'Scenario H | Escalation Under Poisoned Environment And Configuration'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_require_elevated: true
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario H | Report The Winner'
+      ansible.builtin.debug:
+        msg: 'H-WINNER {{ __credential_resolver_selected__ }}'
+        verbosity: 0

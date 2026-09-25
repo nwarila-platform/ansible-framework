@@ -1,0 +1,68 @@
+all:
+  vars:
+    good:
+      ansible_user: i-hosts-IDENTITY-CANARY
+      ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    i-rule3.invalid:
+      ansible_host: 192.0.2.51
+      ansible_ssh_common_args: -o IdentityFile=/x/base-key
+      credential_resolver_candidates:
+        - name: i-rule3
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-rule4.invalid:
+      ansible_host: 192.0.2.52
+      platform: windows
+      credential_resolver_candidates:
+        - name: i-rule4
+          profile: winrm_basic
+          account: a
+          vars:
+            ansible_user: u
+            ansible_password: PASSWORD-SECRET-CANARY-I4
+            ansible_port: 5985
+    i-rule6-hostbased.invalid:
+      ansible_host: 192.0.2.53
+      credential_resolver_candidates:
+        - name: i-rule6-hostbased
+          profile: ssh_hostbased
+          vars:
+            ansible_user: u
+    i-rule6-agent.invalid:
+      ansible_host: 192.0.2.54
+      credential_resolver_candidates:
+        - name: i-rule6-agent
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key: KEY-CONTENT-SECRET-CANARY-AGENT
+    i-rule6-ticket.invalid:
+      ansible_host: 192.0.2.55
+      credential_resolver_candidates:
+        - name: i-rule6-ticket
+          profile: ssh_gssapi
+          vars:
+            ansible_user: u
+    i-rule8.invalid:
+      ansible_host: 192.0.2.56
+      credential_resolver_boot_time_after: 100
+      credential_resolver_candidates:
+        - name: i-rule8
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-include-parameter.invalid:
+      ansible_host: 192.0.2.57
+      credential_resolver_candidates:
+        - name: i-include-parameter
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-role-parameter.invalid:
+      ansible_host: 192.0.2.58
+      credential_resolver_candidates:
+        - name: i-role-parameter
+          profile: ssh_password
+          account: a
+          vars:
+            ansible_user: u
+            ansible_password: PASSWORD-SECRET-CANARY-IR

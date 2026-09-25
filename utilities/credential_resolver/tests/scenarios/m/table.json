@@ -1,0 +1,21 @@
+{
+  "ssh": {
+    "echo": true,
+    "passwords": {
+      "m-ssh-IDENTITY-CANARY": "PASSWORD-SECRET-CANARY-M",
+      "m-pkcs11-IDENTITY-CANARY": "PKCS11-PIN-SECRET-CANARY-M"
+    },
+    "responses": {
+      "m-ssh-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "m-pkcs11-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "m-key-content-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "m-key-file-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+    }
+  },
+  "winrm": {
+    "responses": {
+      "m-winrm-IDENTITY-CANARY": {"stdout": "ready", "echo": true},
+      "m-kerberos-IDENTITY-CANARY@TEST.INVALID": {"stdout": "ready", "echo": true}
+    }
+  }
+}

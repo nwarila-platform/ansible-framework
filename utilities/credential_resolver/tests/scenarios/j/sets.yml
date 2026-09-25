@@ -1,0 +1,31 @@
+---
+- name: 'Scenario J | Several Sets For One Account'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario J | Resolve'
+      block:
+        - name: 'Scenario J | Walk'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record The Budget'
+          ansible.builtin.debug:
+            msg: >-
+              J-SETS {{ inventory_hostname }}
+              {{ __credential_resolver_observations__ | to_json }}
+            verbosity: 0
+
+    - name: 'Scenario J | Report The Tally'
+      ansible.builtin.debug:
+        msg: >-
+          J-TALLY {{ inventory_hostname }}
+          {{ __credential_resolver_password_tallies__ | to_json }}
+        verbosity: 0

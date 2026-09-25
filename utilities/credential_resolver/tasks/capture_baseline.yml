@@ -23,18 +23,20 @@
       {{ lookup('ansible.builtin.vars', credential_resolver_group_alias) }}
     __credential_resolver_baseline_variable_seen__: true
 
+# The config lookup finds a builtin plugin's settings only under its short name.
 - name: 'BEGIN | Read Configured Plugin Baseline'
   when: not (__credential_resolver_baseline_variable_seen__ | bool)
   no_log: true
   ansible.builtin.set_fact:
     __credential_resolver_baseline_value__: >-
-      {{ lookup(
+      {{ query(
            'ansible.builtin.config',
            credential_resolver_baseline_group.option,
            plugin_type=credential_resolver_baseline_group.plugin_type,
-           plugin_name=credential_resolver_baseline_group.plugin,
+           plugin_name=credential_resolver_baseline_group.plugin
+             | regex_replace('^ansible[.]builtin[.]', ''),
            on_missing='skip'
-         ) | default(none) }}
+         ) | first | default(none) }}
 
 - name: 'BEGIN | Store One Baseline Group'
   no_log: true

@@ -1,0 +1,20 @@
+{
+  "ssh": {
+    "passwords": {
+      "f-password-IDENTITY-CANARY": "PASSWORD-SECRET-CANARY-F",
+      "f-pkcs11-IDENTITY-CANARY": "PKCS11-PIN-SECRET-CANARY"
+    },
+    "responses": {
+      "f-key-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-password-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-pkcs11-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-fido-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-certificate-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-gssapi-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-hostbased-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-encrypted-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-after-encrypted-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "f-content-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+    }
+  }
+}

@@ -1,0 +1,115 @@
+---
+- name: 'Scenario D | Two Resolutions With A Boot Floor'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    ansible_user: 'D-PLAY-USER-IDENTITY-CANARY'
+    ansible_winrm_user: 'D-PLAY-WINRM_USER-IDENTITY-CANARY'
+    ansible_ssh_user: 'D-PLAY-SSH_USER-IDENTITY-CANARY'
+    ansible_password: 'D-PLAY-PASSWORD-SECRET-CANARY'
+    ansible_winrm_pass: 'D-PLAY-WINRM_PASS-SECRET-CANARY'
+    ansible_winrm_password: 'D-PLAY-WINRM_PASSWORD-SECRET-CANARY'
+    ansible_ssh_pass: 'D-PLAY-SSH_PASS-SECRET-CANARY'
+    ansible_winrm_kinit_mode: 'D-PLAY-WINRM_KINIT_MODE-SELECTOR-CANARY'
+    ansible_winrm_transport: 'D-PLAY-WINRM_TRANSPORT-SELECTOR-CANARY'
+    ansible_winrm_cert_pem: 'D-PLAY-WINRM_CERT_PEM-SELECTOR-CANARY'
+    ansible_winrm_cert_key_pem: 'D-PLAY-WINRM_CERT_KEY_PEM-SELECTOR-CANARY'
+    ansible_become_method: 'D-PLAY-BECOME_METHOD-SELECTOR-CANARY'
+    ansible_become_user: 'D-PLAY-BECOME_USER-SELECTOR-CANARY'
+    ansible_become_exe: 'D-PLAY-BECOME_EXE-SELECTOR-CANARY'
+    ansible_become_flags: 'D-PLAY-BECOME_FLAGS-SELECTOR-CANARY'
+    ansible_become_password: 'D-PLAY-BECOME_PASSWORD-SECRET-CANARY'
+    ansible_become_pass: 'D-PLAY-BECOME_PASS-SECRET-CANARY'
+    ansible_runas_user: 'D-PLAY-RUNAS_USER-SELECTOR-CANARY'
+    ansible_runas_flags: 'D-PLAY-RUNAS_FLAGS-SELECTOR-CANARY'
+    ansible_runas_pass: 'D-PLAY-RUNAS_PASS-SECRET-CANARY'
+    ansible_sudo_pass: 'D-PLAY-SUDO_PASS-SECRET-CANARY'
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_require_elevated: true
+    credential_resolver_password_budget: 4
+    credential_resolver_candidates:
+      - name: 'd-old'
+        profile: 'winrm_ntlm'
+        account: 'd-old-account'
+        vars:
+          ansible_user: 'd-old-IDENTITY-CANARY'
+          ansible_password: 'PASSWORD-SECRET-CANARY-D-OLD'
+          ansible_port: 5985
+          ansible_winrm_scheme: 'http'
+          ansible_winrm_message_encryption: 'always'
+          ansible_winrm_read_timeout_sec: 41
+          ansible_winrm_send_cbt: false
+      - name: 'd-new'
+        profile: 'winrm_ntlm'
+        account: 'd-new-account'
+        vars:
+          ansible_user: 'd-new-IDENTITY-CANARY'
+          ansible_password: 'PASSWORD-SECRET-CANARY-D-NEW'
+          ansible_port: 5985
+          ansible_winrm_scheme: 'http'
+          ansible_winrm_message_encryption: 'always'
+  tasks:
+    - name: 'Scenario D | Resolve Before The Restart'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+
+    - name: 'Scenario D | Report The First Winner'
+      ansible.builtin.debug:
+        msg: 'D-FIRST {{ __credential_resolver_selected__ }}'
+        verbosity: 0
+
+    - name: 'Scenario D | Resolve Again With A Boot Floor'
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'credential_resolver'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+      vars:
+        credential_resolver_boot_time_after: 100
+
+    - name: 'Scenario D | Report The Second Winner'
+      ansible.builtin.debug:
+        msg: >-
+          D-SECOND {{ __credential_resolver_selected__ }}
+          {{ __credential_resolver_observations__ | to_json }}
+        verbosity: 0
+
+    - name: 'Scenario D | Run An Ordinary Task As The Winner'
+      changed_when: false
+      ansible.builtin.raw: 'echo d-ordinary'
+
+    - name: 'Scenario D | Require The Winner In Every Member Of Its Groups'
+      no_log: true
+      ansible.builtin.assert:
+        quiet: true
+        that:
+          - ansible_user == 'd-new-IDENTITY-CANARY'
+          - ansible_winrm_user == 'd-new-IDENTITY-CANARY'
+          - ansible_password == 'PASSWORD-SECRET-CANARY-D-NEW'
+          - ansible_winrm_pass == 'PASSWORD-SECRET-CANARY-D-NEW'
+          - ansible_winrm_password == 'PASSWORD-SECRET-CANARY-D-NEW'
+          - ansible_winrm_transport == ['ntlm']
+          - ansible_winrm_kinit_mode is none
+          - ansible_winrm_cert_pem is none
+          - ansible_winrm_cert_key_pem is none
+          - ansible_become_method is none
+          - ansible_become_user is none
+          - ansible_become_exe is none
+          - ansible_become_flags is none
+          - ansible_runas_user is none
+          - ansible_runas_flags is none
+          - ansible_become_password == ''
+          - ansible_become_pass == ''
+          - ansible_runas_pass == ''
+          - ansible_sudo_pass == ''
+
+    - name: 'Scenario D | Report The Verified Members'
+      ansible.builtin.debug:
+        msg: 'D-MEMBERS-VERIFIED'
+        verbosity: 0

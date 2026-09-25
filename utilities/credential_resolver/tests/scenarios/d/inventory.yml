@@ -1,0 +1,53 @@
+all:
+  vars:
+    ansible_user: D-GROUP-USER-IDENTITY-CANARY
+    ansible_winrm_user: D-GROUP-WINRM_USER-IDENTITY-CANARY
+    ansible_ssh_user: D-GROUP-SSH_USER-IDENTITY-CANARY
+    ansible_password: D-GROUP-PASSWORD-SECRET-CANARY
+    ansible_winrm_pass: D-GROUP-WINRM_PASS-SECRET-CANARY
+    ansible_winrm_password: D-GROUP-WINRM_PASSWORD-SECRET-CANARY
+    ansible_ssh_pass: D-GROUP-SSH_PASS-SECRET-CANARY
+    ansible_winrm_kinit_mode: D-GROUP-WINRM_KINIT_MODE-SELECTOR-CANARY
+    ansible_winrm_transport: D-GROUP-WINRM_TRANSPORT-SELECTOR-CANARY
+    ansible_winrm_cert_pem: D-GROUP-WINRM_CERT_PEM-SELECTOR-CANARY
+    ansible_winrm_cert_key_pem: D-GROUP-WINRM_CERT_KEY_PEM-SELECTOR-CANARY
+    ansible_become_method: D-GROUP-BECOME_METHOD-SELECTOR-CANARY
+    ansible_become_user: D-GROUP-BECOME_USER-SELECTOR-CANARY
+    ansible_become_exe: D-GROUP-BECOME_EXE-SELECTOR-CANARY
+    ansible_become_flags: D-GROUP-BECOME_FLAGS-SELECTOR-CANARY
+    ansible_become_password: D-GROUP-BECOME_PASSWORD-SECRET-CANARY
+    ansible_become_pass: D-GROUP-BECOME_PASS-SECRET-CANARY
+    ansible_runas_user: D-GROUP-RUNAS_USER-SELECTOR-CANARY
+    ansible_runas_flags: D-GROUP-RUNAS_FLAGS-SELECTOR-CANARY
+    ansible_runas_pass: D-GROUP-RUNAS_PASS-SECRET-CANARY
+    ansible_sudo_pass: D-GROUP-SUDO_PASS-SECRET-CANARY
+  hosts:
+    d-windows.invalid:
+      ansible_host: 192.0.2.6
+      ansible_port: 5985
+      ansible_winrm_scheme: http
+      ansible_winrm_message_encryption: always
+      ansible_winrm_read_timeout_sec: 33
+      ansible_shell_type: cmd
+      platform: windows
+      ansible_user: D-HOST-USER-IDENTITY-CANARY
+      ansible_winrm_user: D-HOST-WINRM_USER-IDENTITY-CANARY
+      ansible_ssh_user: D-HOST-SSH_USER-IDENTITY-CANARY
+      ansible_password: D-HOST-PASSWORD-SECRET-CANARY
+      ansible_winrm_pass: D-HOST-WINRM_PASS-SECRET-CANARY
+      ansible_winrm_password: D-HOST-WINRM_PASSWORD-SECRET-CANARY
+      ansible_ssh_pass: D-HOST-SSH_PASS-SECRET-CANARY
+      ansible_winrm_kinit_mode: D-HOST-WINRM_KINIT_MODE-SELECTOR-CANARY
+      ansible_winrm_transport: D-HOST-WINRM_TRANSPORT-SELECTOR-CANARY
+      ansible_winrm_cert_pem: D-HOST-WINRM_CERT_PEM-SELECTOR-CANARY
+      ansible_winrm_cert_key_pem: D-HOST-WINRM_CERT_KEY_PEM-SELECTOR-CANARY
+      ansible_become_method: D-HOST-BECOME_METHOD-SELECTOR-CANARY
+      ansible_become_user: D-HOST-BECOME_USER-SELECTOR-CANARY
+      ansible_become_exe: D-HOST-BECOME_EXE-SELECTOR-CANARY
+      ansible_become_flags: D-HOST-BECOME_FLAGS-SELECTOR-CANARY
+      ansible_become_password: D-HOST-BECOME_PASSWORD-SECRET-CANARY
+      ansible_become_pass: D-HOST-BECOME_PASS-SECRET-CANARY
+      ansible_runas_user: D-HOST-RUNAS_USER-SELECTOR-CANARY
+      ansible_runas_flags: D-HOST-RUNAS_FLAGS-SELECTOR-CANARY
+      ansible_runas_pass: D-HOST-RUNAS_PASS-SECRET-CANARY
+      ansible_sudo_pass: D-HOST-SUDO_PASS-SECRET-CANARY

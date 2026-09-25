@@ -1,0 +1,36 @@
+---
+- name: 'Scenario H | An Include Parameter Forcing The Switch On A Plain Probe'
+  hosts: 'h-force-true.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario H | Expect The Effective-Switch Check To Fail'
+      block:
+        - name: 'Scenario H | Resolve With ansible_become Forced True'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+          vars:
+            # The parameter under test outranks the probe's task variable.
+            ansible_become: true  # noqa: var-naming[no-role-prefix]
+      rescue:
+        - name: 'Scenario H | Record The Failed Check'
+          ansible.builtin.debug:
+            msg: 'H-SWITCH-REFUSED {{ inventory_hostname }} {{ ansible_failed_task.name }}'
+            verbosity: 0
+
+- name: 'Scenario H | A Role Parameter Forcing The Switch Off A Become Probe'
+  hosts: 'h-force-false.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  roles:
+    - role: 'credential_resolver'
+      # The parameter under test outranks the probe's task variable.
+      ansible_become: false  # noqa: var-naming[no-role-prefix]

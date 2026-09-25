@@ -1,0 +1,70 @@
+all:
+  vars:
+    ansible_private_key_file: '/poison/inventory-group-key'
+    fixtures: 'utilities/credential_resolver/tests/fixtures'
+  hosts:
+    e-ssh-password.invalid:
+      ansible_host: 192.0.2.7
+      ansible_user: 'poisoned-inventory-user'
+      ansible_private_key_file: '/poison/inventory-host-key'
+      credential_resolver_candidates:
+        - name: 'e-ssh-password'
+          profile: 'ssh_password'
+          account: 'e-account'
+          vars:
+            ansible_user: 'e-ssh-password-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-E'
+    e-ssh-key.invalid:
+      ansible_host: 192.0.2.8
+      ansible_user: 'poisoned-inventory-user'
+      ansible_private_key_file: '/poison/inventory-host-key'
+      credential_resolver_candidates:
+        - name: 'e-ssh-key'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'e-ssh-key-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub'
+    e-winrm-ntlm.invalid:
+      ansible_host: 192.0.2.9
+      platform: 'windows'
+      ansible_shell_type: 'cmd'
+      ansible_winrm_cert_pem: '/poison/ambient-cert.pem'
+      ansible_winrm_cert_key_pem: '/poison/ambient-cert-key.pem'
+      credential_resolver_candidates:
+        - name: 'e-winrm-ntlm'
+          profile: 'winrm_ntlm'
+          account: 'e-account-windows'
+          vars:
+            ansible_user: 'e-winrm-ntlm-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-EW'
+            ansible_port: 5985
+            ansible_winrm_scheme: 'http'
+            ansible_winrm_message_encryption: 'always'
+    e-winrm-certificate.invalid:
+      ansible_host: 192.0.2.10
+      platform: 'windows'
+      ansible_shell_type: 'cmd'
+      ansible_winrm_cert_pem: '/poison/ambient-cert.pem'
+      ansible_winrm_cert_key_pem: '/poison/ambient-cert-key.pem'
+      credential_resolver_candidates:
+        - name: 'e-winrm-certificate'
+          profile: 'winrm_certificate'
+          vars:
+            ansible_winrm_cert_pem: '{{ fixtures }}/client.pem'
+            ansible_winrm_cert_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'
+    e-psrp-certificate.invalid:
+      ansible_host: 192.0.2.11
+      platform: 'windows'
+      ansible_shell_type: 'cmd'
+      ansible_psrp_certificate_pem: '/poison/ambient-psrp-cert.pem'
+      ansible_psrp_certificate_key_pem: '/poison/ambient-psrp-cert-key.pem'
+      credential_resolver_candidates:
+        - name: 'e-psrp-certificate'
+          profile: 'psrp_certificate'
+          vars:
+            ansible_psrp_certificate_pem: '{{ fixtures }}/client.pem'
+            ansible_psrp_certificate_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_psrp_protocol: 'https'

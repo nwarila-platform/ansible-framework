@@ -1,0 +1,4 @@
+#!/usr/bin/python3 -S
+from credential_resolver_local_stub import main
+
+main("iocage")

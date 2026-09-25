@@ -1,0 +1,22 @@
+all:
+  vars:
+    ansible_python_interpreter: /root/.local/share/pipx/venvs/ansible-core/bin/python
+  hosts:
+    k-conflict.invalid:
+      ansible_host: 192.0.2.45
+      credential_resolver_candidates:
+      - name: k-conflict-ambient
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-conflict-ambient
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-conflict-ambient
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid
+      - name: k-conflict-profile
+        profile: aws_ssm_profile
+        vars:
+          ansible_aws_ssm_instance_id: i-conflict-profile
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-conflict-profile
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid
+          ansible_aws_ssm_profile: profile-only

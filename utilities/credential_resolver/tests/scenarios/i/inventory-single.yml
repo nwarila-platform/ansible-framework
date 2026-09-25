@@ -1,0 +1,14 @@
+all:
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  hosts:
+    i-single.invalid:
+      ansible_host: 192.0.2.42
+      credential_resolver_candidates:
+        - name: 'i-single'
+          profile: 'ssh_password'
+          account: 'i-single-account'
+          vars:
+            ansible_user: 'i-single-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-I'

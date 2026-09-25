@@ -1,0 +1,32 @@
+---
+- name: 'Scenario N | Caller Contract Under Tags And Check Mode'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'n-winner'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'n-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  roles:
+    - role: 'credential_resolver'
+      tags: ['always']
+    - role: 'credential_resolver'
+      tags: ['always']
+      when: __domain_member_boot_time__ is defined
+      vars:
+        credential_resolver_boot_time_after: "{{ __domain_member_boot_time__ }}"
+  tasks:
+    - name: 'Scenario N | Run A Selected Task As The Winner'
+      tags: ['selected']
+      changed_when: false
+      check_mode: false
+      ansible.builtin.raw: 'echo n-selected'
+
+    - name: 'Scenario N | Report The Winner'
+      tags: ['selected']
+      ansible.builtin.debug:
+        msg: 'N-WINNER {{ __credential_resolver_selected__ }}'
+        verbosity: 0

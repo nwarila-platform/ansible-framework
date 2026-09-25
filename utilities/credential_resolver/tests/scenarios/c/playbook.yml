@@ -1,0 +1,61 @@
+---
+- name: 'Scenario C | Elevation Policy And Control Master Reset'
+  hosts: 'c-ssh.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_require_elevated: true
+    credential_resolver_candidates:
+      - name: 'c-medium-one'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'c-medium-one-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      - name: 'c-medium-two'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'c-medium-two-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      - name: 'c-high'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'c-high-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  pre_tasks:
+    - name: 'Scenario C | Open A Control Master For The Winner Before Resolution'
+      changed_when: false
+      vars:
+        ansible_connection: 'ansible.builtin.ssh'
+        ansible_user: 'c-high-IDENTITY-CANARY'
+        ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      ansible.builtin.raw: 'echo c-master'
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario C | Run An Ordinary Task As The Winner'
+      changed_when: false
+      ansible.builtin.raw: 'echo c-ordinary'
+
+    - name: 'Scenario C | Report The Elevated Winner'
+      ansible.builtin.debug:
+        msg: 'C-WINNER {{ __credential_resolver_selected__ }}'
+        verbosity: 0
+
+- name: 'Scenario C | A Non-SSH Winner Is Not Reset'
+  hosts: 'c-local.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'c-local'
+        profile: 'local'
+        vars: {}
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario C | Report The Local Winner'
+      ansible.builtin.debug:
+        msg: 'C-WINNER {{ __credential_resolver_selected__ }}'
+        verbosity: 0

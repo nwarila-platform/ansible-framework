@@ -1,0 +1,25 @@
+---
+- name: 'Scenario I | Refusals Before Traffic'
+  hosts: 'all'
+  gather_facts: false
+  tasks:
+    - name: 'Scenario I | Expect A Refusal'
+      block:
+        - name: 'Scenario I | Resolve'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario I | Record The Refusal'
+          ansible.builtin.debug:
+            msg: 'I-REFUSED {{ inventory_hostname }} {{ ansible_failed_result.msg }}'
+            verbosity: 0
+
+    - name: 'Scenario I | Report An Accepted Resolution'
+      when: (__credential_resolver_selected__ | default('') | length) > 0
+      ansible.builtin.debug:
+        msg: 'I-ACCEPTED {{ inventory_hostname }} {{ __credential_resolver_selected__ }}'
+        verbosity: 0

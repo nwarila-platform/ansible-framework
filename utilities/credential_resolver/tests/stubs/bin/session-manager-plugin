@@ -1,0 +1,61 @@
+#!/usr/bin/python3 -S
+"""Local stand-in for the SSM session: a shell behind an emulated remote terminal."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import select
+import subprocess
+import sys
+
+arguments = sys.argv[1:]
+response = json.loads(arguments[0]) if arguments else {}
+with Path(os.environ["CREDRES_SSM_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({
+        "kind": "session-manager-plugin",
+        "argv": arguments,
+        "session_id": response.get("SessionId"),
+    }, sort_keys=True) + "\n")
+
+shell = subprocess.Popen(
+    ["/bin/sh"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    bufsize=0,
+)
+
+
+def terminal_write(data: bytes) -> None:
+    # A remote pty translates each newline to CRLF before the session relays it.
+    os.write(sys.stdout.fileno(), data.replace(b"\n", b"\r\n"))
+
+
+terminal_write(f"Starting session with SessionId: {response.get('SessionId')}\n".encode())
+echo = True
+pending = b""
+readers = [sys.stdin.fileno(), shell.stdout.fileno()]
+while shell.stdout.fileno() in readers:
+    for ready in select.select(readers, [], [])[0]:
+        chunk = os.read(ready, 65536)
+        if ready == shell.stdout.fileno():
+            if chunk:
+                terminal_write(chunk)
+            else:
+                readers.remove(ready)
+            continue
+        if not chunk:
+            readers.remove(ready)
+            shell.stdin.close()
+            continue
+        pending += chunk
+        while b"\n" in pending:
+            line, pending = pending.split(b"\n", 1)
+            if echo:
+                terminal_write(line + b"\n")
+            if line.strip() == b"stty -echo":
+                echo = False
+                continue
+            shell.stdin.write(line + b"\n")
+raise SystemExit(shell.wait())

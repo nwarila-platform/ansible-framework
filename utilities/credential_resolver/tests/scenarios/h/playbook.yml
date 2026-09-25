@@ -1,0 +1,46 @@
+---
+- name: 'Scenario H | Escalation Under Poisoned Keywords'
+  hosts: 'all'
+  gather_facts: false
+  become: true
+  become_user: 'poison-keyword-user'
+  become_flags: '--poison-keyword-flags'
+  become_method: 'ansible.builtin.su'
+  become_exe: '/poison/keyword-exe'
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    ansible_shell_executable: '/poison/variable-shell'
+    host_readiness_attempts: 1
+    host_readiness_pause_seconds: 0
+    host_readiness_platform: 'declared'
+  tasks:
+    - name: 'Scenario H | Resolve'
+      block:
+        - name: 'Scenario H | Walk'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario H | Record A Set That Does Not Work'
+          ansible.builtin.debug:
+            msg: 'H-NOT-WORKING {{ inventory_hostname }} {{ ansible_failed_result.msg }}'
+            verbosity: 0
+
+    - name: 'Scenario H | Prove The Transport Without Escalation'
+      when: (__credential_resolver_selected__ | length) > 0
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        name: 'host_readiness'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+
+    - name: 'Scenario H | Report The Winner'
+      when: (__credential_resolver_selected__ | length) > 0
+      ansible.builtin.debug:
+        msg: 'H-WINNER {{ __credential_resolver_selected__ }}'
+        verbosity: 0

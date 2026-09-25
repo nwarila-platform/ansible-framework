@@ -1,0 +1,93 @@
+all:
+  vars:
+    ansible_python_interpreter: /root/.local/share/pipx/venvs/ansible-core/bin/python
+  hosts:
+    k-ssm-option-http.invalid:
+      ansible_host: 192.0.2.50
+      credential_resolver_candidates:
+      - name: k-ssm-option-http
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-ssm-option-http
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-ssm-option-http
+          ansible_aws_ssm_endpoint_url: http://ssm-option.invalid
+    k-ssm-option-https.invalid:
+      ansible_host: 192.0.2.51
+      credential_resolver_candidates:
+      - name: k-ssm-option-https
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-ssm-option-https
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-ssm-option-https
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid
+    k-bucket-option-http.invalid:
+      ansible_host: 192.0.2.52
+      credential_resolver_candidates:
+      - name: k-bucket-option-http
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-bucket-option-http
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-bucket-option-http
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid
+          ansible_aws_ssm_bucket_endpoint_url: http://s3-bucket.invalid
+    k-bucket-option-https.invalid:
+      ansible_host: 192.0.2.53
+      credential_resolver_candidates:
+      - name: k-bucket-option-https
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-bucket-option-https
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-bucket-option-https
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid
+          ansible_aws_ssm_bucket_endpoint_url: https://s3-bucket.invalid
+    k-ssm-http-bucket-https.invalid:
+      ansible_host: 192.0.2.54
+      credential_resolver_candidates:
+      - name: k-ssm-http-bucket-https
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-ssm-http-bucket-https
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-ssm-http-bucket-https
+          ansible_aws_ssm_endpoint_url: http://ssm-option.invalid
+          ansible_aws_ssm_bucket_endpoint_url: https://s3-bucket.invalid
+    k-default.invalid:
+      ansible_host: 192.0.2.55
+      credential_resolver_candidates:
+      - name: k-default
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-default
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-default
+    k-bucket-over.invalid:
+      ansible_host: 192.0.2.56
+      credential_resolver_candidates:
+      - name: k-bucket-over
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-bucket-over
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-bucket-over
+          ansible_aws_ssm_bucket_endpoint_url: https://s3-bucket.invalid
+    k-ignore.invalid:
+      ansible_host: 192.0.2.57
+      credential_resolver_candidates:
+      - name: k-ignore-configured
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-ignore-configured
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-ignore-configured
+          ansible_aws_ssm_plugin: /nonexistent/session-manager-plugin
+      - name: k-ignore-option
+        profile: aws_ssm_ambient
+        vars:
+          ansible_aws_ssm_instance_id: i-ignore-option
+          ansible_aws_ssm_region: us-test-1
+          ansible_aws_ssm_bucket_name: bucket-ignore-option
+          ansible_aws_ssm_endpoint_url: https://ssm-option.invalid

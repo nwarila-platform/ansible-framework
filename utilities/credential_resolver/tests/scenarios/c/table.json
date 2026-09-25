@@ -1,0 +1,9 @@
+{
+  "ssh": {
+    "responses": {
+      "c-medium-one-IDENTITY-CANARY": [{"rc": 0, "stdout": "1000"}],
+      "c-medium-two-IDENTITY-CANARY": [{"rc": 0, "stdout": "1000"}],
+      "c-high-IDENTITY-CANARY": [{"rc": 0, "stdout": "0"}]
+    }
+  }
+}

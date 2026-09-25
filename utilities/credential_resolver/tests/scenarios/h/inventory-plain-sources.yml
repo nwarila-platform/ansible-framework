@@ -1,0 +1,34 @@
+all:
+  vars:
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    h-sudo-defaults.invalid:
+      ansible_host: 192.0.2.22
+      credential_resolver_candidates:
+        - name: h-sudo-defaults
+          profile: ssh_publickey
+          become:
+            profile: sudo
+          vars:
+            ansible_user: h-sudo-defaults-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-doas.invalid:
+      ansible_host: 192.0.2.23
+      credential_resolver_candidates:
+        - name: h-doas
+          profile: ssh_publickey
+          become:
+            profile: doas
+          vars:
+            ansible_user: h-doas-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    h-pfexec.invalid:
+      ansible_host: 192.0.2.25
+      credential_resolver_candidates:
+        - name: h-pfexec
+          profile: ssh_publickey
+          become:
+            profile: pfexec
+          vars:
+            ansible_user: h-pfexec-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'

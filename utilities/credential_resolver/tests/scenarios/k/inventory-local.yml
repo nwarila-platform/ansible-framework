@@ -1,0 +1,90 @@
+all:
+  hosts:
+    k-local.invalid:
+      ansible_host: 192.0.2.60
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-local
+        profile: local
+        vars: {}
+    k-chroot.invalid:
+      ansible_host: 192.0.2.61
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-chroot
+        profile: chroot
+        vars:
+          ansible_host: '{{ lookup(''ansible.builtin.env'', ''CREDRES_INPUT'') }}/chroot'
+    k-funcd.invalid:
+      ansible_host: 192.0.2.62
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-funcd
+        profile: funcd
+        vars:
+          ansible_host: k-func-target.invalid
+    k-iocage.invalid:
+      ansible_host: 192.0.2.63
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-iocage
+        profile: iocage
+        vars:
+          ansible_host: k-iocage-target
+    k-jail.invalid:
+      ansible_host: 192.0.2.64
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-jail
+        profile: jail
+        vars:
+          ansible_host: k-jail-target
+    k-lxc.invalid:
+      ansible_host: 192.0.2.65
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-lxc
+        profile: lxc
+        vars:
+          ansible_host: k-lxc-target
+    k-lxd.invalid:
+      ansible_host: 192.0.2.66
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-lxd
+        profile: lxd
+        vars:
+          ansible_host: k-lxd-target
+    k-qubes.invalid:
+      ansible_host: 192.0.2.67
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-qubes
+        profile: qubes
+        vars:
+          ansible_host: k-qubes-target
+    k-saltstack.invalid:
+      ansible_host: 192.0.2.68
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-saltstack
+        profile: saltstack
+        vars: {}
+    k-zone.invalid:
+      ansible_host: 192.0.2.69
+      ansible_user: poison-inventory-user
+      ansible_lxd_remote: poison-inventory-remote
+      credential_resolver_candidates:
+      - name: k-zone
+        profile: zone
+        vars:
+          ansible_host: k-zone-target

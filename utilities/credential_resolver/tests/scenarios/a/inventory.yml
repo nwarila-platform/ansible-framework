@@ -1,0 +1,14 @@
+all:
+  hosts:
+    a-walk.invalid:
+      ansible_host: 192.0.2.1
+    a-passwords.invalid:
+      ansible_host: 192.0.2.2
+    a-third.invalid:
+      ansible_host: 192.0.2.3
+    a-sixty.invalid:
+      ansible_host: 192.0.2.60
+    a-batch-first.invalid:
+      ansible_host: 192.0.2.61
+    a-batch-second.invalid:
+      ansible_host: 192.0.2.62

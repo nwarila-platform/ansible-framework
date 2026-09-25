@@ -1,0 +1,66 @@
+---
+- name: 'Scenario J | One Account Across Six Hosts'
+  hosts: 'all'
+  gather_facts: false
+  serial: "{{ j_serial | default(6) }}"
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario J | First Invocation'
+      block:
+        - name: 'Scenario J | Resolve'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record The First Observation'
+          ansible.builtin.debug:
+            msg: >-
+              J-FIRST {{ inventory_hostname }}
+              {{ __credential_resolver_observations__["j-shared"].category }}
+            verbosity: 0
+
+    - name: 'Scenario J | Second Invocation'
+      block:
+        - name: 'Scenario J | Resolve Again'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record The Second Observation'
+          ansible.builtin.debug:
+            msg: >-
+              J-SECOND {{ inventory_hostname }}
+              {{ __credential_resolver_observations__["j-shared"].category }}
+            verbosity: 0
+
+- name: 'Scenario J | A Later Play In The Same Run'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario J | Later Invocation'
+      block:
+        - name: 'Scenario J | Resolve In The Later Play'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario J | Record The Later Observation'
+          ansible.builtin.debug:
+            msg: >-
+              J-LATER {{ inventory_hostname }}
+              {{ __credential_resolver_observations__["j-shared"].category }}
+            verbosity: 0

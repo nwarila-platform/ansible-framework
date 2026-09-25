@@ -1,0 +1,24 @@
+#!/usr/bin/python3 -S
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+
+value = sys.stdin.buffer.read()
+cache = os.environ.get("KRB5CCNAME", "")
+cache_path = Path(cache.removeprefix("FILE:"))
+record = {
+    "kind": "kinit",
+    "argv": sys.argv[1:],
+    "stdin_bytes": len(value),
+    "stdin_sha256": hashlib.sha256(value).hexdigest(),
+    "krb5ccname": cache,
+    "cache_exists": cache_path.is_file(),
+    "cache_mode": oct(cache_path.stat().st_mode & 0o777) if cache_path.is_file() else None,
+}
+with Path(os.environ["CREDRES_KINIT_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(record, sort_keys=True) + "\n")
+raise SystemExit(0)

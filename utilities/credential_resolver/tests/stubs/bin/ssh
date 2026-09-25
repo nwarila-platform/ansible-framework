@@ -1,0 +1,152 @@
+#!/usr/bin/python3 -S
+"""Recording stand-in for ssh: answers from the scenario table and never opens a socket."""
+from __future__ import annotations
+
+import getopt
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+REAL_SSH = "/usr/bin/ssh"
+OPTION_SPEC = "1246ab:c:e:fgi:kl:m:no:p:qstvxyAB:CD:E:F:GI:J:KL:MNO:P:Q:R:S:TVw:W:XYy"
+EFFECTIVE_KEYS = (
+    "batchmode", "certificatefile", "controlmaster", "controlpath", "controlpersist",
+    "enablesshkeysign", "gssapiauthentication", "hostbasedauthentication", "identitiesonly",
+    "identityagent", "identityfile", "kbdinteractiveauthentication", "numberofpasswordprompts",
+    "passwordauthentication", "pkcs11provider", "port", "preferredauthentications",
+    "pubkeyauthentication", "securitykeyprovider", "user",
+)
+ENCRYPTED_KEY_MARKER = b"ENCRYPTED-KEY-FIXTURE"
+
+started = time.monotonic()
+run_environment = os.environ.get("CREDRES_RUN_ENV_NAMES", "").split(",")
+record = {
+    "kind": "ssh",
+    "argv": sys.argv[1:],
+    "environment": {name: "<set by the run>" if name in run_environment else value
+                    for name, value in os.environ.items()},
+}
+
+
+def finish(rc: int, stdout: str = "", stderr: str = "") -> None:
+    record.update(rc=rc, elapsed=round(time.monotonic() - started, 3))
+    with Path(os.environ["CREDRES_SSH_LOG"]).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+    if stdout:
+        print(stdout)
+    if stderr:
+        print(stderr, file=sys.stderr)
+    raise SystemExit(rc)
+
+
+def effective(arguments: list[str], host: str) -> dict[str, list[str]]:
+    result = subprocess.run(
+        [REAL_SSH, "-G", *arguments, host],
+        stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True,
+    )
+    settings: dict[str, list[str]] = {}
+    for line in result.stdout.splitlines():
+        key, _, value = line.partition(" ")
+        if key in EFFECTIVE_KEYS:
+            settings.setdefault(key, []).append(value)
+    return settings
+
+
+def main() -> None:
+    record_dir = Path(os.environ["CREDRES_RECORD_DIR"])
+    table = json.loads(Path(os.environ["CREDRES_TABLE"]).read_text(encoding="utf-8")).get("ssh", {})
+    options, operands = getopt.getopt(sys.argv[1:], OPTION_SPEC)
+    host = operands[0] if operands else ""
+    command = " ".join(operands[1:])
+    control = next((value for flag, value in options if flag == "-O"), None)
+    config_arguments = []
+    for flag, value in options:
+        if flag not in ("-O", "-t", "-T"):
+            config_arguments += [flag, value] if value else [flag]
+    settings = effective(config_arguments, host)
+    unconfined = None
+    for index in range(len(config_arguments) - 1):
+        if config_arguments[index:index + 2] == ["-F", "/dev/null"]:
+            unconfined = effective(config_arguments[:index] + config_arguments[index + 2:], host)
+            break
+    user = settings.get("user", [""])[0]
+    control_path = settings.get("controlpath", [None])[0]
+    control_socket = record_dir / "control" / hashlib.sha256(str(control_path).encode()).hexdigest()
+    record.update(mode=control or "exec", host=host, command=command, user=user,
+                  effective=settings, unconfined=unconfined)
+
+    password = None
+    record["askpass"] = {"armed": False}
+    segment = os.environ.get("_ANSIBLE_SSH_ASKPASS_SHM")
+    if segment:
+        path = Path("/dev/shm") / segment
+        password = json.loads(path.read_bytes().rstrip(b"\0"))["password"]
+        record["askpass"] = {
+            "armed": True,
+            "mode": oct(path.stat().st_mode & 0o777),
+            "bytes": len(password.encode()),
+            "sha256": hashlib.sha256(password.encode()).hexdigest(),
+        }
+
+    if control == "check":
+        if control_socket.exists():
+            finish(0, stderr=f"Master running (pid={os.getpid()})")
+        finish(255, stderr=f"Control socket connect({control_path}): No such file or directory")
+    if control == "stop":
+        if control_socket.exists():
+            control_socket.unlink()
+            finish(0, stderr="Stop listening request sent.")
+        finish(255, stderr=f"Control socket connect({control_path}): No such file or directory")
+
+    if (
+        control_path is not None
+        and settings.get("controlmaster", ["false"])[0] in ("auto", "true")
+        and settings.get("controlpersist", ["no"])[0] not in ("no", "false")
+    ):
+        control_socket.parent.mkdir(exist_ok=True)
+        control_socket.touch()
+        record["control_master"] = control_path
+
+    accepted = table.get("passwords", {}).get(user)
+    if accepted is not None and password != accepted:
+        record["authentication"] = "password-rejected"
+        finish(255, stderr=f"{user}@{host}: Permission denied (password).")
+
+    for identity in settings.get("identityfile", []):
+        path = Path(identity)
+        if path.is_file() and ENCRYPTED_KEY_MARKER in path.read_bytes():
+            if settings.get("batchmode", ["no"])[0] == "yes":
+                record["passphrase_prompt"] = "refused-by-batchmode"
+                finish(255, stderr=f'Load key "{identity}": incorrect passphrase supplied to '
+                                   f"decrypt private key\n{user}@{host}: Permission denied (publickey).")
+            record["passphrase_prompt"] = "waiting"
+            time.sleep(int(table.get("prompt_wait_seconds", 30)))
+            finish(255, stderr=f"{user}@{host}: Permission denied (publickey).")
+
+    counter = record_dir / ("ssh-count-" + hashlib.sha256(user.encode()).hexdigest())
+    index = int(counter.read_text(encoding="ascii")) if counter.exists() else 0
+    counter.write_text(str(index + 1), encoding="ascii")
+    rejected = [{"rc": 255, "stderr": f"{user}@{host}: Permission denied (publickey)."}]
+    responses = table.get("responses", {}).get(user, rejected)
+    response = responses[min(index, len(responses) - 1)]
+    stdout = response.get("stdout", "")
+    if "BECOME-SUCCESS-" in command:
+        marker = command.split("BECOME-SUCCESS-", 1)[1].split(" ", 1)[0].split(";", 1)[0]
+        stdout = f"BECOME-SUCCESS-{marker}\n{stdout}"
+    if table.get("echo"):
+        stdout = f"{stdout}\nECHO argv={sys.argv[1:]} password={password}"
+    record["response_index"] = index
+    finish(int(response.get("rc", 0)), stdout, response.get("stderr", ""))
+
+
+try:
+    main()
+except SystemExit:
+    raise
+except Exception as error:  # A stub fault must never pass for a remote answer.
+    record["stub_error"] = f"{type(error).__name__}: {error}"
+    finish(254, stderr="credential-resolver ssh stub fault")

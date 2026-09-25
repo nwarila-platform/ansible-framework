@@ -1,0 +1,20 @@
+all:
+  hosts:
+    f3-sets.invalid:
+      ansible_host: 192.0.2.30
+    f3-base-ssh-args.invalid:
+      ansible_host: 192.0.2.31
+      ansible_ssh_args: >-
+        -C -o ControlMaster=auto -o ControlPersist=60s -o IdentityFile=/x/base-key
+    f3-base-common.invalid:
+      ansible_host: 192.0.2.32
+      ansible_ssh_common_args: -i /x/base-key
+    f3-base-extra.invalid:
+      ansible_host: 192.0.2.33
+      ansible_ssh_extra_args: -F /x/base-config
+    f3-base-scp.invalid:
+      ansible_host: 192.0.2.34
+      ansible_scp_extra_args: -o CertificateFile=/x/base-cert
+    f3-base-sftp.invalid:
+      ansible_host: 192.0.2.35
+      ansible_sftp_extra_args: -o IdentityAgent=/x/base-agent.sock

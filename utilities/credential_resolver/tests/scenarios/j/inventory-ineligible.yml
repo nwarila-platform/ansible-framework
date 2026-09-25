@@ -1,0 +1,17 @@
+all:
+  vars:
+    credential_resolver_candidates:
+      - name: ji-password
+        profile: ssh_password
+        account: ji-account
+        attempts: '{{ ji_attempts }}'
+        vars:
+          ansible_user: '{{ inventory_hostname }}-IDENTITY-CANARY'
+          ansible_password: PASSWORD-SECRET-CANARY-JI
+  hosts:
+    ji-2.invalid:
+      ansible_host: 192.0.2.47
+      ji_attempts: 1
+    ji-4.invalid:
+      ansible_host: 192.0.2.48
+      ji_attempts: 2

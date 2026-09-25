@@ -1,0 +1,7 @@
+{
+  "ssh": {
+    "responses": {
+      "b-winner-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+    }
+  }
+}

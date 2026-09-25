@@ -1,0 +1,33 @@
+#!/usr/bin/python3 -S
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+from urllib.parse import parse_qs, urlparse
+
+args = sys.argv[1:]
+address = next((value for value in reversed(args) if "://" in value), "")
+url = urlparse(address)
+served = url.scheme == "https" and (url.hostname or "").endswith(".invalid")
+token = parse_qs(url.query).get("X-Amz-Security-Token", [""])[0]
+record = {
+    "kind": "curl",
+    "argv": [value.replace(token, "<presigned-token>") if token else value for value in args],
+    "served": served,
+    "presigned_token_sha256": hashlib.sha256(token.encode()).hexdigest() if token else None,
+}
+with Path(os.environ["CREDRES_CURL_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps(record, sort_keys=True) + "\n")
+if not served:
+    print(f"curl: (7) refused a transfer outside https://*.invalid: {url.hostname}", file=sys.stderr)
+    raise SystemExit(7)
+store = Path(os.environ["CREDRES_STORE"]) / url.path.lstrip("/").replace("/", "_")
+if "--upload-file" in args:
+    shutil.copyfile(args[args.index("--upload-file") + 1], store)
+elif "-o" in args:
+    shutil.copyfile(store, args[args.index("-o") + 1])
+raise SystemExit(0)

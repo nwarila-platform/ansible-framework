@@ -1,0 +1,150 @@
+---
+- name: 'Scenario A | Three Sets With Unequal Attempts Over Four Rounds'
+  hosts: 'a-walk.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 4
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'a-one'
+        profile: 'ssh_publickey'
+        attempts: 1
+        vars:
+          ansible_user: 'a-one-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      - name: 'a-two'
+        profile: 'ssh_publickey'
+        attempts: 2
+        vars:
+          ansible_user: 'a-two-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+      - name: 'a-four'
+        profile: 'ssh_publickey'
+        attempts: 4
+        vars:
+          ansible_user: 'a-four-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  tasks:
+    - name: 'Scenario A | Resolve Without A Winner'
+      block:
+        - name: 'Scenario A | Walk The Rounds'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario A | Record The Winnerless Walk'
+          ansible.builtin.debug:
+            msg: >-
+              A-WINNERLESS rounds={{ __credential_resolver_round__ }}
+              {{ ansible_failed_result.msg }}
+            verbosity: 0
+
+- name: 'Scenario A | Two One-Shot Password Sets'
+  hosts: 'a-passwords.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'a-password-one'
+        profile: 'ssh_password'
+        account: 'a-account-one'
+        vars:
+          ansible_user: 'a-password-one-IDENTITY-CANARY'
+          ansible_password: 'PASSWORD-SECRET-CANARY-A1'
+      - name: 'a-password-two'
+        profile: 'ssh_password'
+        account: 'a-account-two'
+        vars:
+          ansible_user: 'a-password-two-IDENTITY-CANARY'
+          ansible_password: 'PASSWORD-SECRET-CANARY-A2'
+  tasks:
+    - name: 'Scenario A | Resolve Without A Winner'
+      block:
+        - name: 'Scenario A | Walk The Rounds'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario A | Record The Winnerless Walk'
+          ansible.builtin.debug:
+            msg: >-
+              A-WINNERLESS rounds={{ __credential_resolver_round__ }}
+              {{ ansible_failed_result.msg }}
+            verbosity: 0
+
+- name: 'Scenario A | A Winner In Round Three'
+  hosts: 'a-third.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 4
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'a-third'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'a-third-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario A | Record The Round Of The Win'
+      ansible.builtin.debug:
+        msg: >-
+          A-WINNER rounds={{ __credential_resolver_round__ }}
+          {{ __credential_resolver_selected__ }}
+        verbosity: 0
+
+- name: 'Scenario A | The Full Sixty-Round Walk'
+  hosts: 'a-sixty.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'a-sixty'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: 'a-sixty-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  tasks:
+    - name: 'Scenario A | Resolve Without A Winner'
+      block:
+        - name: 'Scenario A | Walk The Rounds'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario A | Record The Winnerless Walk'
+          ansible.builtin.debug:
+            msg: >-
+              A-WINNERLESS rounds={{ __credential_resolver_round__ }}
+              {{ ansible_failed_result.msg }}
+            verbosity: 0
+
+- name: 'Scenario A | A Batch Keeps Pausing For A Host Still Walking'
+  hosts: 'a-batch-first.invalid,a-batch-second.invalid'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 4
+    credential_resolver_pause_seconds: 0
+    credential_resolver_candidates:
+      - name: 'a-batch'
+        profile: 'ssh_publickey'
+        vars:
+          ansible_user: '{{ inventory_hostname }}-IDENTITY-CANARY'
+          ansible_private_key_file: 'utilities/credential_resolver/tests/fixtures/id_stub'
+  roles:
+    - role: 'credential_resolver'
+  tasks:
+    - name: 'Scenario A | Record The Round Of Each Win'
+      ansible.builtin.debug:
+        msg: 'A-BATCH {{ inventory_hostname }} rounds={{ __credential_resolver_round__ }}'
+        verbosity: 0

@@ -1,0 +1,90 @@
+all:
+  vars:
+    fixtures: 'utilities/credential_resolver/tests/fixtures'
+    inputs: "{{ lookup('ansible.builtin.env', 'CREDRES_INPUT') }}"
+  hosts:
+    f-key.invalid:
+      ansible_host: 192.0.2.9
+      credential_resolver_candidates:
+        - name: 'f-key'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-key-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub'
+    f-password.invalid:
+      ansible_host: 192.0.2.10
+      credential_resolver_candidates:
+        - name: 'f-password-wrong'
+          profile: 'ssh_password'
+          account: 'f-account'
+          vars:
+            ansible_user: 'f-password-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-F-WRONG'
+        - name: 'f-password-right'
+          profile: 'ssh_password'
+          account: 'f-account'
+          vars:
+            ansible_user: 'f-password-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-F'
+    f-pkcs11.invalid:
+      ansible_host: 192.0.2.11
+      credential_resolver_candidates:
+        - name: 'f-pkcs11'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-pkcs11-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub.pub'
+            ansible_ssh_pkcs11_provider: '{{ fixtures }}/provider.so'
+            ansible_password: 'PKCS11-PIN-SECRET-CANARY'
+    f-fido.invalid:
+      ansible_host: 192.0.2.12
+      credential_resolver_candidates:
+        - name: 'f-fido'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-fido-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub.pub'
+    f-certificate.invalid:
+      ansible_host: 192.0.2.13
+      credential_resolver_candidates:
+        - name: 'f-certificate'
+          profile: 'ssh_publickey'
+          certificate_file: '{{ fixtures }}/cert_stub.pub'
+          vars:
+            ansible_user: 'f-certificate-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub'
+    f-gssapi.invalid:
+      ansible_host: 192.0.2.14
+      credential_resolver_candidates:
+        - name: 'f-gssapi'
+          profile: 'ssh_gssapi'
+          vars:
+            ansible_user: 'f-gssapi-IDENTITY-CANARY'
+    f-hostbased.invalid:
+      ansible_host: 192.0.2.15
+      credential_resolver_candidates:
+        - name: 'f-hostbased'
+          profile: 'ssh_hostbased'
+          vars:
+            ansible_user: 'f-hostbased-IDENTITY-CANARY'
+    f-encrypted.invalid:
+      ansible_host: 192.0.2.16
+      credential_resolver_candidates:
+        - name: 'f-encrypted'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-encrypted-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ inputs }}/encrypted-key'
+        - name: 'f-after-encrypted'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-after-encrypted-IDENTITY-CANARY'
+            ansible_private_key_file: '{{ fixtures }}/id_stub'
+    f-content.invalid:
+      ansible_host: 192.0.2.17
+      credential_resolver_candidates:
+        - name: 'f-content'
+          profile: 'ssh_publickey'
+          vars:
+            ansible_user: 'f-content-IDENTITY-CANARY'
+            ansible_private_key: "{{ lookup('ansible.builtin.file', inputs ~ '/content-key') }}"

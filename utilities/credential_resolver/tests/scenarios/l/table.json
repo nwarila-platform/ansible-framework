@@ -1,0 +1,14 @@
+{
+  "ssh": {
+    "responses": {
+      "l-ssh-message-IDENTITY-CANARY": [{"rc": 255, "stderr": "configuration error: pywinrm must install requests_credssp; credential resolver must stop"}],
+      "l-ssh-winner-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+    }
+  },
+  "winrm": {
+    "responses": {
+      "l-winrm-message-IDENTITY-CANARY": {"raise": "configuration error: pywinrm must install requests_credssp; credential resolver must stop"},
+      "l-winrm-winner-IDENTITY-CANARY": {"stdout": "ready"}
+    }
+  }
+}

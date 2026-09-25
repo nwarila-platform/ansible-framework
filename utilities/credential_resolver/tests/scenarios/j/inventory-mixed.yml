@@ -1,0 +1,45 @@
+all:
+  vars:
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+  children:
+    outside:
+      hosts:
+        jm-outside.invalid:
+          ansible_host: 192.0.2.40
+          credential_resolver_candidates:
+            - name: jm-password
+              profile: ssh_password
+              account: jm-account-a
+              vars:
+                ansible_user: jm-outside-IDENTITY-CANARY
+                ansible_password: PASSWORD-SECRET-CANARY-JM
+    batch:
+      hosts:
+        jm-1.invalid:
+          ansible_host: 192.0.2.41
+          jm_account: jm-account-a
+        jm-3.invalid:
+          ansible_host: 192.0.2.43
+          jm_account: jm-account-b
+        jm-4.invalid:
+          ansible_host: 192.0.2.44
+          jm_account: jm-account-a
+        jm-5.invalid:
+          ansible_host: 192.0.2.45
+          jm_account: jm-account-a
+        jm-6.invalid:
+          ansible_host: 192.0.2.46
+          jm_account: jm-account-a
+      vars:
+        credential_resolver_candidates:
+          - name: jm-key
+            profile: ssh_publickey
+            vars:
+              ansible_user: '{{ inventory_hostname }}-key-IDENTITY-CANARY'
+              ansible_private_key_file: '{{ key }}'
+          - name: jm-password
+            profile: ssh_password
+            account: '{{ jm_account }}'
+            vars:
+              ansible_user: '{{ inventory_hostname }}-IDENTITY-CANARY'
+              ansible_password: PASSWORD-SECRET-CANARY-JM

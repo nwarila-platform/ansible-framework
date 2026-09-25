@@ -1,0 +1,9 @@
+all:
+  hosts:
+    f-hostbased.invalid:
+      ansible_host: 192.0.2.15
+      credential_resolver_candidates:
+        - name: 'f-hostbased'
+          profile: 'ssh_hostbased'
+          vars:
+            ansible_user: 'f-hostbased-IDENTITY-CANARY'

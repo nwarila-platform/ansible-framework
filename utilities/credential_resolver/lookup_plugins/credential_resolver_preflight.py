@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 
 from ansible import constants as C
 from ansible import context
@@ -21,6 +22,13 @@ def _has_module(name: str) -> bool:
 
 def _has_binary(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def _cli_option_present(*names: str) -> bool:
+    # The CLI parser accepts any unambiguous prefix of a long option, with or without '='.
+    options = (argument.split("=", 1)[0] for argument in sys.argv[1:])
+    return any(option.startswith("--") and len(option) > 2 and name.startswith(option)
+               for option in options for name in names)
 
 
 def _global_keysign_enabled() -> bool:
@@ -62,7 +70,6 @@ def _aws_endpoints(candidates: list[dict]) -> list[dict]:
             "s3_https": False,
             "bucket_https": False,
             "errors": ["SSM", "S3"],
-            "ambient_conflict": False,
             "static_profile_conflict": False,
         } for candidate in candidates]
 
@@ -74,13 +81,10 @@ def _aws_endpoints(candidates: list[dict]) -> list[dict]:
             "s3_https": False,
             "bucket_https": True,
             "errors": [],
-            "ambient_conflict": False,
             "static_profile_conflict": False,
         }
         mode = candidate["mode"]
         environment_profile = bool(os.environ.get("AWS_PROFILE") or os.environ.get("AWS_DEFAULT_PROFILE"))
-        environment_keys = bool(os.environ.get("AWS_ACCESS_KEY_ID"))
-        report["ambient_conflict"] = mode == "ambient" and environment_profile and environment_keys
         report["static_profile_conflict"] = mode == "static" and environment_profile
 
         profile = candidate.get("profile") if mode == "profile" else None
@@ -119,7 +123,7 @@ class LookupModule(LookupBase):
             "extra_var_names": sorted(load_extra_vars(self._loader).keys()),
             "ask_pass": bool(cli.get("ask_pass")),
             "become_ask_pass": bool(cli.get("become_ask_pass")),
-            "private_key_file": bool(cli.get("private_key_file")),
+            "private_key_file": _cli_option_present("--private-key", "--key-file"),
             "connection_password_file": bool(cli.get("connection_password_file")),
             "become_password_file": bool(cli.get("become_password_file")),
             "connection_password_setting": bool(C.CONNECTION_PASSWORD_FILE),

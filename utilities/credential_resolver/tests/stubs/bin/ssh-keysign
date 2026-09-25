@@ -1,0 +1,9 @@
+#!/usr/bin/python3 -S
+import json
+import os
+from pathlib import Path
+import sys
+
+with Path(os.environ["CREDRES_MISC_LOG"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({"kind": "ssh-keysign", "argv": sys.argv[1:]}, sort_keys=True) + "\n")
+raise SystemExit(0)

@@ -1,0 +1,22 @@
+---
+- name: 'Scenario G | Transport Floors Refuse Before Traffic'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+  tasks:
+    - name: 'Scenario G | Expect A Pre-Traffic Refusal'
+      block:
+        - name: 'Scenario G | Resolve'
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            name: 'credential_resolver'
+            public: false
+            rescuable: true
+            rolespec_validate: true
+      rescue:
+        - name: 'Scenario G | Record The Refusal'
+          ansible.builtin.debug:
+            msg: 'G-REFUSED {{ inventory_hostname }} {{ ansible_failed_result.msg }}'
+            verbosity: 0

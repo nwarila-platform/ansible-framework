@@ -1,0 +1,163 @@
+all:
+  vars:
+    credential_resolver_rounds: 1
+    credential_resolver_pause_seconds: 0
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+    good:
+      ansible_user: i-shape-IDENTITY-CANARY
+      ansible_private_key_file: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    i-bounds-empty.invalid:
+      ansible_host: 192.0.2.43
+      credential_resolver_candidates: []
+    i-bounds-string.invalid:
+      ansible_host: 192.0.2.44
+      credential_resolver_candidates: not-a-list
+    i-bounds-rounds.invalid:
+      ansible_host: 192.0.2.45
+      credential_resolver_rounds: 0
+      credential_resolver_candidates:
+        - name: i-bounds
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-bounds-pause.invalid:
+      ansible_host: 192.0.2.46
+      credential_resolver_pause_seconds: -1
+      credential_resolver_candidates:
+        - name: i-bounds
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-bounds-budget.invalid:
+      ansible_host: 192.0.2.47
+      credential_resolver_password_budget: 0
+      credential_resolver_candidates:
+        - name: i-bounds
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-bounds-elevated.invalid:
+      ansible_host: 192.0.2.48
+      credential_resolver_require_elevated: 'yes'
+      credential_resolver_candidates:
+        - name: i-bounds
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-bounds-floor.invalid:
+      ansible_host: 192.0.2.49
+      credential_resolver_boot_time_after: tuesday
+      credential_resolver_candidates:
+        - name: i-bounds
+          profile: ssh_publickey
+          vars: '{{ good }}'
+    i-shape.invalid:
+      ansible_host: 192.0.2.50
+      credential_resolver_candidates:
+        - not-a-mapping
+        - name: extra-field
+          profile: ssh_publickey
+          vars: '{{ good }}'
+          color: blue
+        - name: non-string-profile
+          profile: 5
+          vars: '{{ good }}'
+        - name: non-mapping-vars
+          profile: ssh_publickey
+          vars:
+            - ansible_user
+        - name: unknown-profile
+          profile: telnet
+          vars: {}
+        - name: attempts-zero
+          profile: ssh_publickey
+          attempts: 0
+          vars: '{{ good }}'
+        - name: attempts-string
+          profile: ssh_publickey
+          attempts: two
+          vars: '{{ good }}'
+        - name: become-not-mapping
+          profile: ssh_publickey
+          become: sudo
+          vars: '{{ good }}'
+        - name: unknown-become
+          profile: ssh_publickey
+          become:
+            profile: magic
+          vars: '{{ good }}'
+        - name: duplicate
+          profile: ssh_publickey
+          vars: '{{ good }}'
+        - name: duplicate
+          profile: ssh_publickey
+          vars: '{{ good }}'
+        - name: missing-required
+          profile: ssh_password
+          account: a
+          vars:
+            ansible_user: u
+        - name: empty-required
+          profile: ssh_publickey
+          vars:
+            ansible_user: ''
+            ansible_private_key_file: '{{ key }}'
+        - name: two-key-forms
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key_file: '{{ key }}'
+            ansible_private_key: KEY-CONTENT-SECRET-CANARY-I
+        - name: passphrase-without-content
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key_file: '{{ key }}'
+            ansible_private_key_passphrase: PASSPHRASE-SECRET-CANARY-I
+        - name: pkcs11-without-pin
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key_file: '{{ key }}.pub'
+            ansible_ssh_pkcs11_provider: /x/p.so
+        - name: kerberos-password-and-cache
+          profile: winrm_kerberos
+          account: a
+          vars:
+            ansible_user: u@TEST.INVALID
+            ansible_password: PASSWORD-SECRET-CANARY-IK
+            ansible_winrm_kinit_mode: manual
+        - name: aws-two-targets
+          profile: aws_ssm_ambient
+          vars:
+            ansible_aws_ssm_instance_id: i-x
+            ansible_host: 192.0.2.59
+            ansible_aws_ssm_region: us-test-1
+            ansible_aws_ssm_bucket_name: b
+        - name: foreign-variable
+          profile: ssh_publickey
+          vars:
+            ansible_user: u
+            ansible_private_key_file: '{{ key }}'
+            ansible_winrm_transport:
+              - ntlm
+        - name: alias-variable
+          profile: ssh_publickey
+          vars:
+            ansible_ssh_user: u
+            ansible_private_key_file: '{{ key }}'
+        - name: certificate-on-winrm
+          profile: winrm_ntlm
+          account: a
+          certificate_file: /x/cert.pub
+          vars:
+            ansible_user: u
+            ansible_password: PASSWORD-SECRET-CANARY-IW
+        - name: password-without-account
+          profile: ssh_password
+          vars:
+            ansible_user: u
+            ansible_password: PASSWORD-SECRET-CANARY-IA
+        - name: account-not-string
+          profile: ssh_password
+          account: 5
+          vars:
+            ansible_user: u
+            ansible_password: PASSWORD-SECRET-CANARY-IS

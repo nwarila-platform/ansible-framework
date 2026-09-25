@@ -1,0 +1,38 @@
+all:
+  vars:
+    key: utilities/credential_resolver/tests/fixtures/id_stub
+  hosts:
+    l-ssh.invalid:
+      ansible_host: 192.0.2.45
+      credential_resolver_candidates:
+        - name: l-ssh-message
+          profile: ssh_publickey
+          vars:
+            ansible_user: l-ssh-message-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+        - name: l-ssh-winner
+          profile: ssh_publickey
+          vars:
+            ansible_user: l-ssh-winner-IDENTITY-CANARY
+            ansible_private_key_file: '{{ key }}'
+    l-winrm.invalid:
+      ansible_host: 192.0.2.46
+      platform: windows
+      ansible_shell_type: cmd
+      credential_resolver_candidates:
+        - name: l-winrm-message
+          profile: winrm_ntlm
+          account: l-message-account
+          vars:
+            ansible_user: l-winrm-message-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-LM
+            ansible_port: 5986
+            ansible_winrm_scheme: https
+        - name: l-winrm-winner
+          profile: winrm_ntlm
+          account: l-winner-account
+          vars:
+            ansible_user: l-winrm-winner-IDENTITY-CANARY
+            ansible_password: PASSWORD-SECRET-CANARY-LW
+            ansible_port: 5986
+            ansible_winrm_scheme: https

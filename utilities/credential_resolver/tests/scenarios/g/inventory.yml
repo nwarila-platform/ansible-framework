@@ -1,0 +1,90 @@
+all:
+  vars:
+    platform: 'windows'
+    ansible_shell_type: 'cmd'
+    fixtures: 'utilities/credential_resolver/tests/fixtures'
+  hosts:
+    g-ntlm.invalid:
+      ansible_host: 192.0.2.15
+      credential_resolver_candidates:
+        - name: 'g-ntlm'
+          profile: 'winrm_ntlm'
+          account: 'g-ntlm-account'
+          vars:
+            ansible_user: 'g-ntlm-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GN'
+            ansible_port: 5985
+            ansible_winrm_scheme: 'http'
+            ansible_winrm_message_encryption: 'always'
+    g-kerberos-manual.invalid:
+      ansible_host: 192.0.2.16
+      credential_resolver_candidates:
+        - name: 'g-kerberos-manual'
+          profile: 'winrm_kerberos'
+          vars:
+            ansible_user: 'g-kerberos-IDENTITY-CANARY@TEST.INVALID'
+            ansible_winrm_kinit_mode: 'manual'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'
+    g-basic.invalid:
+      ansible_host: 192.0.2.17
+      credential_resolver_candidates:
+        - name: 'g-basic'
+          profile: 'winrm_basic'
+          account: 'g-basic-account'
+          vars:
+            ansible_user: 'g-basic-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GB'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'
+    g-certificate.invalid:
+      ansible_host: 192.0.2.18
+      credential_resolver_candidates:
+        - name: 'g-certificate'
+          profile: 'winrm_certificate'
+          vars:
+            ansible_winrm_cert_pem: '{{ fixtures }}/client.pem'
+            ansible_winrm_cert_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'
+    g-psrp-kerberos.invalid:
+      ansible_host: 192.0.2.19
+      credential_resolver_candidates:
+        - name: 'g-psrp-kerberos'
+          profile: 'psrp_kerberos'
+          vars:
+            ansible_user: 'g-psrp-kerberos-IDENTITY-CANARY@TEST.INVALID'
+            ansible_port: 5985
+            ansible_psrp_protocol: 'http'
+            ansible_psrp_message_encryption: 'always'
+    g-psrp-certificate.invalid:
+      ansible_host: 192.0.2.20
+      credential_resolver_candidates:
+        - name: 'g-psrp-certificate'
+          profile: 'psrp_certificate'
+          vars:
+            ansible_psrp_certificate_pem: '{{ fixtures }}/client.pem'
+            ansible_psrp_certificate_key_pem: '{{ fixtures }}/client-key.pem'
+            ansible_port: 5986
+            ansible_psrp_protocol: 'https'
+    g-ntlm-named-host.invalid:
+      ansible_host: 192.0.2.21
+      credential_resolver_candidates:
+        - name: 'g-named-host-rejected'
+          profile: 'winrm_ntlm'
+          account: 'g-named-host-account'
+          vars:
+            ansible_host: '192.0.2.99'
+            ansible_user: 'g-named-host-rejected-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GR'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'
+        - name: 'g-named-host-accepted'
+          profile: 'winrm_ntlm'
+          account: 'g-named-host-account'
+          vars:
+            ansible_host: '192.0.2.99'
+            ansible_user: 'g-named-host-accepted-IDENTITY-CANARY'
+            ansible_password: 'PASSWORD-SECRET-CANARY-GA'
+            ansible_port: 5986
+            ansible_winrm_scheme: 'https'

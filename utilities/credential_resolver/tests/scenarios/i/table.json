@@ -1,0 +1,9 @@
+{
+  "ssh": {
+    "passwords": {"i-single-IDENTITY-CANARY": "PASSWORD-SECRET-CANARY-I"},
+    "responses": {
+      "i-b-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}],
+      "i-single-IDENTITY-CANARY": [{"rc": 0, "stdout": "ready"}]
+    }
+  }
+}
