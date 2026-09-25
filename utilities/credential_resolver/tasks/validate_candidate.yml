@@ -133,9 +133,10 @@
     __has_content__: >-
       {{ (__credential_resolver_candidate_vars__.ansible_private_key | default('')
           | string | length) > 0 }}
+    # base64 of the magic "openssh-key-v1"; a private-key detector matches the armor line.
     __openssh_content__: >-
       {{ __credential_resolver_candidate_vars__.ansible_private_key | default('') | string
-         is search('-----BEGIN OPENSSH PRIVATE KEY-----') }}
+         is search('b3BlbnNzaC1rZXktdjEA') }}
     __has_file__: >-
       {{ (__credential_resolver_candidate_vars__.ansible_private_key_file | default('')
           | string | length) > 0 }}
