@@ -339,6 +339,80 @@
 
     #endregion --- [ Process: Classify Disk State And Guard Against Foreign Layouts ] --------- #
 
+    #region ------ [ Process: Move Kept Disks To Their Declared Drive Letters ] --------------- #
+
+    # A blank disk's declared letter can sit on a kept disk after a reattach, so move kept disks
+    # before the partition and format modules can act through that letter. Remove every wrong
+    # letter before assigning targets so swaps and rotations converge without collisions.
+    - name: 'PROCESS | Move Each Kept Disk To Its Declared Drive Letter'
+      changed_when: (__windows_disk_manager_drive_letters__.stdout | trim) == 'changed'
+      environment:
+        DISK_IDS: >-
+          {{ __kept_disks__ | map(attribute='disk.unique_id') | join(';') }}
+        DISK_LETTERS: >-
+          {{ __kept_disks__ | map(attribute='drive_letter') | join(';') }}
+      register: '__windows_disk_manager_drive_letters__'
+      vars:
+        __kept_disks__: >-
+          {{ __resolved_disks__ | default([])
+          | selectattr('classification', 'equalto', 'ours') | list }}
+      when: (__kept_disks__ | length) > 0
+
+      ansible.windows.win_shell:
+        cmd: |
+          $ErrorActionPreference = 'Stop'
+          # A single pipeline result unwraps to a scalar string, whose index is a character.
+          $ids = @($env:DISK_IDS -split ';' | Where-Object { $_ })
+          $letters = $env:DISK_LETTERS -split ';'
+          $items = @()
+          for ($i = 0; $i -lt $ids.Count; $i++) {
+              $wantId = $ids[$i]
+              $disk = Get-Disk -ErrorAction Stop | Where-Object { $_.UniqueId -eq $wantId }
+              if (-not $disk) {
+                  throw ('No disk found with unique id ' + $wantId)
+              }
+              $part = Get-Partition -DiskNumber $disk.Number -ErrorAction Stop |
+                  Where-Object { $_.Type -ne 'Reserved' -and $_.Size -gt 1GB } |
+                  Sort-Object Size -Descending | Select-Object -First 1
+              if (-not $part) {
+                  throw ('No data partition found on disk ' + $wantId)
+              }
+              $currentLetter = if ([bool]$part.DriveLetter) {
+                  [string]$part.DriveLetter
+              } else {
+                  $null
+              }
+              $items += [pscustomobject]@{
+                  Disk = $disk.Number
+                  Part = $part.PartitionNumber
+                  Cur = $currentLetter
+                  Target = $letters[$i]
+              }
+          }
+          $changed = $false
+          foreach ($it in ($items | Where-Object { $_.Cur -and $_.Cur -ne $_.Target })) {
+              Remove-PartitionAccessPath -DiskNumber $it.Disk -PartitionNumber $it.Part `
+                  -AccessPath ($it.Cur + ':' + [char]92) -ErrorAction Stop
+              if (-not $changed) {
+                  Write-Output 'changed'
+                  $changed = $true
+              }
+          }
+          foreach ($it in ($items | Where-Object { $_.Cur -ne $_.Target })) {
+              Set-Partition -DiskNumber $it.Disk -PartitionNumber $it.Part `
+                  -NewDriveLetter $it.Target -ErrorAction Stop
+              if (-not $changed) {
+                  Write-Output 'changed'
+                  $changed = $true
+              }
+          }
+          if (-not $changed) {
+              Write-Output 'nochange'
+          }
+        no_profile: false
+
+    #endregion --- [ Process: Move Kept Disks To Their Declared Drive Letters ] --------------- #
+
     # The clustered classification is already converged and falls through this entire pipeline.
     - name: 'PROCESS | Initialize The Declared Disk As GPT Online And Writable'
       when: __managed_disk__.classification in ['blank', 'unfmtd']
@@ -352,6 +426,10 @@
         online: true
         force: false
 
+    # On this role's GPT layout Windows creates the reserved partition first, so its data
+    # partition is 2. The module looks it up by disk and partition number and, if absent, creates
+    # it only on the declared disk; it never locates a partition by letter. A taken letter makes
+    # Windows refuse the partition before anything is formatted.
     - name: 'PROCESS | Create The Full Declared Disk Partition'
       when: __managed_disk__.classification in ['blank', 'unfmtd']
       loop: "{{ __resolved_disks__ | default([]) }}"
@@ -360,9 +438,10 @@
         label: "{{ __managed_disk__.disk.unique_id }}"
       community.windows.win_partition:
         disk_number: "{{ __managed_disk__.matched_disk.number }}"
-        partition_size: -1
         drive_letter: "{{ __managed_disk__.drive_letter }}"
         gpt_type: 'basic_data'
+        partition_number: 2
+        partition_size: -1
         state: 'present'
 
     - name: 'PROCESS | Format The Declared Disk Volume As NTFS'
@@ -378,55 +457,5 @@
         allocation_unit_size: "{{ __managed_disk__.disk.allocation_unit | default(4096) }}"
         full: false
         force: false
-
-    # win_partition above assigns the letter only when it CREATES the partition, so a disk
-    # classified 'ours' -- an already-formatted volume adopted untouched, such as a data disk
-    # reattached to a REPLACEMENT operating system -- keeps whatever letter Windows auto-assigned
-    # by enumeration order, which need not match the declaration. Enforce each managed disk's
-    # declared letter by its stable unique_id. Two phases so two disks can swap letters without
-    # colliding on an in-use target; idempotent, because a disk already at its letter is skipped
-    # by both. A freshly partitioned disk is already at its letter, so this is a no-op for it.
-    # Cluster-owned disks retain the access paths managed by Failover Clustering.
-    - name: 'PROCESS | Enforce Each Declared Disk Its Own Drive Letter'
-      when: (config.disks | length) > 0
-      ansible.windows.win_shell: |
-        $ErrorActionPreference = 'Stop'
-        # A single pipeline result unwraps to a scalar string, whose index is a character.
-        $ids = @($env:DISK_IDS -split ';' | Where-Object { $_ })
-        $letters = $env:DISK_LETTERS -split ';'
-        $items = @()
-        for ($i = 0; $i -lt $ids.Count; $i++) {
-            $wantId = $ids[$i]
-            $disk = Get-Disk -ErrorAction Stop | Where-Object { $_.UniqueId -eq $wantId }
-            if (-not $disk) { throw ('No disk found with unique id ' + $wantId) }
-            if ($disk.IsClustered) { continue }
-            $part = Get-Partition -DiskNumber $disk.Number -ErrorAction Stop |
-                Where-Object { $_.Type -ne 'Reserved' -and $_.Size -gt 1GB } |
-                Sort-Object Size -Descending | Select-Object -First 1
-            if (-not $part) { throw ('No data partition found on disk ' + $wantId) }
-            $items += [pscustomobject]@{
-                Disk = $disk.Number; Part = $part.PartitionNumber
-                Cur  = [string]$part.DriveLetter; Target = $letters[$i]
-            }
-        }
-        $changed = $false
-        foreach ($it in ($items | Where-Object { $_.Cur -and $_.Cur -ne $_.Target })) {
-            Remove-PartitionAccessPath -DiskNumber $it.Disk -PartitionNumber $it.Part `
-                -AccessPath ($it.Cur + ':' + [char]92) -ErrorAction Stop
-            $changed = $true
-        }
-        foreach ($it in ($items | Where-Object { $_.Cur -ne $_.Target })) {
-            Set-Partition -DiskNumber $it.Disk -PartitionNumber $it.Part `
-                -NewDriveLetter $it.Target -ErrorAction Stop
-            $changed = $true
-        }
-        if ($changed) { Write-Output 'changed' } else { Write-Output 'nochange' }
-      environment:
-        DISK_IDS: >-
-          {{ __resolved_disks__ | default([]) | map(attribute='disk.unique_id') | join(';') }}
-        DISK_LETTERS: >-
-          {{ __resolved_disks__ | default([]) | map(attribute='drive_letter') | join(';') }}
-      register: '__windows_disk_manager_drive_letters__'
-      changed_when: (__windows_disk_manager_drive_letters__.stdout | trim) == 'changed'
 
 #endregion --- [ Process: Manage The Declared Disks On Windows ] ------------------------------ #
