@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.3.1](https://github.com/nwarila-platform/ansible-framework/compare/v0.3.0...v0.3.1) (2026-09-25)
+
+
+### Features
+
+* **framework:** select the connection identity per play, before and after the join ([#118](https://github.com/nwarila-platform/ansible-framework/issues/118)) ([c3b6652](https://github.com/nwarila-platform/ansible-framework/commit/c3b6652d1ffc033fe22418171e9a419bd2039349))
+
+
+### Bug Fixes
+
+* **windows_disk_manager:** move kept disks to their letters before provisioning ([#121](https://github.com/nwarila-platform/ansible-framework/issues/121)) ([3fc34af](https://github.com/nwarila-platform/ansible-framework/commit/3fc34af314ee4e2070640805df626bef6bae0754))
+
 ## [0.3.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
