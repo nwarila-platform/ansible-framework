@@ -50,25 +50,26 @@ letter, so equivalent spellings such as `D`, `d:`, and `D:\` are duplicates.
 | State | Positive recognition | Behavior |
 |-------|----------------------|----------|
 | `clustered` | The attached disk reports that it is owned by Failover Clustering. | Treat preparation as complete; do not change online/read-only state, layout, formatting, or drive letters. |
-| `ours` | Any observed volume has filesystem type NTFS and the declared label, both compared case-insensitively. | Skip initialization, partitioning, and formatting. Unrelated additional volumes do not disqualify this state. |
+| `ours` | Any observed volume has filesystem type NTFS and the declared label, both compared case-insensitively. | Skip initialization, partitioning, and formatting; the volume is moved to its declared letter before any disk is provisioned. Unrelated additional volumes do not disqualify this state. |
 | `blank` | The disk reports `partition_style: RAW`. | Enter the provisioning pipeline. |
 | `unfmtd` | The disk reports GPT and successful partition enumeration, and either has no non-`Reserved` partitions or every non-`Reserved` partition reports volumes, at least one volume is observed, every volume has a non-null `type`, and every `type` is empty. | Resume the provisioning pipeline. |
 | `foreign` | Anything not positively recognized by an earlier state, including missing partition, volume, or filesystem-type evidence. | Fail before any declared disk is initialized, partitioned, or formatted. |
 
 - Ownership is deliberately narrow: on the disk resolved by the declared `unique_id`, any NTFS
   volume carrying the declared label case-insensitively is `ours`. That match suppresses all
-  three provisioning tasks. The role deliberately does not reconcile the drive letter,
-  allocation-unit size, partition count, or unrelated additional volumes on a disk classified
-  as `ours`.
+  three provisioning tasks. The role deliberately does not reconcile allocation-unit size,
+  partition count, or unrelated additional volumes on a disk classified as `ours`.
 - Cluster ownership supersedes content classification. Once Failover Clustering reports the disk
   as clustered, its offline/read-only state, partitioning, formatting, and access paths belong to
   the cluster; the role leaves it unchanged after the declared attachment identity is verified.
 - `blank` and `unfmtd` disks enter the `force: false` GPT initialization, full-partition, and
   NTFS quick-format pipeline. Drive letters are canonicalized to their uppercase first letter,
   and `allocation_unit` defaults to 4096 bytes.
-- Drive-letter targeting has a known limitation: the underlying partition and format modules
-  resolve a declared drive letter globally. A drive-letter collision on another disk can
-  therefore target that other volume despite the declared disk number. This role does not
-  preflight such collisions; its foreign-content refusal applies to the correctly targeted disk,
-  so declarations must use an unoccupied drive letter.
+- Kept disks move to their declared letters first, in two phases, so swapped or rotated letters
+  converge and a move stopped midway completes on the next run. A blank disk's partition is
+  looked up by disk and partition number and, if absent, created only on that disk — never found
+  by letter — so if its letter is taken by anything else Windows refuses the partition and
+  nothing is formatted. The run stops, and the next run completes once the letter is free. A kept
+  disk's contents are never partitioned or formatted; the role may bring it online and writable,
+  and change its drive letter.
 - `disks: []` completes successfully after the vendor check.
