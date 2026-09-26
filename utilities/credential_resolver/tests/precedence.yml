@@ -8,9 +8,7 @@
         credential_resolver_candidates:
           - {name: 'prior', connection: 'ssh', user: 'prior-user',
              password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'PROCESS | Seed Conflicting Connection Facts'
       no_log: true
       ansible.builtin.set_fact:
@@ -27,18 +25,14 @@
             connection: 'ssh'
             user: 'new-key'
             private_key: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE')) }}"
-
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'PROCESS | Connect Again With The Published Winner'
       changed_when: false
       register: '__precedence_after__'
       ansible.builtin.raw: 'echo after'
     - name: 'END | Assert The Published SSH Identity'
       vars:
-        __precedence_log__: >-
-          {{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}
-
+        __precedence_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
       ansible.builtin.assert:
         fail_msg: 'The later key-only winner did not fully replace the stale identity.'
         quiet: true
@@ -46,9 +40,11 @@
           - __credential_resolver_winner__ == 'key-only'
           - >-
             [ansible_password, ansible_ssh_password, ansible_port,
-            ansible_winrm_transport, ansible_winrm_scheme,
-            ansible_winrm_message_encryption] == [None, None, None, None, None, None]
-          - __precedence_log__ | regex_findall('USER=new-key.*echo after') | length == 1
+            ansible_private_key_file, ansible_winrm_password, ansible_winrm_transport,
+            ansible_winrm_scheme, ansible_winrm_message_encryption]
+            == [None, None, None, None, None, None, None, None]
+          - ansible_private_key == lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE'))
+          - __precedence_log__ is search('USER=new-key.*IdentitiesOnly=yes.*echo after')
           - __precedence_log__ is search('USER=new-key.*PasswordAuthentication=no')
           - __precedence_log__
             | regex_findall('USER=(prior-user|new-key).*ControlPath="none".*powershell')

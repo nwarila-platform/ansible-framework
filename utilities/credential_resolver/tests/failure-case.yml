@@ -4,23 +4,25 @@
     - name: 'PROCESS | Run The Failed Pass For {{ item }}'
       vars:
         credential_resolver_candidates: "{{ pass_case.candidates }}"
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'PROCESS | Reject An Unexpected Winner For {{ item }}'
-      ansible.builtin.fail:
-        msg: 'A credential set expected to fail unexpectedly worked.'
+      ansible.builtin.fail: {msg: 'A credential set expected to fail unexpectedly worked.'}
   rescue:
     - name: 'PROCESS | Assert The Resolver Failure For {{ item }}'
       vars:
         expected_names: "{{ pass_case.candidates | map(attribute='name') | list }}"
         probe: "{{ __credential_resolver_probe__ }}"
         response_fields: ['msg', 'rc', 'stdout', 'stderr']
+        ssh_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
       ansible.builtin.assert:
         fail_msg: 'A failed pass did not retain each response or use the resolver failure.'
         quiet: true
         that:
           - ansible_failed_result.msg is search('No credential set works')
           - __credential_resolver_attempts__ | map(attribute='set') | list == expected_names
+          - __credential_resolver_attempts__ | map(attribute='observation') | unique | list
+            == ['unreachable']
+          - pass_case.candidates | length != 2 or ssh_log.splitlines() | length == 2
           - response_fields | map('extract', __credential_resolver_attempts__[-1]) | list
             == [probe.get('msg'), probe.get('rc'), probe.get('stdout'), probe.get('stderr')]
           - pass_case.candidates | length == 1
