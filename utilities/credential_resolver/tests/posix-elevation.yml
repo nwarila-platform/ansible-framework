@@ -12,8 +12,7 @@
     platform: 'linux'
   tasks:
     - name: 'PROCESS | Resolve An Elevated POSIX Identity'
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'END | Assert The Elevated POSIX Result'
       vars:
         __posix_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"

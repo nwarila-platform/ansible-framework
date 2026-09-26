@@ -4,11 +4,9 @@
     - name: 'BEGIN | Validate Malformed Set {{ __input_key__ }}'
       vars:
         credential_resolver_candidates: ["{{ input_cases[__input_key__] }}"]
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'BEGIN | Reject An Accepted Malformed Set'
-      ansible.builtin.fail:
-        msg: 'A malformed credential set passed validation.'
+      ansible.builtin.fail: {msg: 'A malformed credential set passed validation.'}
   rescue:
     - name: 'BEGIN | Assert Validation Refused The Set'
       ansible.builtin.assert:

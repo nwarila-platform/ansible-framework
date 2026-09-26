@@ -11,6 +11,7 @@ all:
       caller_sets:
         - name: 'not-elevated'
           connection: 'ssh'
+          port: 62022
           user: 'not-elevated'
           password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
         - name: 'command-failure'
@@ -21,10 +22,8 @@ all:
           connection: 'ssh'
           user: 'elevated-winner'
           private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
-        - name: 'later-unused'
-          connection: 'ssh'
-          user: 'later-unused'
-          private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
+        - {name: 'winrm-unused', connection: 'winrm', user: 'winrm-unused', transport: 'ntlm',
+           password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
       caller_post_join_set:
         name: 'post-join'
         connection: 'ssh'

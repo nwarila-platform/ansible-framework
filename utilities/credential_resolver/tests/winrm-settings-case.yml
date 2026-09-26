@@ -2,11 +2,11 @@
 - name: 'PROCESS | Resolve {{ winrm_case.name }}'
   vars:
     credential_resolver_candidates:
-      - {name: "{{ winrm_case.name }}", connection: 'winrm', user: "{{ winrm_case.name }}",
-         transport: 'ntlm', port: "{{ winrm_case.port }}",
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-  ansible.builtin.include_role:
-    name: 'credential_resolver'
+      - "{{ {'name': winrm_case.name, 'connection': 'winrm', 'user': winrm_case.name,
+              'transport': 'ntlm',
+              'password': lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A')}
+            | combine({'port': winrm_case.port} if 'port' in winrm_case else {}) }}"
+  ansible.builtin.include_role: {name: 'credential_resolver'}
 - name: 'PROCESS | Assert {{ winrm_case.name }}'
   vars:
     winrm_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_WINRM_LOG')) }}"
@@ -22,4 +22,5 @@
         __credential_resolver_attempts__[0].stdout, __credential_resolver_attempts__[0].stderr]
         == [None, 0, 'S-1-16-12288\r\n200\r\n', '']
       - winrm_log is search('ENDPOINT=' ~ winrm_case.scheme ~ '://127.0.0.1:'
-          ~ winrm_case.port ~ '/wsman .*ENCRYPTION=' ~ winrm_case.encryption)
+          ~ (winrm_case.port | default(5986) | string)
+          ~ '/wsman .*ENCRYPTION=' ~ winrm_case.encryption)

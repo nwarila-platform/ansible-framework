@@ -12,11 +12,13 @@
         fail_msg: 'The first-boot wait did not cross the refused calls and stop at an answer.'
         quiet: true
         that:
-          - __caller_first_boot__.results | length == 5
-          - __caller_first_boot__.results[:4]
-            | selectattr('unreachable') | list | length == 4
+          - __caller_first_boot__.results | length == 4
+          - __caller_first_boot__.results[:3]
+            | selectattr('unreachable') | list | length == 3
           - __caller_first_boot__.results[-1].item == [1, 0]
           - __caller_first_boot__.results[-1].stdout == 'READY\r\n'
+          - caller_log is search('USER=not-elevated.*Port=62022.*echo ready')
+          - caller_log is not search('USER=winrm-unused')
           - caller_log is not search(
               'USER=(not-elevated|command-failure|elevated-winner).*Get-CimInstance')
     - name: 'PROCESS | Assert The First Pass Without A Restart'
@@ -25,6 +27,7 @@
         fail_msg: 'The first pass did not preserve the refusal, failure, and winner responses.'
         quiet: true
         that:
+          - __caller_post_join__.results | length == 1
           - __credential_resolver_attempts__ | map(attribute='set') | list
             == ['not-elevated', 'command-failure', 'elevated-winner']
           - __credential_resolver_attempts__ | map(attribute='observation') | list
@@ -52,11 +55,9 @@
           - {name: 'medium-optional', connection: 'ssh', user: 'not-elevated',
              password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
         credential_resolver_require_elevated: false
-      ansible.builtin.include_role:
-        name: 'credential_resolver'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'END | Assert The Medium Set Can Win'
       ansible.builtin.assert:
         fail_msg: 'A Medium set did not win when elevation was optional.'
         quiet: true
-        that:
-          - __credential_resolver_winner__ == 'medium-optional'
+        that: [__credential_resolver_winner__ == 'medium-optional']

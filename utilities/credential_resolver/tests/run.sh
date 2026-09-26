@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-test_dir=$(cd "$(dirname "$0")" && pwd); framework_dir=$(cd "$test_dir/../../.." && pwd)
-run_dir=$(mktemp -d "${TMPDIR:-/tmp}/credential-resolver.XXXXXX"); trap 'rm -rf "$run_dir"' EXIT
+test_dir=$(cd "$(dirname "$0")" && pwd)
+framework_dir=$(cd "$test_dir/../../.." && pwd)
+run_dir=$(mktemp -d "${TMPDIR:-/tmp}/credential-resolver.XXXXXX")
+trap 'rm -rf "$run_dir"' EXIT
 mkdir "$run_dir/cp" "$run_dir/python" "$run_dir/python/winrm"
-export ANSIBLE_SSH_AGENT=auto ANSIBLE_SSH_CONTROL_PATH_DIR="$run_dir/cp"
-export CREDENTIAL_RESOLVER_CANARY_A='canary-one-7jL4wK9q' CREDENTIAL_RESOLVER_CANARY_B='canary-two-2mR8xP5v'
-export CREDENTIAL_RESOLVER_DOWN_CALLS=0 CREDENTIAL_RESOLVER_KEY_FILE="$run_dir/id"
-export CREDENTIAL_RESOLVER_TEST_LOG CREDENTIAL_RESOLVER_WINRM_LOG="$run_dir/winrm.log" CREDENTIAL_RESOLVER_TEST_SSH="$run_dir/ssh"
+export ANSIBLE_SSH_AGENT=auto
+export ANSIBLE_SSH_CONTROL_PATH_DIR="$run_dir/cp"
+export CREDENTIAL_RESOLVER_CANARY_A='canary-one-7jL4wK9q'
+export CREDENTIAL_RESOLVER_CANARY_B='canary-two-2mR8xP5v'
+export CREDENTIAL_RESOLVER_DOWN_CALLS=0
+export CREDENTIAL_RESOLVER_KEY_FILE="$run_dir/id"
+export CREDENTIAL_RESOLVER_TEST_LOG
+export CREDENTIAL_RESOLVER_WINRM_LOG="$run_dir/winrm.log"
+export CREDENTIAL_RESOLVER_TEST_SSH="$run_dir/ssh"
 cat > "$CREDENTIAL_RESOLVER_TEST_SSH" <<'STUB'
 #!/bin/sh
 refuse() { printf 'ssh: connect to host 127.0.0.1: Connection refused\r\n' >&2; exit 255; }
@@ -28,7 +35,7 @@ case "$user" in
     *'echo after'*) printf 'AFTER-OUT\r\n'; printf 'AFTER-ERR\r\n' >&2 ;;
     *) printf 'S-1-16-12288\r\n200\r\n' ;; esac ;;
   post-new) printf 'S-1-16-12288\r\n300\r\n' ;;
-  post-old) printf 'S-1-16-12288\r\n200\r\n' ;;
+  post-old) printf 'S-1-16-12288\r\n250\r\n' ;;
   posix-low|posix-root)
     marker=$(printf '%s\n' "$args" | sed -n 's/.*\(BECOME-SUCCESS-[A-Za-z0-9]*\).*/\1/p')
     printf '%s\n' "$marker"
@@ -78,8 +85,7 @@ reject_text() { local text=$1; shift; if grep -Fq -- "$text" "$@"; then
   printf 'Unexpected text found: %s\n' "$text"; exit 1; fi; }
 run_case ok 2a-pass inventory.yml pass.yml
 run_case ok 2a-check inventory.yml pass.yml --check
-saved_pythonpath=${PYTHONPATH-}; export PYTHONPATH="$run_dir/python${PYTHONPATH:+:$PYTHONPATH}"
-run_case ok 2a-winrm-settings inventory.yml winrm-settings.yml; export PYTHONPATH="$saved_pythonpath"
+PYTHONPATH="$run_dir/python${PYTHONPATH:+:$PYTHONPATH}" run_case ok 2a-winrm-settings inventory.yml winrm-settings.yml
 run_case ok 2b-precedence inventory.yml precedence.yml
 run_case ok 2c-input-role inventory-input.yml input.yml -e "@$test_dir/input-cases.yml"
 for input_case in basic kerberos_integer kerberos_string missing_name null_name missing_user null_user; do
@@ -89,17 +95,18 @@ for input_case in basic kerberos_integer kerberos_string missing_name null_name 
   require_text 'needs a name, a user' "$run_dir/2c-caller-$input_case.out"
   [ ! -s "$CREDENTIAL_RESOLVER_TEST_LOG" ]
 done
-export CREDENTIAL_RESOLVER_DOWN_CALLS=4 CREDENTIAL_RESOLVER_POST_USER=post-new
+export CREDENTIAL_RESOLVER_DOWN_CALLS=3
+export CREDENTIAL_RESOLVER_POST_USER=post-new
 run_case ok 2e-caller-no-restart inventory-caller.yml caller-scenarios.yml
 run_case ok 2e-caller-new-boot inventory-caller.yml caller-scenarios.yml -e __domain_member_boot_time__=250
 export CREDENTIAL_RESOLVER_POST_USER=post-old
 run_case fail 2e-caller-old-boot inventory-caller.yml caller-scenarios.yml -e __domain_member_boot_time__=250
+[ "$(grep -c 'USER=post-old.*Get-CimInstance' "$run_dir/2e-caller-old-boot.ssh")" -eq 3 ]
 export CREDENTIAL_RESOLVER_DOWN_CALLS=0
 run_case ok 2f-posix-elevation inventory.yml posix-elevation.yml
 require_text 'boot not newer than the floor' "$run_dir/2e-caller-old-boot.out"
 if ! grep -Eq "works as 'elevated-winner'.*not-elevated.*REFUSAL-ERR" \
     "$run_dir/2e-caller-no-restart.out"; then printf 'The success report omitted the refusal.\n'; exit 1; fi
-reject_text 'Pausing for' "$run_dir/2e-caller-no-restart.out"
 for secret in "$CREDENTIAL_RESOLVER_CANARY_A" "$CREDENTIAL_RESOLVER_CANARY_B"; do
   reject_text "$secret" "${logs[@]}"; done
 if grep -Fq -f "$CREDENTIAL_RESOLVER_KEY_FILE" "${logs[@]}" \
