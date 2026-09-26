@@ -45,11 +45,12 @@ Both entry points are re-runnable. The virtualenv is probed for drift — a wron
 
 ## Design invariants
 
-- **The remote-tmp base is created before anything else in the main stage**, and in two passes. Pass one creates it without an SELinux context, because the host does not yet have the `python3-libselinux` binding that a context request needs; pass two applies the context immediately after `dnf` installs that binding.
-- **Prerequisite package installation is not error-tolerant.** Everything below it depends on python3.12 existing, and masking a failure there resurfaces as a confusing venv error several tasks later.
+- **Python 3.12 is installed before any module runs.** The raw install command first refuses any host other than RHEL or Rocky 8, and every role module is pinned to `rhel8_bootstrap_python_bin`.
+- **The remote-tmp base is created in one pass before packaged prerequisites and venv work.** Ownership, mode and SELinux context are applied together.
+- **Prerequisite package installation is not error-tolerant.** A repository or package failure is reported at that task instead of surfacing later during venv work.
 - **Venv drift is detected structurally, not by message text.** The probe reads `lineinfile`'s documented `found` counter rather than its undocumented `msg` string, so an upstream rewording cannot silently disable drift detection and leave stale virtualenvs in place forever.
 - **fapolicyd trust is applied both before and after the pip work**, and the database is refreshed inline each time, because trust that takes effect later does not help an install happening now.
 
 ## Verification
 
-The OS is asserted by family, distribution and major version before any work begins, from identity operands in `vars/main.yml` rather than `defaults/`, so a caller cannot override the check into uselessness. The python3.12 version is read back for drift detection, and the hostname is confirmed against what the playbook declared.
+The raw Python install refuses the wrong distribution or major release before changing it. The module-based guard then asserts family, distribution and major version from identity operands in `vars/main.yml` rather than `defaults/`, so a caller cannot override the check into uselessness. The python3.12 version is read back for drift detection, and the hostname is confirmed against what the playbook declared.

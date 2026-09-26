@@ -24,25 +24,17 @@
 #     'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product
 #     whose ansible.cfg overwrites it during composition must re-add the entry, or use the path
 #     form 'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
-#   * HOST SELECTION IS THE CALLER'S JOB. The product play this was promoted from selected
-#     'all:!wazuh_agents_windows', with this reasoning, preserved verbatim:
-#         "Exclude Windows endpoints: /opt/ansible/venv is a Linux (RHEL) boto3-on-target
-#          concern, and the Windows agent path pulls the MSI via the controller's venv, not the
-#          target's. Without this exclusion the RHEL-8 assert below fails on any
-#          wazuh_agents_windows host in a combined run."
-#     That exclusion is now enforced two ways instead of one: the OS assert below fails LOUDLY
-#     on a host other than RHEL/Rocky 8 (strictly better than a play silently skipping it), and
-#     hosts call the matching 'Windows_Server_<release>/tasks/bootstrap.yml' instead.
-#   * 'gather_facts' may be true or false — the INIT stage loads, conditionally and narrowly,
-#     exactly the three fact subsets this file reads. That is the whole reason it is safe to
-#     call on a host nobody has touched yet.
+#   * HOST SELECTION IS THE CALLER'S JOB. Select only RHEL/Rocky 8; the raw install refuses a
+#     wrong host before changing it. Windows hosts call their matching
+#     'Windows_Server_<release>/tasks/bootstrap.yml' instead.
+#   * 'gather_facts: false' is required on a fresh EL8 host. Play-level fact gathering runs a
+#     module before this role can install Python 3.12.
 #
 # --- [ Privilege Model ] --------------------------------------------------------------------- #
-# INIT overrides config, play, and inventory escalation with both the keyword and connection
-# variable; MAIN runs under 'become: true' (on the block, once). This is not cosmetic: the
-# unprivileged INIT is what makes the 'user' fact subset report the LOGIN user rather than root,
-# which is what the remote-tmp base must be owned by. As elsewhere in Ansible, include-role
-# parameters and extra vars outrank block vars; callers must not force ansible_become there.
+# The raw Python install runs with 'become: true' before the unprivileged INIT. INIT uses both
+# the keyword and connection variable so the 'user' facts report the LOGIN user, which must own
+# the remote-tmp base. MAIN runs under 'become: true'. Include parameters and extra vars outrank
+# block vars; callers must not force ansible_become there.
 # ============================================================================================= #
 
 #region ------ [ Process: Bootstrap The Host ] ------------------------------------------------ #
@@ -50,7 +42,37 @@
 # NOTE the wrapper is named 'Entering Bootstrap', not the reference's 'Entering Role', so logs
 # identify the explicitly selected entry point unambiguously.
 - name: 'PROCESS | Bootstrap The RHEL Or Rocky 8 Host'
+  vars:
+    ansible_python_interpreter: '{{ rhel8_bootstrap_python_bin }}'
+
   block:
+
+  #region ------ [ Process: Install The Python That Modules Need ] ---------------------------- #
+
+    # Modules need Python >= 3.9, while stock EL8 has 3.6, so raw installs it before any
+    # module can run. The release check keeps a direct role call from changing the wrong host.
+    - name: 'PROCESS | Install The Python That Modules Need'
+      become: true
+      changed_when: >-
+        'redhat_rocky_8: installed python3.12' in __redhat_rocky_8_python_install__.stdout_lines
+      register: '__redhat_rocky_8_python_install__'
+
+      ansible.builtin.raw: |
+        . /etc/os-release
+        case "$ID ${VERSION_ID%%.*}" in
+          'rhel 8' | 'rocky 8') ;;
+          *) echo "redhat_rocky_8 refuses $ID $VERSION_ID"; exit 1 ;;
+        esac
+        python_bin={{ rhel8_bootstrap_python_bin | quote }}
+        is_312() { "$python_bin" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))' 2>/dev/null; }
+        if ! is_312; then
+          [ "$python_bin" = /usr/bin/python3.12 ] || { echo "$python_bin is not Python 3.12"; exit 1; }
+          dnf -y install python3.12 || exit 1
+          echo 'redhat_rocky_8: installed python3.12'
+          is_312 || { echo "$python_bin is not Python 3.12"; exit 1; }
+        fi
+
+  #endregion --- [ Process: Install The Python That Modules Need ] ---------------------------- #
 
   #region ------ [ Begin: Read The Host And Confirm It Is Supported ] ------------------------- #
   #   DELIBERATELY UNPRIVILEGED — see the Privilege Model note in the header.
@@ -158,20 +180,19 @@
         # SKIP GUARD: a remote_tmp beginning with '~' is the stock home-relative default. It
         # already exists, it is already writable, and ansible.builtin.file would not expand the
         # tilde correctly under become anyway.
-        #
-        # PASS ONE intentionally omits selevel/serole/setype/seuser. A bare Rocky 8 image may not
-        # have the python3-libselinux binding yet, so requesting a context here would fail before
-        # the package task below could install that declared dependency. Ownership and mode do
-        # not require the binding. PASS TWO applies the context immediately after
-        # dnf installs it.
         - name: 'PROCESS | Ensure The Remote-Tmp Base Exists'
           when: not (rhel8_bootstrap_remote_tmp_base | trim is match('~'))
+
           ansible.builtin.file:
-            path: "{{ rhel8_bootstrap_remote_tmp_base | trim }}"
-            state: 'directory'
-            owner: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
             group: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
             mode: '0700'
+            owner: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
+            path: "{{ rhel8_bootstrap_remote_tmp_base | trim }}"
+            selevel: 's0'
+            serole: 'object_r'
+            setype: 'usr_t'
+            seuser: 'system_u'
+            state: 'directory'
 
       #endregion --- [ Process: Establish The Remote-Tmp Base ] ------------------------------- #
 
@@ -198,13 +219,8 @@
 
       #region ------ [ Process: Install The Prerequisite Packages ] --------------------------- #
 
-        # NO 'ignore_errors' — a deliberate departure from the reference, which carries
-        # 'ignore_errors: yes' here. Nothing about this step is optional: everything below
-        # depends on python3.12 existing. Masking a dnf failure walks straight into a broken
-        # venv and re-reports the problem three tasks later in the wrong place — the version
-        # read below would die with a confusing 'No such file or directory', and if that too
-        # were tolerated the venv would be built from platform-python and fail at boto3 pin
-        # resolution, nowhere near the real cause.
+        # Package installation is not error-tolerant; a repository or package failure is
+        # reported at this task instead of surfacing later during venv work.
         - name: 'PROCESS | Install The Prerequisite Packages'
           ansible.builtin.dnf:
             name: "{{ rhel8_bootstrap_packages }}"
@@ -212,23 +228,6 @@
             disable_gpg_check: false
             sslverify: true
             validate_certs: true
-
-        # PASS TWO for the deliberately split remote-tmp task. dnf cannot move before PASS ONE:
-        # dnf is itself a remote module, so any non-pipelined execution of it needs the writable
-        # base that PASS ONE creates first. Each module invocation is a new process, so this task
-        # can use the platform-python SELinux binding installed by the immediately preceding dnf.
-        - name: 'PROCESS | Apply The Remote-Tmp SELinux Context'
-          when: not (rhel8_bootstrap_remote_tmp_base | trim is match('~'))
-          ansible.builtin.file:
-            path: "{{ rhel8_bootstrap_remote_tmp_base | trim }}"
-            state: 'directory'
-            owner: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
-            group: "{{ ansible_user | default(ansible_facts.user_id) | default('root') }}"
-            mode: '0700'
-            selevel: 's0'
-            serole: 'object_r'
-            setype: 'usr_t'
-            seuser: 'system_u'
 
         # Registered for drift detection below, not for display. The reference reaches the same
         # place with two tasks and a 'which' package; the interpreter path is RPM-owned and
