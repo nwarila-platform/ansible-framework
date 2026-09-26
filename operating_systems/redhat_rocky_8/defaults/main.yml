@@ -39,8 +39,10 @@ rhel8_bootstrap_venv_path: '/opt/ansible/venv'
 
 #region ------ [ Package And Python Dependency Sets ] ----------------------------------------- #
 
+# The role's pip module runs under the pinned python3.12 and needs its pkg_resources.
 rhel8_bootstrap_packages:
   - 'python3.12'
+  - 'python3.12-setuptools'
   - 'python3-pip'
   - 'python3-setuptools'
 
