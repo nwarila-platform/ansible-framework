@@ -47,9 +47,10 @@
 # PYTHON. The platform python here is 3.9, not 3.6, so the interpreter this role installs is no #
 # longer the only usable one -- but the venv is still built from 3.12 so that every host in the #
 # fleet presents the same interpreter to the suite. On this release 3.12 comes from AppStream   #
-# as the package "python3.12", which is what defaults/main.yml asks for. The pip, setuptools    #
-# and libselinux packages stay unversioned: those are for the platform python that Ansible's    #
-# own modules run under, which is 3.9 here.                                                     #
+# as the package "python3.12", which is what defaults/main.yml asks for.                        #
+# A fresh host's first run discovers the platform 3.9, which the unversioned pip, setuptools    #
+# and libselinux packages serve; later auto-discovery invocations discover the installed 3.12,  #
+# whose pkg_resources comes from python3.12-setuptools.                                         #
 #                                                                                               #
 # NO hardening.yml. redhat_rocky_8 carries one; this role does not, and it is not a copy away.  #
 # Its SECOND task asserts distribution_major_version == 8 -- the first only gathers the         #
