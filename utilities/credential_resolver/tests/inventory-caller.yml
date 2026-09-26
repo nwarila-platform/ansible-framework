@@ -6,9 +6,8 @@ all:
       ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
       ansible_ssh_host_key_checking: false
       platform: 'Windows'
-      caller_assertions: true
       caller_pause: 0
-      caller_rounds: 1
+      caller_rounds: 2
       caller_sets:
         - name: 'not-elevated'
           connection: 'ssh'

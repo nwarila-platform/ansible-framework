@@ -18,10 +18,6 @@ credential_resolver_candidates:
     connection: 'ssh'
     user: 'automation@example.com'
     private_key: "{{ lookup('secret', secret_url, secret_digest) }}"
-    private_key_file: '/path/to/key'
-    password: "{{ lookup('secret', password_url, password_digest) }}"
-    transport: 'ntlm'
-    port: 5986
 ```
 
 `credential_resolver_require_elevated` defaults to `false`. When true, the winning POSIX set
@@ -53,10 +49,11 @@ parameters outrank them during an attempt, and the published facts outrank them 
 Inventory owns trust policy for every host: always accept SSH host keys, and set
 `ansible_winrm_server_cert_validation: 'ignore'` for WinRM over HTTPS. Kerberos requires its
 library in Ansible's Python, `kinit`, and realm configuration on the controller. Its set user must
-be a UPN because managed `kinit` uses it as the principal. Managed `kinit` leaves a private ticket
-cache in `TMPDIR`; ephemeral runners discard it, while long-lived controllers use and remove a
-per-run directory. Address the target as its service principal expects, normally its FQDN, or set
-`ansible_winrm_kerberos_hostname_override` when tunnelling.
+be a UPN because managed `kinit` uses it as the principal. Managed `kinit` keeps a private (0600)
+ticket cache in `TMPDIR` for the life of each connection and deletes it when the connection is
+released. An interrupted worker can leave one behind, so a long-lived controller points `TMPDIR`
+at a per-run directory and removes it. Address the target as its service principal expects,
+normally its FQDN, or set `ansible_winrm_kerberos_hostname_override` when tunnelling.
 
 Secrets in sets are lookups or vaulted values, never literals: errors can print source lines near
 a rejected value. Key content requires `ANSIBLE_SSH_AGENT`; use `auto` for an ephemeral runner,

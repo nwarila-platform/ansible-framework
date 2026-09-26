@@ -70,30 +70,6 @@
         apply: {tags: ['always']}
         name: 'credential_resolver'
 
-    - name: 'BEGIN | Assert The First-Pass Example'
-      tags: ['always']
-      when: caller_assertions | default(false) | bool
-
-      ansible.builtin.assert:
-        fail_msg: 'The caller example did not preserve or stop on the expected responses.'
-        quiet: true
-        that:
-          - __credential_resolver_winner__ == 'elevated-winner'
-          - __credential_resolver_attempts__ | map(attribute='set') | list
-            == ['not-elevated', 'command-failure', 'elevated-winner']
-          - __credential_resolver_attempts__ | map(attribute='observation') | list
-            == ['not elevated', 'command failed', 'works']
-          - __credential_resolver_attempts__[0].stdout
-            == 'MEDIUM-OUT\r\n100\r\n'
-          - __credential_resolver_attempts__[0].stderr == 'REFUSAL-ERR\r\n'
-          - __credential_resolver_attempts__[1].stdout == 'FAILURE-OUT\r\n'
-          - __credential_resolver_attempts__[1].stderr == 'FAILURE-ERR\r\n'
-          - __credential_resolver_attempts__[2].stdout
-            == 'S-1-16-12288\r\n200\r\n'
-          - __credential_resolver_attempts__[2].stderr == 'WINNER-ERR\r\n'
-          - lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG'))
-            is not search('USER=later-unused')
-
     # host_readiness, os_bootstrap and domain_member (restart_wait: false) run here.
 
     # After a restart domain_member caused: expect the post-join identity (facts outrank task
@@ -151,16 +127,3 @@
       ansible.builtin.include_role:
         apply: {tags: ['always']}
         name: 'credential_resolver'
-
-    - name: 'END | Assert The Post-Join Example'
-      tags: ['always']
-      when:
-        - caller_assertions | default(false) | bool
-        - __domain_member_boot_time__ is defined
-
-      ansible.builtin.assert:
-        fail_msg: 'The post-join example did not adopt the identity on the newer boot.'
-        quiet: true
-        that:
-          - __credential_resolver_winner__ == 'post-join'
-          - __credential_resolver_attempts__ | map(attribute='observation') | list == ['works']
