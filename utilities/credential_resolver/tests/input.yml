@@ -1,35 +1,11 @@
 ---
-# ============================================================================================= #
-# File: '{{ playbook_dir }}/input.yml' | Version 1.0.0                                          #
-# --- [ Description ] ------------------------------------------------------------------------- #
-# Proves every rejected input shape fails before a connection is opened.
-# ============================================================================================= #
 - name: 'PLAY | Exercise Credential Input Validation'
   hosts: 'all'
   gather_facts: false
-  vars:
-    input_cases:
-      - {name: 'basic', connection: 'winrm', user: 'u', transport: 'basic',
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-      - {name: 'kerberos-int', connection: 'winrm', user: 'u@example.com',
-         transport: 'kerberos', port: 5985,
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-      - {name: 'kerberos-string', connection: 'winrm', user: 'u@example.com',
-         transport: 'kerberos', port: '5985',
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-      - {connection: 'ssh', user: 'u',
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
-      - {name: null, connection: 'ssh', user: 'u',
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
-      - {name: 'missing-user', connection: 'ssh',
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
-      - {name: 'null-user', connection: 'ssh', user: null,
-         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
   tasks:
     - name: 'BEGIN | Check Every Malformed Set Before Connecting'
-      loop: "{{ range(input_cases | length) | list }}"
+      loop: "{{ input_cases | list }}"
       loop_control:
-        label: "case {{ item + 1 }}"
-        loop_var: '__input_index__'
-
+        label: "{{ item }}"
+        loop_var: '__input_key__'
       ansible.builtin.include_tasks: 'input-case.yml'

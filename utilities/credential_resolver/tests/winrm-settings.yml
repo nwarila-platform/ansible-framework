@@ -1,0 +1,15 @@
+---
+- name: 'PLAY | Exercise Published WinRM Settings'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    winrm_cases:
+      - {name: 'http-settings', port: 5985, scheme: 'http', encryption: 'always'}
+      - {name: 'https-settings', port: 5986, scheme: 'https', encryption: 'auto'}
+  tasks:
+    - name: 'PROCESS | Check Each WinRM Setting Set'
+      loop: "{{ winrm_cases }}"
+      loop_control:
+        label: "{{ item.name }}"
+        loop_var: 'winrm_case'
+      ansible.builtin.include_tasks: 'winrm-settings-case.yml'

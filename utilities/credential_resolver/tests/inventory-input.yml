@@ -12,29 +12,5 @@ all:
         user: 'unused-post-join'
         private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
       caller_rounds: 1
-      caller_sets: >-
-        {{ caller_input_cases[lookup('env', 'CREDENTIAL_RESOLVER_INPUT_CASE')] }}
-      caller_input_cases:
-        basic:
-          - {name: 'basic', connection: 'winrm', user: 'u', transport: 'basic',
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        kerberos_integer:
-          - {name: 'kerberos-int', connection: 'winrm', user: 'u@example.com',
-             transport: 'kerberos', port: 5985,
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        kerberos_string:
-          - {name: 'kerberos-string', connection: 'winrm', user: 'u@example.com',
-             transport: 'kerberos', port: '5985',
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        missing_name:
-          - {connection: 'ssh', user: 'u',
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        null_name:
-          - {name: null, connection: 'ssh', user: 'u',
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        missing_user:
-          - {name: 'missing-user', connection: 'ssh',
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-        null_user:
-          - {name: 'null-user', connection: 'ssh', user: null,
-             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      caller_sets:
+        - "{{ input_cases[lookup('env', 'CREDENTIAL_RESOLVER_INPUT_CASE')] }}"

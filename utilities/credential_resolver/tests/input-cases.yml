@@ -1,0 +1,14 @@
+---
+input_canary_a: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
+input_cases:
+  basic: {name: 'basic', connection: 'winrm', user: 'u', transport: 'basic',
+          password: "{{ input_canary_a }}"}
+  kerberos_integer: {name: 'kerberos-int', connection: 'winrm', user: 'u@example.com',
+                     transport: 'kerberos', port: 5985, password: "{{ input_canary_a }}"}
+  kerberos_string: {name: 'kerberos-string', connection: 'winrm', user: 'u@example.com',
+                    transport: 'kerberos', port: '5985', password: "{{ input_canary_a }}"}
+  missing_name: {connection: 'ssh', user: 'u', password: "{{ input_canary_a }}"}
+  null_name: {name: null, connection: 'ssh', user: 'u', password: "{{ input_canary_a }}"}
+  missing_user: {name: 'missing-user', connection: 'ssh', password: "{{ input_canary_a }}"}
+  null_user: {name: 'null-user', connection: 'ssh', user: null,
+              password: "{{ input_canary_a }}"}

@@ -1,12 +1,11 @@
---- # One position keeps verbose output from rendering the malformed set and its secret.
-- name: 'BEGIN | Refuse Malformed Set {{ __input_index__ + 1 }}'
+---
+- name: 'BEGIN | Refuse Malformed Set {{ __input_key__ }}'
   block:
-    - name: 'BEGIN | Validate Malformed Set {{ __input_index__ + 1 }}'
+    - name: 'BEGIN | Validate Malformed Set {{ __input_key__ }}'
       vars:
-        credential_resolver_candidates: ["{{ input_cases[__input_index__] }}"]
+        credential_resolver_candidates: ["{{ input_cases[__input_key__] }}"]
       ansible.builtin.include_role:
         name: 'credential_resolver'
-
     - name: 'BEGIN | Reject An Accepted Malformed Set'
       ansible.builtin.fail:
         msg: 'A malformed credential set passed validation.'

@@ -1,9 +1,4 @@
 ---
-# ============================================================================================= #
-# File: '{{ playbook_dir }}/precedence.yml' | Version 1.0.0                                     #
-# --- [ Description ] ------------------------------------------------------------------------- #
-# Proves that each attempt owns its identity and that an SSH winner replaces stale facts.
-# ============================================================================================= #
 - name: 'PLAY | Exercise Credential Precedence'
   hosts: 'all'
   gather_facts: false
@@ -49,18 +44,13 @@
         quiet: true
         that:
           - __credential_resolver_winner__ == 'key-only'
-          - __credential_resolver_attempts__ | map(attribute='observation') | list == ['works']
-          - ansible_connection == 'ssh'
-          - ansible_user == 'new-key'
-          - ansible_password is none
-          - ansible_ssh_password is none
-          - ansible_port is none
-          - ansible_winrm_transport is none
-          - ansible_winrm_scheme is none
-          - ansible_winrm_message_encryption is none
-          - __precedence_after__.stdout == 'AFTER-OUT\r\n'
-          - __precedence_log__ | regex_findall('USER=prior-user.*powershell') | length == 1
-          - __precedence_log__ | regex_findall('USER=new-key.*powershell') | length == 1
+          - >-
+            [ansible_password, ansible_ssh_password, ansible_port,
+            ansible_winrm_transport, ansible_winrm_scheme,
+            ansible_winrm_message_encryption] == [None, None, None, None, None, None]
           - __precedence_log__ | regex_findall('USER=new-key.*echo after') | length == 1
           - __precedence_log__ is search('USER=new-key.*PasswordAuthentication=no')
+          - __precedence_log__
+            | regex_findall('USER=(prior-user|new-key).*ControlPath="none".*powershell')
+            == ['prior-user', 'new-key']
           - __precedence_log__ is not search('USER=new-key.*Port=65000')

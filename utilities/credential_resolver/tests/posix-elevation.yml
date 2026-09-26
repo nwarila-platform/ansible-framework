@@ -1,9 +1,4 @@
 ---
-# ============================================================================================= #
-# File: '{{ playbook_dir }}/posix-elevation.yml' | Version 1.0.0                                #
-# --- [ Description ] ------------------------------------------------------------------------- #
-# Proves the POSIX elevation probe refuses a non-root uid and adopts uid 0.
-# ============================================================================================= #
 - name: 'PLAY | Exercise POSIX Elevation'
   hosts: 'all'
   gather_facts: false
@@ -27,9 +22,9 @@
         quiet: true
         that:
           - __credential_resolver_winner__ == 'root'
-          - __credential_resolver_attempts__ | map(attribute='observation') | list
-            == ['not elevated', 'works']
-          - __credential_resolver_attempts__ | map(attribute='stdout') | list
-            == ['1000\r\n', '0\r\n']
+          - __credential_resolver_attempts__ | map(attribute='observation') | list ==
+            ['not elevated', 'works']
+          - __credential_resolver_attempts__ | map(attribute='stdout') | list ==
+            ['1000\r\n', '0\r\n']
           - __posix_log__ | regex_findall('sudo -H -S -n .*?-u root /bin/sh -c') | length == 2
           - __posix_log__ | regex_findall('id -u') | length == 2

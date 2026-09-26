@@ -1,0 +1,62 @@
+---
+- name: 'PLAY | Run The Caller Example'
+  ansible.builtin.import_playbook: 'caller-example.yml'
+- name: 'PLAY | Assert Caller Scenarios And Optional Elevation'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    caller_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+  tasks:
+    - name: 'BEGIN | Assert The First-Boot Wait'
+      ansible.builtin.assert:
+        fail_msg: 'The first-boot wait did not cross the refused calls and stop at an answer.'
+        quiet: true
+        that:
+          - __caller_first_boot__.results | length == 5
+          - __caller_first_boot__.results[:4]
+            | selectattr('unreachable') | list | length == 4
+          - __caller_first_boot__.results[-1].item == [1, 0]
+          - __caller_first_boot__.results[-1].stdout == 'READY\r\n'
+          - caller_log is not search(
+              'USER=(not-elevated|command-failure|elevated-winner).*Get-CimInstance')
+    - name: 'PROCESS | Assert The First Pass Without A Restart'
+      when: __domain_member_boot_time__ is not defined
+      ansible.builtin.assert:
+        fail_msg: 'The first pass did not preserve the refusal, failure, and winner responses.'
+        quiet: true
+        that:
+          - __credential_resolver_attempts__ | map(attribute='set') | list
+            == ['not-elevated', 'command-failure', 'elevated-winner']
+          - __credential_resolver_attempts__ | map(attribute='observation') | list
+            == ['not elevated', 'command failed', 'works']
+          - __credential_resolver_attempts__ | map(attribute='stdout') | list
+            == ['MEDIUM-OUT\r\n100\r\n', 'FAILURE-OUT\r\n',
+                'S-1-16-12288\r\n200\r\n']
+          - __credential_resolver_attempts__ | map(attribute='stderr') | list
+            == ['REFUSAL-ERR\r\n', 'FAILURE-ERR\r\n', 'WINNER-ERR\r\n']
+    - name: 'PROCESS | Assert The Post-Join Publication And Wait'
+      when: __domain_member_boot_time__ is defined
+      ansible.builtin.assert:
+        fail_msg: 'The post-join publication, wait, or new-boot pass did not run.'
+        quiet: true
+        that:
+          - caller_log | regex_findall(
+              'USER=' ~ caller_post_join_set.user ~ '.*Get-CimInstance') | length == 2
+          - __caller_post_join__.results[-1].stdout is search('S-1-16-12288')
+          - (__caller_post_join__.results[-1].stdout_lines | last | int)
+            > (__domain_member_boot_time__ | int)
+          - __credential_resolver_winner__ == 'post-join'
+    - name: 'PROCESS | Resolve A Medium Set Without Requiring Elevation'
+      vars:
+        credential_resolver_candidates:
+          - {name: 'medium-optional', connection: 'ssh', user: 'not-elevated',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        credential_resolver_require_elevated: false
+      ansible.builtin.include_role:
+        name: 'credential_resolver'
+    - name: 'END | Assert The Medium Set Can Win'
+      ansible.builtin.assert:
+        fail_msg: 'A Medium set did not win when elevation was optional.'
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'medium-optional'

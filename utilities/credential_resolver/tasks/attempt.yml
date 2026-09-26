@@ -27,10 +27,11 @@
          else ((__credential_resolver_lines__ | first | default('') | trim) == '0') }}
     __credential_resolver_boot__: >-
       {{ __credential_resolver_lines__ | last | default('0') | trim }}
+    __credential_resolver_floor__: "{{ credential_resolver_boot_time_after | string | trim }}"
     __credential_resolver_floor_met__: >-
-      {{ (credential_resolver_boot_time_after | string | trim | length) == 0
+      {{ (__credential_resolver_floor__ | length) == 0
          or not __credential_resolver_windows__
-         or (__credential_resolver_boot__ | int) > (credential_resolver_boot_time_after | int) }}
+         or (__credential_resolver_boot__ | int) > (__credential_resolver_floor__ | int) }}
     __credential_resolver_works__: >-
       {{ __credential_resolver_probe__ is not unreachable
          and __credential_resolver_probe__ is not failed
@@ -52,6 +53,8 @@
 
     #region ------ [ Process: Probe The Set ] ------------------------------------------------- #
 
+    # The boot time only when a floor asks for it: Windows refuses its query to a token that is
+    # not elevated, and such a token must still be reported as what it is.
     - name: 'PROCESS | Probe {{ __credential_resolver_set__.name }}'
       become: >-
         {{ (credential_resolver_require_elevated | bool)
@@ -63,9 +66,11 @@
       register: '__credential_resolver_probe__'
 
       ansible.builtin.raw: >-
-        {{ 'powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh;
-        (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()"'
-        if __credential_resolver_windows__ else 'id -u' }}
+        {{ ('powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh'
+            ~ ('; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
+               if (__credential_resolver_floor__ | length) > 0 else '')
+            ~ '"')
+           if __credential_resolver_windows__ else 'id -u' }}
 
     #endregion --- [ Process: Probe The Set ] ------------------------------------------------- #
 

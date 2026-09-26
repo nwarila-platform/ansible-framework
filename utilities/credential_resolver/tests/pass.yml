@@ -1,99 +1,47 @@
 ---
-# ============================================================================================= #
-# File: '{{ playbook_dir }}/pass.yml' | Version 1.0.0                                           #
-# --- [ Description ] ------------------------------------------------------------------------- #
-# Proves pass reporting, check-mode probing, WinRM encryption paths, and an empty-list result.
-# ============================================================================================= #
-- name: 'PLAY | Exercise One Credential Pass'
+- name: 'PLAY | Exercise Failed Credential Passes'
   hosts: 'all'
   gather_facts: false
+  vars:
+    pass_cases:
+      closed:
+        candidates:
+          - {name: 'closed-one', connection: 'ssh', user: 'closed-one', port: 62001,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+          - {name: 'closed-two', connection: 'ssh', user: 'closed-two', port: 62002,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
+      kerberos:
+        candidates:
+          - {name: 'kerberos-https', connection: 'winrm', user: 'u@example.com',
+             transport: 'kerberos', port: 55986,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      ntlm:
+        candidates:
+          - {name: 'ntlm-http', connection: 'winrm', user: 'u', transport: 'ntlm',
+             port: '5985', password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
   tasks:
-    - name: 'BEGIN | Require Both Closed Sets To Be Reported In Order'
-      block:
-        - name: 'BEGIN | Run The Closed-Port Pass'
-          vars:
-            credential_resolver_candidates:
-              - {name: 'closed-one', connection: 'ssh', user: 'closed-one', port: 62001,
-                 password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-              - {name: 'closed-two', connection: 'ssh', user: 'closed-two', port: 62002,
-                 password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
-
-          ansible.builtin.include_role:
-            name: 'credential_resolver'
-        - name: 'BEGIN | Reject An Unexpected Closed-Port Winner'
-          ansible.builtin.fail:
-            msg: 'A closed credential set unexpectedly worked.'
-      rescue:
-        - name: 'BEGIN | Assert The Closed-Port Responses'
-          ansible.builtin.assert:
-            fail_msg: 'The closed-port pass did not retain both native responses in order.'
-            quiet: true
-            that:
-              - ansible_failed_result.msg is search('No credential set works')
-              - __credential_resolver_attempts__ | map(attribute='set') | list
-                == ['closed-one', 'closed-two']
-              - __credential_resolver_attempts__ | map(attribute='observation') | list
-                == ['unreachable', 'unreachable']
-              - __credential_resolver_attempts__ | selectattr('msg', 'search',
-                'Connection refused') | list | length == 2
-              - __credential_resolver_attempts__[1].msg
-                == (__credential_resolver_probe__.msg | default(None))
-              - __credential_resolver_attempts__[1].stderr
-                == (__credential_resolver_probe__.stderr | default(None))
-    - name: 'PROCESS | Require Kerberos Over HTTPS To Reach The Plugin'
-      block:
-        - name: 'PROCESS | Run The Kerberos HTTPS Pass'
-          vars:
-            credential_resolver_candidates:
-              - {name: 'kerberos-https', connection: 'winrm', user: 'u@example.com',
-                 transport: 'kerberos', port: 55986,
-                 password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
-
-          ansible.builtin.include_role:
-            name: 'credential_resolver'
-      rescue:
-        - name: 'PROCESS | Assert The Kerberos Plugin Response'
-          ansible.builtin.assert:
-            fail_msg: 'The Kerberos HTTPS response was not recorded verbatim.'
-            quiet: true
-            that:
-              - __credential_resolver_attempts__ | length == 1
-              - __credential_resolver_attempts__[0].set == 'kerberos-https'
-              - __credential_resolver_attempts__[0].msg
-                == (__credential_resolver_probe__.msg | default(None))
-    - name: 'PROCESS | Require A String Port To Select NTLM Over HTTP'
-      block:
-        - name: 'PROCESS | Run The NTLM HTTP Pass'
-          vars:
-            credential_resolver_candidates:
-              - {name: 'ntlm-http', connection: 'winrm', user: 'u', transport: 'ntlm',
-                 port: '5985', password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
-
-          ansible.builtin.include_role:
-            name: 'credential_resolver'
-      rescue:
-        - name: 'PROCESS | Assert The NTLM HTTP Response'
-          ansible.builtin.assert:
-            fail_msg: 'The string port did not produce one recorded NTLM attempt.'
-            quiet: true
-            that:
-              - __credential_resolver_attempts__ | length == 1
-              - __credential_resolver_attempts__[0].set == 'ntlm-http'
-              - __credential_resolver_attempts__[0].msg
-                == (__credential_resolver_probe__.msg | default(None))
+    - name: 'PROCESS | Check Each Failed Pass'
+      loop: ['closed', 'kerberos', 'ntlm']
+      loop_control:
+        label: "{{ item }}"
+      vars:
+        pass_case: "{{ pass_cases[item] }}"
+      ansible.builtin.include_tasks: 'failure-case.yml'
     - name: 'END | Require An Empty List To Fail Without An Attempt'
       block:
         - name: 'END | Run The Empty Pass'
           vars:
             credential_resolver_candidates: []
-
           ansible.builtin.include_role:
             name: 'credential_resolver'
+        - name: 'END | Reject An Unexpected Empty-List Winner'
+          ansible.builtin.fail:
+            msg: 'An empty credential list unexpectedly worked.'
       rescue:
         - name: 'END | Assert The Empty Result'
           ansible.builtin.assert:
-            fail_msg: 'An empty candidate list did not fail with an empty attempt list.'
+            fail_msg: 'An empty list did not produce the resolver failure and no attempts.'
             quiet: true
             that:
+              - ansible_failed_result.msg is search('No credential set works')
               - __credential_resolver_attempts__ == []
-              - ansible_failed_result.msg is search('-- \[\]')
