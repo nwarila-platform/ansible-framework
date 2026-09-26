@@ -34,8 +34,9 @@ The winner is published as facts under eleven names: `ansible_connection`, `ansi
 `ansible_winrm_message_encryption`. A field absent from the winner is null.
 
 Two internal facts are also published: `__credential_resolver_winner__` is the set name and
-`__credential_resolver_attempts__` is the ordered list of exact `msg`, `rc`, `stdout`, and
-`stderr` responses plus a separate observation.
+`__credential_resolver_attempts__` is the ordered list of exact answers plus a separate
+observation. A POSIX record keeps the Windows answer and the POSIX answer under `posix`. Nothing
+about the OS is published.
 
 ## Caller contract
 
@@ -73,11 +74,21 @@ set's port also selects its scheme and message encryption: 5985 is HTTP with enc
 (`always`); every other port, including the plugin default 5986, is HTTPS with `auto`. The
 resolver writes both values, so inventory, group, or play values of `ansible_winrm_scheme` or
 `ansible_winrm_message_encryption` do not change its sets. Extra vars outrank these values,
-as they outrank every value. The resolver makes one pass and never waits or retries; a down,
-restarting, or rejecting host fails with every response. Every host tries its sets exactly as
-supplied. An SSH password attempt submits once (`NumberOfPasswordPrompts=1`), and correct
-credentials remain the credential owner's responsibility. Never enable `ANSIBLE_DEBUG`, which
-prints variables.
+as they outrank every value. An `ansible_become` from extra vars, an earlier `set_fact`, or a
+variable on the outer role inclusion -- all higher-precedence sources -- outranks the task
+variables that set escalation for the questions. The resolver makes one pass and never waits or
+retries; a down, restarting, or rejecting host fails with every response. Every host tries its
+sets exactly as supplied. An SSH password attempt submits once (`NumberOfPasswordPrompts=1`), and
+correct credentials remain the credential owner's responsibility. Never enable `ANSIBLE_DEBUG`,
+which prints variables.
+
+No inventory value names the OS. Every set is first asked the Windows question through
+`powershell.exe`; an answer of 127, the POSIX status for command not found, makes the resolver ask
+`id -u`. A working Linux credential therefore makes two logons, while a refused credential makes
+one. This reading serves only the resolver's elevation and boot-floor checks and is not published;
+`os_bootstrap` reads the OS independently. Every question runs without a tty because Windows
+OpenSSH can otherwise report a failed command as successful. A Linux host with `powershell.exe`
+on its `PATH` reads as Windows.
 
 The complete caller shape, including validation, the first-boot wait, the post-restart identity
 publication and elevated/new-boot wait, and both resolver passes, is

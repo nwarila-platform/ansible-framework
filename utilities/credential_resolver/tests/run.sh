@@ -53,10 +53,14 @@ case "$user" in
     case "$args" in *'echo after'*) printf 'AFTER-OUT\r\n' ;; *) printf 'MEDIUM-OUT\r\n100\r\n' ;; esac ;;
   post-new) printf 'S-1-16-12288\r\n300\r\n' ;;
   post-old) printf 'S-1-16-12288\r\n250\r\n' ;;
-  posix-low|posix-root)
-    marker=$(printf '%s\n' "$args" | sed -n 's/.*\(BECOME-SUCCESS-[A-Za-z0-9]*\).*/\1/p')
-    printf '%s\n' "$marker"
-    if [ "$user" = posix-low ]; then printf '1000\r\n'; else printf '0\r\n'; fi ;;
+  posix-low|posix-root) case "$args" in
+    *powershell.exe*) printf 'sh: powershell.exe: command not found\r\n' >&2; exit 127 ;;
+    *'id -u'*)
+      marker=$(printf '%s\n' "$args" | sed -n 's/.*\(BECOME-SUCCESS-[A-Za-z0-9]*\).*/\1/p')
+      printf '%s\n' "$marker"
+      if [ "$user" = posix-low ]; then printf '1000\r\n'; else printf '0\r\n'; fi ;;
+    *) refuse ;;
+  esac ;;
   *) refuse ;;
 esac
 STUB
@@ -125,6 +129,7 @@ run_case fail 2e-caller-old-boot inventory-caller.yml caller-scenarios.yml -e __
 [ "$(grep -c 'USER=post-old.*Get-CimInstance' "$run_dir/2e-caller-old-boot.ssh")" -eq 3 ]
 export CREDENTIAL_RESOLVER_DOWN_CALLS=0
 run_case ok 2f-posix-elevation inventory.yml posix-elevation.yml
+run_case ok 2f-posix-elevation-check inventory.yml posix-elevation.yml --check
 require_text 'boot not newer than the floor' "$run_dir/2e-caller-old-boot.out"
 if ! grep -Eq "works as 'elevated-winner'.*not-elevated.*REFUSAL-ERR" \
     "$run_dir/2e-caller-no-restart.out"; then printf 'The success report omitted the refusal.\n'; exit 1; fi

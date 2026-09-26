@@ -2,9 +2,12 @@
 # File: '{{ role_path }}/tasks/attempt.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
-# One attempt, as the identity main.yml passed in. The probe is raw because the resolver runs
-# before os_bootstrap, when a Windows host's OpenSSH shell is not the one a module needs; the
-# same command reads correctly in cmd.exe, PowerShell and PowerShell under WinRM.
+# One attempt, as the identity main.yml passed in. The questions are raw because the resolver
+# runs before os_bootstrap, when a Windows host's OpenSSH shell is not the one a module needs.
+# No inventory value names the OS: every set is asked the Windows question, which reads the
+# same in cmd.exe, PowerShell and PowerShell under WinRM, and only a host whose shell answers it
+# 127 -- the POSIX exit status for a command not found, in every locale -- is asked the POSIX
+# question.
 #
 # ============================================================================================= #
 ---
@@ -13,24 +16,25 @@
 
 - name: 'PROCESS | Attempt {{ __credential_resolver_set__.name }}'
   vars:
-    __credential_resolver_windows__: >-
-      {{ __credential_resolver_set__.connection == 'winrm'
-         or (platform | default('') | string | lower | trim) == 'windows'
-         or ((platform | default('') | string | lower | trim) != 'linux'
-             and (ansible_shell_type | default('') | string | lower | trim) == 'powershell') }}
+    __credential_resolver_posix__: >-
+      {{ (__credential_resolver_windows_answer__.rc | default(0)) == 127 }}
+    # The answer the attempt is judged by: the POSIX one once the host has shown it is POSIX.
+    __credential_resolver_probe__: >-
+      {{ __credential_resolver_posix_answer__ if __credential_resolver_posix__
+         else __credential_resolver_windows_answer__ }}
     __credential_resolver_lines__: >-
       {{ __credential_resolver_probe__.stdout_lines | default([]) }}
     # The High integrity label, found by its SID so it reads the same in every locale.
     __credential_resolver_elevated__: >-
-      {{ (__credential_resolver_probe__.stdout | default('') is search('S-1-16-12288'))
-         if __credential_resolver_windows__
-         else ((__credential_resolver_lines__ | first | default('') | trim) == '0') }}
+      {{ ((__credential_resolver_lines__ | first | default('') | trim) == '0')
+         if __credential_resolver_posix__
+         else (__credential_resolver_probe__.stdout | default('') is search('S-1-16-12288')) }}
     __credential_resolver_boot__: >-
       {{ __credential_resolver_lines__ | last | default('0') | trim }}
     __credential_resolver_floor__: "{{ credential_resolver_boot_time_after | string | trim }}"
     __credential_resolver_floor_met__: >-
       {{ (__credential_resolver_floor__ | length) == 0
-         or not __credential_resolver_windows__
+         or __credential_resolver_posix__
          or (__credential_resolver_boot__ | int) > (__credential_resolver_floor__ | int) }}
     __credential_resolver_works__: >-
       {{ __credential_resolver_probe__ is not unreachable
@@ -51,43 +55,70 @@
   # Begin The 'Process' Block
   block:
 
-    #region ------ [ Process: Probe The Set ] ------------------------------------------------- #
+    #region ------ [ Process: Ask The Windows Question ] -------------------------------------- #
 
     # The boot time only when a floor asks for it: Windows refuses its query to a token that is
-    # not elevated, and such a token must still be reported as what it is.
-    - name: 'PROCESS | Probe {{ __credential_resolver_set__.name }}'
-      become: >-
-        {{ (credential_resolver_require_elevated | bool)
-           and not __credential_resolver_windows__ }}
+    # not elevated, and such a token must still be reported as what it is. Never escalated: the
+    # question reads the logon itself. The variable, not the keyword, because a caller's own
+    # ansible_become overrides the keyword. 127 is the POSIX reading, not a failure.
+    - name: 'PROCESS | Ask The Windows Question Of {{ __credential_resolver_set__.name }}'
+      changed_when: false
+      check_mode: false
+      failed_when: (__credential_resolver_windows_answer__.rc | default(0)) not in [0, 127]
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__credential_resolver_windows_answer__'
+      vars:
+        ansible_become: false
+
+      ansible.builtin.raw: >-
+        {{ 'powershell.exe -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh'
+           ~ ('; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
+              if (__credential_resolver_floor__ | length) > 0 else '')
+           ~ '"' }}
+
+    #endregion --- [ Process: Ask The Windows Question ] -------------------------------------- #
+
+    #region ------ [ Process: Ask The POSIX Question ] ---------------------------------------- #
+
+    # Asked only of a host that answered 127, with the credentials that just logged in; POSIX
+    # elevation is uid 0 through non-interactive sudo, set by the variable for the same reason.
+    - name: 'PROCESS | Ask The POSIX Question Of {{ __credential_resolver_set__.name }}'
       changed_when: false
       check_mode: false
       ignore_errors: true
       ignore_unreachable: true
-      register: '__credential_resolver_probe__'
+      register: '__credential_resolver_posix_answer__'
+      vars:
+        ansible_become: "{{ credential_resolver_require_elevated | bool }}"
+      when: __credential_resolver_posix__
 
-      ansible.builtin.raw: >-
-        {{ ('powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh'
-            ~ ('; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
-               if (__credential_resolver_floor__ | length) > 0 else '')
-            ~ '"')
-           if __credential_resolver_windows__ else 'id -u' }}
+      ansible.builtin.raw: 'id -u'
 
-    #endregion --- [ Process: Probe The Set ] ------------------------------------------------- #
+    #endregion --- [ Process: Ask The POSIX Question ] ---------------------------------------- #
 
-    #region ------ [ Process: Record The Response ] ------------------------------------------- #
+    #region ------ [ Process: Record The Responses ] ------------------------------------------ #
 
-    - name: 'PROCESS | Record The Response Of {{ __credential_resolver_set__.name }}'
+    # Every answer as received: the Windows question's, and the POSIX question's when a 127 made
+    # the host POSIX.
+    - name: 'PROCESS | Record The Responses Of {{ __credential_resolver_set__.name }}'
       ansible.builtin.set_fact:
         __credential_resolver_attempts__: >-
           {{ __credential_resolver_attempts__ + [{
                'set': __credential_resolver_set__.name,
                'observation': __credential_resolver_observation__,
-               'msg': __credential_resolver_probe__.msg | default(None),
-               'rc': __credential_resolver_probe__.rc | default(None),
-               'stdout': __credential_resolver_probe__.stdout | default(None),
-               'stderr': __credential_resolver_probe__.stderr | default(None)}] }}
+               'msg': __credential_resolver_windows_answer__.msg | default(None),
+               'rc': __credential_resolver_windows_answer__.rc | default(None),
+               'stdout': __credential_resolver_windows_answer__.stdout | default(None),
+               'stderr': __credential_resolver_windows_answer__.stderr | default(None),
+               'posix': {
+                 'msg': __credential_resolver_posix_answer__.msg | default(None),
+                 'rc': __credential_resolver_posix_answer__.rc | default(None),
+                 'stdout': __credential_resolver_posix_answer__.stdout | default(None),
+                 'stderr': __credential_resolver_posix_answer__.stderr | default(None)}
+                 if __credential_resolver_posix__ else None}] }}
 
-    #endregion --- [ Process: Record The Response ] ------------------------------------------- #
+    #endregion --- [ Process: Record The Responses ] ------------------------------------------ #
 
     #region ------ [ Process: Adopt The Set That Works ] -------------------------------------- #
 

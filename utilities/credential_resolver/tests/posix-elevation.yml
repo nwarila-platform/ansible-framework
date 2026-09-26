@@ -11,15 +11,17 @@
 
 - name: 'PLAY | Exercise POSIX Elevation'
   hosts: 'all'
+  become: true
   gather_facts: false
   vars:
+    ansible_become: true
     credential_resolver_candidates:
       - {name: 'not-root', connection: 'ssh', user: 'posix-low',
          password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
       - {name: 'root', connection: 'ssh', user: 'posix-root',
          private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"}
     credential_resolver_require_elevated: true
-    platform: 'linux'
+    platform: 'Windows'
   tasks:
 
     #region ------ [ Process: Resolve An Elevated Identity ] ---------------------------------- #
@@ -34,6 +36,8 @@
     - name: 'END | Assert The Elevated POSIX Result'
       vars:
         __posix_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+        __posix_questions__: >-
+          {{ __posix_log__.splitlines() | select('search', 'powershell.exe|id -u') | list }}
       ansible.builtin.assert:
         fail_msg: 'The POSIX pass did not refuse uid 1000 and adopt uid 0 through sudo.'
         quiet: true
@@ -41,10 +45,28 @@
           - __credential_resolver_winner__ == 'root'
           - __credential_resolver_attempts__ | map(attribute='observation') | list ==
             ['not elevated', 'works']
+          - __credential_resolver_attempts__ | map(attribute='rc') | list == [127, 127]
           - __credential_resolver_attempts__ | map(attribute='stdout') | list ==
+            ['', '']
+          - >-
+            __credential_resolver_attempts__ | map(attribute='stderr') | list ==
+            ["sh: powershell.exe: command not found\r\n",
+            "sh: powershell.exe: command not found\r\n"]
+          - __credential_resolver_attempts__ | map(attribute='posix.rc') | list == [0, 0]
+          - __credential_resolver_attempts__ | map(attribute='posix.stdout') | list ==
             ['1000\r\n', '0\r\n']
+          - __credential_resolver_windows_answer__ is not failed
+          - platform == 'Windows'
+          - __posix_questions__ | length == 4
+          - __posix_questions__[0] is search('USER=posix-low.*powershell.exe')
+          - __posix_questions__[1] is search('USER=posix-low.*sudo .*id -u')
+          - __posix_questions__[2] is search('USER=posix-root.*powershell.exe')
+          - __posix_questions__[3] is search('USER=posix-root.*sudo .*id -u')
+          - __posix_log__ | regex_findall('powershell.exe') | length == 2
           - __posix_log__ | regex_findall('sudo -H -S -n .*?-u root /bin/sh -c') | length == 2
           - __posix_log__ | regex_findall('id -u') | length == 2
+          - __posix_log__ is not search('sudo .*powershell.exe')
+          - __posix_log__ is not search(' -tt ')
 
     #endregion --- [ End: Assert The Elevated Result ] ---------------------------------------- #
 

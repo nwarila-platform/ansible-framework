@@ -67,6 +67,9 @@
         ansible_private_key_file: >-
           {{ __credential_resolver_set__.private_key_file | default(None) }}
         ansible_ssh_password: "{{ __credential_resolver_set__.password | default(None) }}"
+        # Under a tty, Windows OpenSSH reports a failed command as success; without one, every
+        # answer's exit status is its own.
+        ansible_ssh_use_tty: false
         ansible_user: "{{ __credential_resolver_set__.user }}"
         # WinRM over HTTP (5985) must encrypt or refuse to send; over HTTPS, TLS carries it.
         ansible_winrm_message_encryption: >-

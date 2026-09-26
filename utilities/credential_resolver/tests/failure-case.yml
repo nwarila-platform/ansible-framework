@@ -19,7 +19,7 @@
     - name: 'PROCESS | Assert The Resolver Failure For {{ item }}'
       vars:
         expected_names: "{{ pass_case.candidates | map(attribute='name') | list }}"
-        probe: "{{ __credential_resolver_probe__ }}"
+        probe: "{{ __credential_resolver_windows_answer__ }}"
         response_fields: ['msg', 'rc', 'stdout', 'stderr']
         ssh_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
       ansible.builtin.assert:
@@ -31,6 +31,7 @@
           - __credential_resolver_attempts__ | map(attribute='set') | list == expected_names
           - __credential_resolver_attempts__ | map(attribute='observation') | unique | list
             == ['unreachable']
+          - __credential_resolver_attempts__ | map(attribute='posix') | unique | list == [None]
           - pass_case.candidates | length != 2 or ssh_log.splitlines() | length == 2
           - response_fields | map('extract', __credential_resolver_attempts__[-1]) | list
             == [probe.get('msg'), probe.get('rc'), probe.get('stdout'), probe.get('stderr')]
