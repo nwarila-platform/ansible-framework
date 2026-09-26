@@ -20,11 +20,11 @@ refuse() { printf 'ssh: connect to host 127.0.0.1: Connection refused\r\n' >&2; 
 args=$*; user=$(printf '%s\n' "$args" | sed -n 's/.*User="\([^"]*\)".*/\1/p')
 auth=other
 case "$user" in
-  publication-key-content) case "$args" in *IdentitiesOnly=yes*) auth=key-content ;; *) auth=missing ;; esac ;;
-  publication-key-file) case "$args" in *IdentityFile=\"$CREDENTIAL_RESOLVER_KEY_FILE\"*) auth=key-file ;; *) auth=missing ;; esac ;;
+  publication-key-content) case "$args" in *IdentitiesOnly=yes*PasswordAuthentication=no*) [ -z "${SSH_ASKPASS:-}" ] && auth=key-content || auth=missing ;; *) auth=missing ;; esac ;;
+  publication-key-file) case "$args" in *IdentityFile=\"$CREDENTIAL_RESOLVER_KEY_FILE\"*PasswordAuthentication=no*) [ -z "${SSH_ASKPASS:-}" ] && auth=key-file || auth=missing ;; *) auth=missing ;; esac ;;
   publication-password) [ -n "${SSH_ASKPASS:-}" ] && auth=password || auth=missing ;;
 esac
-printf 'USER=%s AUTH=%s ARGS=%s\n' "$user" "$auth" "$args" >> "$CREDENTIAL_RESOLVER_TEST_LOG"
+printf 'USER=%s AUTH=%s ASKPASS=%s ARGS=%s\n' "$user" "$auth" "${SSH_ASKPASS:+set}" "$args" >> "$CREDENTIAL_RESOLVER_TEST_LOG"
 [ "$auth" != missing ] || refuse
 calls=$(($(cat "$CREDENTIAL_RESOLVER_TEST_LOG.calls" 2>/dev/null || printf 0) + 1))
 printf '%s\n' "$calls" > "$CREDENTIAL_RESOLVER_TEST_LOG.calls"
