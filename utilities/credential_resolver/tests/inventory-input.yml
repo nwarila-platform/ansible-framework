@@ -1,0 +1,40 @@
+---
+all:
+  hosts:
+    localhost:
+      ansible_host: '127.0.0.1'
+      ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
+      ansible_ssh_host_key_checking: false
+      caller_pause: 0
+      caller_post_join_set:
+        name: 'unused-post-join'
+        connection: 'ssh'
+        user: 'unused-post-join'
+        private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
+      caller_rounds: 1
+      caller_sets: >-
+        {{ caller_input_cases[lookup('env', 'CREDENTIAL_RESOLVER_INPUT_CASE')] }}
+      caller_input_cases:
+        basic:
+          - {name: 'basic', connection: 'winrm', user: 'u', transport: 'basic',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        kerberos_integer:
+          - {name: 'kerberos-int', connection: 'winrm', user: 'u@example.com',
+             transport: 'kerberos', port: 5985,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        kerberos_string:
+          - {name: 'kerberos-string', connection: 'winrm', user: 'u@example.com',
+             transport: 'kerberos', port: '5985',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        missing_name:
+          - {connection: 'ssh', user: 'u',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        null_name:
+          - {name: null, connection: 'ssh', user: 'u',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        missing_user:
+          - {name: 'missing-user', connection: 'ssh',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+        null_user:
+          - {name: 'null-user', connection: 'ssh', user: null,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}

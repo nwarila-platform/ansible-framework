@@ -1,0 +1,166 @@
+---
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/caller-example.yml' | Version 1.0.0                                 #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The caller shape the README points to, run by tests/run.sh. The role makes one pass and never
+# waits; the two waits here are the playbook's, both host_readiness's looped raw (a loop, not
+# until/retries: a refused session never re-runs under until). SSH identities only: one looped
+# task reuses a WinRM session, whose logon never sees a new group membership.
+#
+# ============================================================================================= #
+
+- name: 'PLAY | Converge A Host Before And After A Restart'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_candidates: "{{ caller_sets }}"
+    credential_resolver_require_elevated: true
+  tasks:
+
+    # Validation first, with the role's own check, so no malformed set is ever submitted.
+    - name: 'BEGIN | Validate The Credential Sets'
+      tags: ['always']
+      vars:
+        credential_resolver_candidates: "{{ caller_sets + [caller_post_join_set] }}"
+
+      ansible.builtin.include_role:
+        apply: {tags: ['always']}
+        name: 'credential_resolver'
+        tasks_from: 'validate.yml'
+
+    # First boot: wait until any SSH set answers; a fresh host takes minutes, and no single
+    # identity answers both a fresh and a joined host. Nothing is published yet, so task
+    # variables carry each identity. Positions, not sets, so -vvv never prints a secret.
+    - name: 'BEGIN | Wait Until The Host Answers As One Of Its Sets'
+      become: false
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      loop: >-
+        {{ range(caller_rounds | int) | product(range(__caller_ssh_sets__ | length)) | list }}
+      loop_control:
+        break_when:
+          - __caller_first_boot__ is not unreachable
+          - __caller_first_boot__ is not failed
+        label: "round {{ item.0 + 1 }}: {{ __caller_ssh_sets__[item.1].name }}"
+        pause: "{{ caller_pause | int }}"
+      register: '__caller_first_boot__'
+      tags: ['always']
+      vars:
+        __caller_ssh_sets__: >-
+          {{ caller_sets | selectattr('connection', 'equalto', 'ssh') | list }}
+        ansible_connection: 'ssh'
+        ansible_control_path: 'none'
+        ansible_password: null
+        ansible_port: "{{ __caller_ssh_sets__[item.1].port | default(None) }}"
+        ansible_private_key: "{{ __caller_ssh_sets__[item.1].private_key | default(None) }}"
+        ansible_private_key_file: >-
+          {{ __caller_ssh_sets__[item.1].private_key_file | default(None) }}
+        ansible_ssh_password: "{{ __caller_ssh_sets__[item.1].password | default(None) }}"
+        ansible_user: "{{ __caller_ssh_sets__[item.1].user }}"
+
+      ansible.builtin.raw: 'echo ready'
+
+    - name: 'BEGIN | Resolve The Connection Identity'
+      tags: ['always']
+
+      ansible.builtin.include_role:
+        apply: {tags: ['always']}
+        name: 'credential_resolver'
+
+    - name: 'BEGIN | Assert The First-Pass Example'
+      tags: ['always']
+      when: caller_assertions | default(false) | bool
+
+      ansible.builtin.assert:
+        fail_msg: 'The caller example did not preserve or stop on the expected responses.'
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'elevated-winner'
+          - __credential_resolver_attempts__ | map(attribute='set') | list
+            == ['not-elevated', 'command-failure', 'elevated-winner']
+          - __credential_resolver_attempts__ | map(attribute='observation') | list
+            == ['not elevated', 'command failed', 'works']
+          - __credential_resolver_attempts__[0].stdout
+            == 'MEDIUM-OUT\r\n100\r\n'
+          - __credential_resolver_attempts__[0].stderr == 'REFUSAL-ERR\r\n'
+          - __credential_resolver_attempts__[1].stdout == 'FAILURE-OUT\r\n'
+          - __credential_resolver_attempts__[1].stderr == 'FAILURE-ERR\r\n'
+          - __credential_resolver_attempts__[2].stdout
+            == 'S-1-16-12288\r\n200\r\n'
+          - __credential_resolver_attempts__[2].stderr == 'WINNER-ERR\r\n'
+          - lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG'))
+            is not search('USER=later-unused')
+
+    # host_readiness, os_bootstrap and domain_member (restart_wait: false) run here.
+
+    # After a restart domain_member caused: expect the post-join identity (facts outrank task
+    # variables, so it is published first), then wait until it is elevated on the new boot.
+    - name: 'PROCESS | Expect The Post-Join Identity'
+      no_log: true
+      tags: ['always']
+      when: __domain_member_boot_time__ is defined
+
+      ansible.builtin.set_fact:
+        ansible_connection: 'ssh'
+        ansible_password: null
+        ansible_port: "{{ caller_post_join_set.port | default(None) }}"
+        ansible_private_key: "{{ caller_post_join_set.private_key | default(None) }}"
+        ansible_private_key_file: "{{ caller_post_join_set.private_key_file | default(None) }}"
+        ansible_ssh_password: "{{ caller_post_join_set.password | default(None) }}"
+        ansible_user: "{{ caller_post_join_set.user }}"
+
+    # A run that restarted nothing skips every item; the first skip ends the loop at once.
+    - name: 'PROCESS | Wait Until The Post-Join Identity Is Elevated On The New Boot'
+      become: false
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      loop: "{{ range(caller_rounds | int) | list }}"
+      loop_control:
+        break_when:
+          - >-
+            __caller_post_join__ is skipped
+            or (__caller_post_join__ is not unreachable
+                and __caller_post_join__ is not failed
+                and __caller_post_join__.stdout is search('S-1-16-12288')
+                and (__caller_post_join__.stdout_lines | last | default('0') | int)
+                    > (__domain_member_boot_time__ | int))
+        label: "attempt {{ item + 1 }}"
+        pause: "{{ caller_pause | int }}"
+      register: '__caller_post_join__'
+      tags: ['always']
+      vars:
+        ansible_control_path: 'none'
+      when: __domain_member_boot_time__ is defined
+
+      ansible.builtin.raw: >-
+        powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh;
+        (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()"
+
+    - name: 'PROCESS | Resolve The Post-Join Identity'
+      tags: ['always']
+      vars:
+        credential_resolver_boot_time_after: "{{ __domain_member_boot_time__ }}"
+        credential_resolver_candidates: ["{{ caller_post_join_set }}"]
+      when: __domain_member_boot_time__ is defined
+
+      ansible.builtin.include_role:
+        apply: {tags: ['always']}
+        name: 'credential_resolver'
+
+    - name: 'END | Assert The Post-Join Example'
+      tags: ['always']
+      when:
+        - caller_assertions | default(false) | bool
+        - __domain_member_boot_time__ is defined
+
+      ansible.builtin.assert:
+        fail_msg: 'The post-join example did not adopt the identity on the newer boot.'
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'post-join'
+          - __credential_resolver_attempts__ | map(attribute='observation') | list == ['works']

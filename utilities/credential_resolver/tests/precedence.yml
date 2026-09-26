@@ -1,0 +1,66 @@
+---
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/precedence.yml' | Version 1.0.0                                     #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Proves that each attempt owns its identity and that an SSH winner replaces stale facts.
+# ============================================================================================= #
+- name: 'PLAY | Exercise Credential Precedence'
+  hosts: 'all'
+  gather_facts: false
+  tasks:
+    - name: 'BEGIN | Publish An Earlier Password Identity'
+      vars:
+        credential_resolver_candidates:
+          - {name: 'prior', connection: 'ssh', user: 'prior-user',
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+
+      ansible.builtin.include_role:
+        name: 'credential_resolver'
+    - name: 'PROCESS | Seed Conflicting Connection Facts'
+      no_log: true
+      ansible.builtin.set_fact:
+        ansible_password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"
+        ansible_port: 65000
+        ansible_user: 'stale-user'
+        ansible_winrm_message_encryption: 'never'
+        ansible_winrm_scheme: 'http'
+        ansible_winrm_transport: 'basic'
+    - name: 'PROCESS | Publish A Key-Only SSH Identity'
+      vars:
+        credential_resolver_candidates:
+          - name: 'key-only'
+            connection: 'ssh'
+            user: 'new-key'
+            private_key: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE')) }}"
+
+      ansible.builtin.include_role:
+        name: 'credential_resolver'
+    - name: 'PROCESS | Connect Again With The Published Winner'
+      changed_when: false
+      register: '__precedence_after__'
+      ansible.builtin.raw: 'echo after'
+    - name: 'END | Assert The Published SSH Identity'
+      vars:
+        __precedence_log__: >-
+          {{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}
+
+      ansible.builtin.assert:
+        fail_msg: 'The later key-only winner did not fully replace the stale identity.'
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'key-only'
+          - __credential_resolver_attempts__ | map(attribute='observation') | list == ['works']
+          - ansible_connection == 'ssh'
+          - ansible_user == 'new-key'
+          - ansible_password is none
+          - ansible_ssh_password is none
+          - ansible_port is none
+          - ansible_winrm_transport is none
+          - ansible_winrm_scheme is none
+          - ansible_winrm_message_encryption is none
+          - __precedence_after__.stdout == 'AFTER-OUT\r\n'
+          - __precedence_log__ | regex_findall('USER=prior-user.*powershell') | length == 1
+          - __precedence_log__ | regex_findall('USER=new-key.*powershell') | length == 1
+          - __precedence_log__ | regex_findall('USER=new-key.*echo after') | length == 1
+          - __precedence_log__ is search('USER=new-key.*PasswordAuthentication=no')
+          - __precedence_log__ is not search('USER=new-key.*Port=65000')
