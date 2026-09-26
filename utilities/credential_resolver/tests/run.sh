@@ -18,7 +18,14 @@ cat > "$CREDENTIAL_RESOLVER_TEST_SSH" <<'STUB'
 #!/bin/sh
 refuse() { printf 'ssh: connect to host 127.0.0.1: Connection refused\r\n' >&2; exit 255; }
 args=$*; user=$(printf '%s\n' "$args" | sed -n 's/.*User="\([^"]*\)".*/\1/p')
-printf 'USER=%s ARGS=%s\n' "$user" "$args" >> "$CREDENTIAL_RESOLVER_TEST_LOG"
+auth=other
+case "$user" in
+  publication-key-content) case "$args" in *IdentitiesOnly=yes*) auth=key-content ;; *) auth=missing ;; esac ;;
+  publication-key-file) case "$args" in *IdentityFile=\"$CREDENTIAL_RESOLVER_KEY_FILE\"*) auth=key-file ;; *) auth=missing ;; esac ;;
+  publication-password) [ -n "${SSH_ASKPASS:-}" ] && auth=password || auth=missing ;;
+esac
+printf 'USER=%s AUTH=%s ARGS=%s\n' "$user" "$auth" "$args" >> "$CREDENTIAL_RESOLVER_TEST_LOG"
+[ "$auth" != missing ] || refuse
 calls=$(($(cat "$CREDENTIAL_RESOLVER_TEST_LOG.calls" 2>/dev/null || printf 0) + 1))
 printf '%s\n' "$calls" > "$CREDENTIAL_RESOLVER_TEST_LOG.calls"
 [ "$calls" -gt "${CREDENTIAL_RESOLVER_DOWN_CALLS:-0}" ] || refuse
@@ -29,11 +36,12 @@ case "$user" in
     *'echo ready'*) printf 'READY\r\n' ;;
     *) printf 'MEDIUM-OUT\r\n100\r\n'; printf 'REFUSAL-ERR\r\n' >&2 ;; esac ;;
   command-failure) printf 'FAILURE-OUT\r\n'; printf 'FAILURE-ERR\r\n' >&2; exit 7 ;;
-  elevated-winner|prior-user)
+  elevated-winner)
     printf 'S-1-16-12288\r\n200\r\n'; printf 'WINNER-ERR\r\n' >&2 ;;
-  new-key) case "$args" in
-    *'echo after'*) printf 'AFTER-OUT\r\n'; printf 'AFTER-ERR\r\n' >&2 ;;
-    *) printf 'S-1-16-12288\r\n200\r\n' ;; esac ;;
+  publication-key-content|publication-key-file)
+    case "$args" in *'echo after'*) printf 'AFTER-OUT\r\n' ;; *) printf 'S-1-16-12288\r\n200\r\n' ;; esac ;;
+  publication-password)
+    case "$args" in *'echo after'*) printf 'AFTER-OUT\r\n' ;; *) printf 'MEDIUM-OUT\r\n100\r\n' ;; esac ;;
   post-new) printf 'S-1-16-12288\r\n300\r\n' ;;
   post-old) printf 'S-1-16-12288\r\n250\r\n' ;;
   posix-low|posix-root)
@@ -57,8 +65,11 @@ import os
 class Protocol:
     def __init__(self, endpoint, transport='plaintext', username=None, password=None,
                  message_encryption='auto'):
+        if password != os.environ['CREDENTIAL_RESOLVER_CANARY_A']: raise ValueError('WinRM credential missing')
+        if transport != 'ntlm': raise ValueError('WinRM transport missing')
         with open(os.environ['CREDENTIAL_RESOLVER_WINRM_LOG'], 'a', encoding='utf-8') as log:
-            log.write(f'ENDPOINT={endpoint} TRANSPORT={transport} ENCRYPTION={message_encryption}\n')
+            log.write(f'USER={username} ENDPOINT={endpoint} TRANSPORT={transport} '
+                      f'ENCRYPTION={message_encryption}\n')
     def open_shell(self, codepage=65001): return 'shell'
     def _get_soap_header(self, **kwargs): return {}
     def run_command(self, shell_id, command, args, console_mode_stdin=False): return 'command'
@@ -85,8 +96,7 @@ reject_text() { local text=$1; shift; if grep -Fq -- "$text" "$@"; then
   printf 'Unexpected text found: %s\n' "$text"; exit 1; fi; }
 run_case ok 2a-pass inventory.yml pass.yml
 run_case ok 2a-check inventory.yml pass.yml --check
-PYTHONPATH="$run_dir/python${PYTHONPATH:+:$PYTHONPATH}" run_case ok 2a-winrm-settings inventory.yml winrm-settings.yml
-run_case ok 2b-precedence inventory.yml precedence.yml
+PYTHONPATH="$run_dir/python${PYTHONPATH:+:$PYTHONPATH}" run_case ok 2b-publication inventory.yml publication.yml
 run_case ok 2c-input-role inventory-input.yml input.yml -e "@$test_dir/input-cases.yml"
 for input_case in basic kerberos_integer kerberos_string missing_name null_name missing_user null_user; do
   export CREDENTIAL_RESOLVER_INPUT_CASE=$input_case
