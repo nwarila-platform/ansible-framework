@@ -1,11 +1,29 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/caller-scenarios.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Turns the caller example into executable evidence for its no-restart and post-restart paths.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Play: Run The Caller Example ] ----------------------------------------------- #
+
 - name: 'PLAY | Run The Caller Example'
   ansible.builtin.import_playbook: 'caller-example.yml'
+
+#endregion --- [ Play: Run The Caller Example ] ----------------------------------------------- #
+
+#region ------ [ Play: Assert Caller Scenarios ] ---------------------------------------------- #
+
 - name: 'PLAY | Assert Caller Scenarios'
   hosts: 'all'
   gather_facts: false
   vars: {caller_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"}
   tasks:
+
+    #region ------ [ Begin: Assert The First-Boot Wait ] -------------------------------------- #
+
     - name: 'BEGIN | Assert The First-Boot Wait'
       ansible.builtin.assert:
         fail_msg: 'The first-boot wait did not cross the refused calls and stop at an answer.'
@@ -20,6 +38,11 @@
           - caller_log is not search('USER=winrm-unused')
           - caller_log is not search(
               'USER=(not-elevated|command-failure|elevated-winner).*Get-CimInstance')
+
+    #endregion --- [ Begin: Assert The First-Boot Wait ] -------------------------------------- #
+
+    #region ------ [ Process: Assert The First Pass ] ----------------------------------------- #
+
     - name: 'PROCESS | Assert The First Pass And Skipped Post-Join Wait'
       when: __domain_member_boot_time__ is not defined
       ansible.builtin.assert:
@@ -34,6 +57,11 @@
                 'S-1-16-12288\r\n200\r\n']
           - __credential_resolver_attempts__ | map(attribute='stderr') | list
             == ['REFUSAL-ERR\r\n', 'FAILURE-ERR\r\n', 'WINNER-ERR\r\n']
+
+    #endregion --- [ Process: Assert The First Pass ] ----------------------------------------- #
+
+    #region ------ [ Process: Assert The Post-Join Pass ] ------------------------------------- #
+
     - name: 'PROCESS | Assert The Post-Join Publication And Wait'
       when: __domain_member_boot_time__ is defined
       ansible.builtin.assert:
@@ -45,3 +73,7 @@
           - __caller_post_join__.results[-1].stdout is search('S-1-16-12288')
           - (__caller_post_join__.results[-1].stdout_lines | last | int)
             > (__domain_member_boot_time__ | int)
+
+    #endregion --- [ Process: Assert The Post-Join Pass ] ------------------------------------- #
+
+#endregion --- [ Play: Assert Caller Scenarios ] ---------------------------------------------- #

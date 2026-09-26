@@ -1,4 +1,12 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/failure-case.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Centralizes the failure expectations so every rejected pass is judged by one contract.
+#
+# ============================================================================================= #
 ---
+
 - name: 'PROCESS | Require The Resolver Failure For {{ item }}'
   block:
     - name: 'PROCESS | Run The Failed Pass For {{ item }}'

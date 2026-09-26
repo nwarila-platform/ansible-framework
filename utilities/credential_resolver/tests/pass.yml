@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/pass.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Protects honest failure reporting across refused connections and empty input.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Play: Exercise Failed Credential Passes ] ------------------------------------ #
+
 - name: 'PLAY | Exercise Failed Credential Passes'
   hosts: 'all'
   gather_facts: false
@@ -20,11 +30,19 @@
           - {name: 'ntlm-http', connection: 'winrm', user: 'u', transport: 'ntlm',
              port: '5985', password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
   tasks:
+
+    #region ------ [ Process: Check Each Failed Pass ] ---------------------------------------- #
+
     - name: 'PROCESS | Check Each Failed Pass'
       loop: ['closed', 'kerberos', 'ntlm']
       vars:
         pass_case: "{{ pass_cases[item] }}"
       ansible.builtin.include_tasks: 'failure-case.yml'
+
+    #endregion --- [ Process: Check Each Failed Pass ] ---------------------------------------- #
+
+    #region ------ [ End: Require An Empty List To Fail ] ------------------------------------- #
+
     - name: 'END | Require An Empty List To Fail Without An Attempt'
       block:
         - name: 'END | Run The Empty Pass'
@@ -41,3 +59,7 @@
             that:
               - ansible_failed_result.msg is search('No credential set works')
               - __credential_resolver_attempts__ == []
+
+    #endregion --- [ End: Require An Empty List To Fail ] ------------------------------------- #
+
+#endregion --- [ Play: Exercise Failed Credential Passes ] ------------------------------------ #

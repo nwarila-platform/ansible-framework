@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/inventory-caller.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Supplies deterministic identities and wait bounds for both caller lifecycle paths.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Caller Test Host ] ----------------------------------------------------------- #
+
 all:
   hosts:
     localhost:
@@ -29,3 +39,5 @@ all:
         connection: 'ssh'
         user: "{{ lookup('env', 'CREDENTIAL_RESOLVER_POST_USER') | default('post-new', true) }}"
         private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
+
+#endregion --- [ Caller Test Host ] ----------------------------------------------------------- #

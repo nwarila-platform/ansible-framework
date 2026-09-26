@@ -1,4 +1,12 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/input-cases.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Holds malformed fixtures once so role and caller validation use identical inputs.
+#
+# ============================================================================================= #
 ---
+
 input_canary_a: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
 input_cases:
   basic: {name: 'basic', connection: 'winrm', user: 'u', transport: 'basic',

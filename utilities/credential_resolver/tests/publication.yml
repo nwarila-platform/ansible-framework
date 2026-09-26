@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/publication.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Protects every supported winning identity through the same publication proof.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Play: Exercise Published Connection Identities ] ----------------------------- #
+
 - name: 'PLAY | Exercise Published Connection Identities'
   hosts: 'all'
   gather_facts: false
@@ -35,3 +45,5 @@
       loop_control: {label: "{{ publication_case.candidate.name }}", loop_var: 'case_index'}
       vars: {publication_case: "{{ publication_cases[case_index] }}"}
       ansible.builtin.include_tasks: 'publication-case.yml'
+
+#endregion --- [ Play: Exercise Published Connection Identities ] ----------------------------- #

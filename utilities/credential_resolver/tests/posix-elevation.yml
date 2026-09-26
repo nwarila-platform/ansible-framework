@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/posix-elevation.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Protects the POSIX elevation contract through the suite's local transport fixture.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Play: Exercise POSIX Elevation ] --------------------------------------------- #
+
 - name: 'PLAY | Exercise POSIX Elevation'
   hosts: 'all'
   gather_facts: false
@@ -11,8 +21,16 @@
     credential_resolver_require_elevated: true
     platform: 'linux'
   tasks:
+
+    #region ------ [ Process: Resolve An Elevated Identity ] ---------------------------------- #
+
     - name: 'PROCESS | Resolve An Elevated POSIX Identity'
       ansible.builtin.include_role: {name: 'credential_resolver'}
+
+    #endregion --- [ Process: Resolve An Elevated Identity ] ---------------------------------- #
+
+    #region ------ [ End: Assert The Elevated Result ] ---------------------------------------- #
+
     - name: 'END | Assert The Elevated POSIX Result'
       vars:
         __posix_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
@@ -27,3 +45,7 @@
             ['1000\r\n', '0\r\n']
           - __posix_log__ | regex_findall('sudo -H -S -n .*?-u root /bin/sh -c') | length == 2
           - __posix_log__ | regex_findall('id -u') | length == 2
+
+    #endregion --- [ End: Assert The Elevated Result ] ---------------------------------------- #
+
+#endregion --- [ Play: Exercise POSIX Elevation ] --------------------------------------------- #

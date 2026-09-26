@@ -68,11 +68,16 @@ not extra vars, `--private-key`, `ANSIBLE_PRIVATE_KEY`, `ANSIBLE_PRIVATE_KEY_FIL
 `ANSIBLE_REMOTE_PORT`. A `ControlPath` in `ansible_ssh_common_args` or
 `ansible_ssh_extra_args` also defeats the per-attempt fresh logon.
 
-The resolver owns the port: a set supplies it or the connection plugin default applies. It makes
-one pass and never waits or retries; a down, restarting, or rejecting host fails with every
-response. Every host tries its sets exactly as supplied. An SSH password attempt submits once
-(`NumberOfPasswordPrompts=1`), and correct credentials remain the credential owner's
-responsibility. Never enable `ANSIBLE_DEBUG`, which prints variables.
+The resolver owns the port: a set supplies it or the connection plugin default applies. A WinRM
+set's port also selects its scheme and message encryption: 5985 is HTTP with encryption required
+(`always`); every other port, including the plugin default 5986, is HTTPS with `auto`. The
+resolver writes both values, so inventory, group, or play values of `ansible_winrm_scheme` or
+`ansible_winrm_message_encryption` do not change its sets. Extra vars outrank these values,
+as they outrank every value. The resolver makes one pass and never waits or retries; a down,
+restarting, or rejecting host fails with every response. Every host tries its sets exactly as
+supplied. An SSH password attempt submits once (`NumberOfPasswordPrompts=1`), and correct
+credentials remain the credential owner's responsibility. Never enable `ANSIBLE_DEBUG`, which
+prints variables.
 
 The complete caller shape, including validation, the first-boot wait, the post-restart identity
 publication and elevated/new-boot wait, and both resolver passes, is

@@ -1,6 +1,5 @@
----
 # ============================================================================================= #
-# File: '{{ role_path }}/tasks/validate.yml' | Version 1.0.0                                    #
+# File: '{{ role_path }}/tasks/validate.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
 # The shape of every credential set, checked before anything connects. main.yml runs it, and a
@@ -8,6 +7,7 @@
 # so no malformed set is ever submitted.
 #
 # ============================================================================================= #
+---
 
 #region ------ [ Begin: Validate The Credential Sets ] ---------------------------------------- #
 

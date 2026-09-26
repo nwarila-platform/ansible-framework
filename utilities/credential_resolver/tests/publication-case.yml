@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/publication-case.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Gives every supported identity the same resolve, reconnect, and publication proof.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Process: Seed Conflicting Facts ] -------------------------------------------- #
+
 - name: 'PROCESS | Seed Conflicting Facts Before {{ publication_case.candidate.name }}'
   no_log: true
   when: publication_case.candidate.name != 'ssh-password'
@@ -9,14 +19,29 @@
     ansible_winrm_message_encryption: 'never'
     ansible_winrm_scheme: 'http'
     ansible_winrm_transport: 'basic'
+
+#endregion --- [ Process: Seed Conflicting Facts ] -------------------------------------------- #
+
+#region ------ [ Process: Resolve The Identity ] ---------------------------------------------- #
+
 - name: 'PROCESS | Resolve {{ publication_case.candidate.name }}'
   vars:
     credential_resolver_candidates: ["{{ publication_case.candidate }}"]
   ansible.builtin.include_role: {name: 'credential_resolver'}
+
+#endregion --- [ Process: Resolve The Identity ] ---------------------------------------------- #
+
+#region ------ [ Process: Connect With The Identity ] ----------------------------------------- #
+
 - name: 'PROCESS | Connect Again With {{ publication_case.candidate.name }}'
   changed_when: false
   register: '__publication_after__'
   ansible.builtin.raw: 'echo after'
+
+#endregion --- [ Process: Connect With The Identity ] ----------------------------------------- #
+
+#region ------ [ Process: Assert The Publication ] -------------------------------------------- #
+
 - name: 'PROCESS | Assert {{ publication_case.candidate.name }}'
   no_log: true
   vars:
@@ -61,3 +86,5 @@
              ~ (candidate.port | default(5986) | string) ~ '/wsman'
              ~ ' TRANSPORT=ntlm ENCRYPTION=' ~ publication_case.encryption)
            | list | length == 2
+
+#endregion --- [ Process: Assert The Publication ] -------------------------------------------- #

@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# ============================================================================================= #
+# File: 'utilities/credential_resolver/tests/run.sh'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The local executable proof for the resolver's caller, publication, failure, and secrecy
+# contracts.
+#
+# Usage: utilities/credential_resolver/tests/run.sh
+#
+# ============================================================================================= #
 set -euo pipefail
 test_dir=$(cd "$(dirname "$0")" && pwd)
 framework_dir=$(cd "$test_dir/../../.." && pwd)

@@ -1,4 +1,12 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/input-case.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Centralizes malformed-set expectations so every invalid fixture is judged by one contract.
+#
+# ============================================================================================= #
 ---
+
 - name: 'BEGIN | Refuse Malformed Set {{ __input_key__ }}'
   block:
     - name: 'BEGIN | Validate Malformed Set {{ __input_key__ }}'

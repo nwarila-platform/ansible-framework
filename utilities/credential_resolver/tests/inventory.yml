@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/inventory.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Provides the loopback host that keeps the resolver suite local and deterministic.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Local Test Host ] ------------------------------------------------------------ #
+
 all:
   hosts:
     localhost:
@@ -6,3 +16,5 @@ all:
       ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
       ansible_ssh_host_key_checking: false
       platform: 'Windows'
+
+#endregion --- [ Local Test Host ] ------------------------------------------------------------ #

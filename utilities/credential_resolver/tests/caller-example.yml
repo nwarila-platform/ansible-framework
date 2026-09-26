@@ -1,6 +1,5 @@
----
 # ============================================================================================= #
-# File: '{{ playbook_dir }}/caller-example.yml' | Version 1.0.0                                 #
+# File: '{{ playbook_dir }}/caller-example.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
 # The caller shape the README points to, run by tests/run.sh. The role makes one pass and never
@@ -9,6 +8,9 @@
 # task reuses a WinRM session, whose logon never sees a new group membership.
 #
 # ============================================================================================= #
+---
+
+#region ------ [ Play: Converge A Host Before And After A Restart ] --------------------------- #
 
 - name: 'PLAY | Converge A Host Before And After A Restart'
   hosts: 'all'
@@ -17,6 +19,8 @@
     credential_resolver_candidates: "{{ caller_sets }}"
     credential_resolver_require_elevated: true
   tasks:
+
+    #region ------ [ Begin: Validate The Credential Sets ] ------------------------------------ #
 
     # Validation first, with the role's own check, so no malformed set is ever submitted.
     - name: 'BEGIN | Validate The Credential Sets'
@@ -28,6 +32,10 @@
         apply: {tags: ['always']}
         name: 'credential_resolver'
         tasks_from: 'validate.yml'
+
+    #endregion --- [ Begin: Validate The Credential Sets ] ------------------------------------ #
+
+    #region ------ [ Begin: Wait Until The Host Answers ] ------------------------------------- #
 
     # First boot: wait until any SSH set answers; a fresh host takes minutes, and no single
     # identity answers both a fresh and a joined host. Nothing is published yet, so task
@@ -63,6 +71,10 @@
 
       ansible.builtin.raw: 'echo ready'
 
+    #endregion --- [ Begin: Wait Until The Host Answers ] ------------------------------------- #
+
+    #region ------ [ Begin: Resolve The Connection Identity ] --------------------------------- #
+
     - name: 'BEGIN | Resolve The Connection Identity'
       tags: ['always']
 
@@ -70,7 +82,11 @@
         apply: {tags: ['always']}
         name: 'credential_resolver'
 
+    #endregion --- [ Begin: Resolve The Connection Identity ] --------------------------------- #
+
     # host_readiness, os_bootstrap and domain_member (restart_wait: false) run here.
+
+    #region ------ [ Process: Wait For The Post-Join Identity ] ------------------------------- #
 
     # After a restart domain_member caused: expect the post-join identity (facts outrank task
     # variables, so it is published first), then wait until it is elevated on the new boot.
@@ -117,6 +133,10 @@
         powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh;
         (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()"
 
+    #endregion --- [ Process: Wait For The Post-Join Identity ] ------------------------------- #
+
+    #region ------ [ Process: Resolve The Post-Join Identity ] -------------------------------- #
+
     - name: 'PROCESS | Resolve The Post-Join Identity'
       tags: ['always']
       vars:
@@ -127,3 +147,7 @@
       ansible.builtin.include_role:
         apply: {tags: ['always']}
         name: 'credential_resolver'
+
+    #endregion --- [ Process: Resolve The Post-Join Identity ] -------------------------------- #
+
+#endregion --- [ Play: Converge A Host Before And After A Restart ] --------------------------- #

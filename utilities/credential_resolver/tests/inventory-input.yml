@@ -1,4 +1,14 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/inventory-input.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Selects one shared malformed fixture for the caller's pre-connection validation path.
+#
+# ============================================================================================= #
 ---
+
+#region ------ [ Input Validation Host ] ------------------------------------------------------ #
+
 all:
   hosts:
     localhost:
@@ -14,3 +24,5 @@ all:
       caller_rounds: 1
       caller_sets:
         - "{{ input_cases[lookup('env', 'CREDENTIAL_RESOLVER_INPUT_CASE')] }}"
+
+#endregion --- [ Input Validation Host ] ------------------------------------------------------ #

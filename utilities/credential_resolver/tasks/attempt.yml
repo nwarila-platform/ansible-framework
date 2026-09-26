@@ -1,6 +1,5 @@
----
 # ============================================================================================= #
-# File: '{{ role_path }}/tasks/attempt.yml' | Version 1.0.0                                     #
+# File: '{{ role_path }}/tasks/attempt.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
 # One attempt, as the identity main.yml passed in. The probe is raw because the resolver runs
@@ -8,6 +7,7 @@
 # same command reads correctly in cmd.exe, PowerShell and PowerShell under WinRM.
 #
 # ============================================================================================= #
+---
 
 #region ------ [ Process: Attempt One Credential Set ] ---------------------------------------- #
 
