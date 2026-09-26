@@ -11,7 +11,6 @@ export CREDENTIAL_RESOLVER_CANARY_A='canary-one-7jL4wK9q'
 export CREDENTIAL_RESOLVER_CANARY_B='canary-two-2mR8xP5v'
 export CREDENTIAL_RESOLVER_DOWN_CALLS=0
 export CREDENTIAL_RESOLVER_KEY_FILE="$run_dir/id"
-export CREDENTIAL_RESOLVER_TEST_LOG
 export CREDENTIAL_RESOLVER_WINRM_LOG="$run_dir/winrm.log"
 export CREDENTIAL_RESOLVER_TEST_SSH="$run_dir/ssh"
 cat > "$CREDENTIAL_RESOLVER_TEST_SSH" <<'STUB'
@@ -84,7 +83,9 @@ logs=()
 run_case() {
   local expectation=$1 label=$2 inventory=$3 playbook=$4; shift 4
   CREDENTIAL_RESOLVER_TEST_LOG="$run_dir/$label.ssh"; export CREDENTIAL_RESOLVER_TEST_LOG
-  : > "$CREDENTIAL_RESOLVER_TEST_LOG"; logs+=("$run_dir/$label.out"); printf 'CASE %s: ' "$label"
+  : > "$CREDENTIAL_RESOLVER_TEST_LOG"
+  logs+=("$run_dir/$label.out")
+  printf 'CASE %s: ' "$label"
   if (cd "$framework_dir" && ansible-playbook -i "$test_dir/$inventory" -vvv \
       "$test_dir/$playbook" "$@") > "$run_dir/$label.out" 2>&1; then result=ok; else result=fail; fi
   if [ "$result" != "$expectation" ]; then

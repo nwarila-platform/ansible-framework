@@ -6,6 +6,5 @@
     - name: 'BEGIN | Check Every Malformed Set Before Connecting'
       loop: "{{ input_cases | list }}"
       loop_control:
-        label: "{{ item }}"
         loop_var: '__input_key__'
       ansible.builtin.include_tasks: 'input-case.yml'
