@@ -1,0 +1,296 @@
+# ============================================================================================= #
+# File: 'applications/windows_disk_manager/tests/test.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Local cases for declared and host-reported platform selection.
+# ============================================================================================= #
+---
+
+#region ------ [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
+
+- name: 'TEST | Detect AWS From Amazon EC2'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Amazon EC2'
+    config:
+      disks: []
+      platform: ''
+    __expected_platform__: 'aws'
+  tasks:
+
+    - name: 'TEST | Accept An Empty Platform Declaration'
+      ansible.builtin.include_role:
+        name: 'windows_disk_manager'
+        tasks_from: 'validate.yml'
+
+    - name: 'TEST | Run The Windows Entry Point For Amazon EC2'
+      register: '__entrypoint_result__'
+      ansible.builtin.include_role:
+        name: 'windows_disk_manager'
+        public: true
+        tasks_from: 'present_windows.yml'
+
+    - name: 'TEST | Read The Effective Platform Dataflow'
+      changed_when: false
+      register: '__dataflow_metrics__'
+      ansible.builtin.command:
+        argv:
+          - 'awk'
+          - |-
+            {
+              if ($0 ~ /^[[:space:]]*#/) next
+              if ($0 ~ /^    __platform__:.*__detected_platform__/) assignment++
+              declaration += gsub(/config[.]platform/, "&")
+              effective += gsub(/__platform__/, "&")
+            }
+            END { printf "%d:%d:%d", assignment, declaration, effective }
+          - "{{ playbook_dir }}/../tasks/present_windows.yml"
+
+    - name: 'TEST | Assert The Effective Platform Dataflow'
+      ansible.builtin.assert:
+        that:
+          - (__dataflow_metrics__.stdout | default('')) == '1:1:6'
+        fail_msg: >-
+          The Windows entry point must derive its effective platform from detection and use only
+          that effective value for every later platform decision.
+        quiet: true
+
+    - name: 'TEST | Assert Amazon EC2 Resolves To AWS'
+      ansible.builtin.assert:
+        that:
+          - __entrypoint_result__ is succeeded
+          - >-
+            windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
+        quiet: true
+
+#endregion --- [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
+
+#region ------ [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
+
+- name: 'TEST | Detect VMware From VMware Inc'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'VMware, Inc.'
+    config:
+      disks: []
+      platform: ''
+    __expected_platform__: 'vmware'
+  tasks:
+
+    - name: 'TEST | Run The Windows Entry Point For VMware Inc'
+      register: '__entrypoint_result__'
+      ansible.builtin.include_role:
+        name: 'windows_disk_manager'
+        public: true
+        tasks_from: 'present_windows.yml'
+
+    - name: 'TEST | Assert VMware Inc Resolves To VMware'
+      ansible.builtin.assert:
+        that:
+          - __entrypoint_result__ is succeeded
+          - >-
+            windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
+        quiet: true
+
+#endregion --- [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
+
+#region ------ [ Play: Normalize A Matching AWS Declaration ] --------------------------------- #
+
+- name: 'TEST | Normalize A Matching AWS Declaration'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Amazon EC2'
+    config:
+      disks: []
+      platform: 'AWS '
+    __expected_platform__: 'aws'
+  tasks:
+
+    - name: 'TEST | Run The Windows Entry Point With A Matching Declaration'
+      register: '__entrypoint_result__'
+      ansible.builtin.include_role:
+        name: 'windows_disk_manager'
+        public: true
+        tasks_from: 'present_windows.yml'
+
+    - name: 'TEST | Assert The Matching Declaration Is Normalized'
+      ansible.builtin.assert:
+        that:
+          - __entrypoint_result__ is succeeded
+          - (config.platform | string | lower | trim) == __expected_platform__
+          - >-
+            windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+        fail_msg: 'The matching declaration did not normalize to the expected platform.'
+        quiet: true
+
+#endregion --- [ Play: Normalize A Matching AWS Declaration ] --------------------------------- #
+
+#region ------ [ Play: Reject A Declaration That Conflicts With The Host ] -------------------- #
+
+- name: 'TEST | Reject A Declaration That Conflicts With The Host'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'VMware, Inc.'
+    config:
+      disks: []
+      platform: 'aws'
+  tasks:
+
+    - name: 'TEST | Exercise The Conflicting Declaration'
+      block:
+
+        - name: 'TEST | Run The Windows Entry Point With A Conflicting Declaration'
+          ansible.builtin.include_role:
+            name: 'windows_disk_manager'
+            tasks_from: 'present_windows.yml'
+
+        - name: 'TEST | Fail On Unexpected Conflicting Declaration Success'
+          ansible.builtin.fail:
+            msg: 'The conflicting declaration case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names The Declaration And Reported Value'
+          ansible.builtin.assert:
+            that:
+              - "'aws' in (ansible_failed_result.msg | default(''))"
+              - "'VMware, Inc.' in (ansible_failed_result.msg | default(''))"
+            fail_msg: 'The conflicting declaration failure did not name both values.'
+            quiet: true
+
+#endregion --- [ Play: Reject A Declaration That Conflicts With The Host ] -------------------- #
+
+#region ------ [ Play: Reject QEMU On Windows ] ----------------------------------------------- #
+
+- name: 'TEST | Reject QEMU On Windows'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'QEMU'
+    config:
+      disks: []
+      platform: ''
+  tasks:
+
+    - name: 'TEST | Exercise QEMU Detection On Windows'
+      block:
+
+        - name: 'TEST | Run The Windows Entry Point For QEMU'
+          ansible.builtin.include_role:
+            name: 'windows_disk_manager'
+            tasks_from: 'present_windows.yml'
+
+        - name: 'TEST | Fail On Unexpected QEMU Success'
+          ansible.builtin.fail:
+            msg: 'The QEMU case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names QEMU And Its Current Status'
+          ansible.builtin.assert:
+            that:
+              - "'QEMU' in (ansible_failed_result.msg | default(''))"
+              - "'Proxmox' in (ansible_failed_result.msg | default(''))"
+            fail_msg: 'The QEMU failure did not explain its current Windows status.'
+            quiet: true
+
+#endregion --- [ Play: Reject QEMU On Windows ] ----------------------------------------------- #
+
+#region ------ [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
+
+- name: 'TEST | Reject An Unknown Reported Value'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Unknown Compute'
+    config:
+      disks: []
+      platform: ''
+  tasks:
+
+    - name: 'TEST | Exercise Unknown Platform Detection'
+      block:
+
+        - name: 'TEST | Run The Windows Entry Point For An Unknown Value'
+          ansible.builtin.include_role:
+            name: 'windows_disk_manager'
+            tasks_from: 'present_windows.yml'
+
+        - name: 'TEST | Fail On Unexpected Unknown Value Success'
+          ansible.builtin.fail:
+            msg: 'The unknown-value case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names The Unknown Value'
+          ansible.builtin.assert:
+            that:
+              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
+            fail_msg: 'The detection failure did not name the unknown reported value.'
+            quiet: true
+
+#endregion --- [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
+
+#region ------ [ Play: Reject An Unsupported Declaration ] ------------------------------------ #
+
+- name: 'TEST | Reject An Unsupported Declaration'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Amazon EC2'
+    config:
+      disks: []
+      platform: 'hyperv'
+  tasks:
+
+    - name: 'TEST | Exercise Unsupported Platform Validation'
+      block:
+
+        - name: 'TEST | Validate The Unsupported Windows Declaration'
+          ansible.builtin.include_role:
+            name: 'windows_disk_manager'
+            tasks_from: 'validate.yml'
+
+        - name: 'TEST | Fail On Unexpected Unsupported Declaration Success'
+          ansible.builtin.fail:
+            msg: 'The unsupported declaration case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names The Unsupported Declaration'
+          ansible.builtin.assert:
+            that:
+              - "'hyperv' in (ansible_failed_result.msg | default(''))"
+            fail_msg: 'Validation did not name the unsupported declaration.'
+            quiet: true
+
+#endregion --- [ Play: Reject An Unsupported Declaration ] ------------------------------------ #
