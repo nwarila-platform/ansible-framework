@@ -71,3 +71,61 @@
     #endregion --- [ End: Assert The Elevated Result ] ---------------------------------------- #
 
 #endregion --- [ Play: Exercise POSIX Elevation ] --------------------------------------------- #
+
+#region ------ [ Play: Exercise POSIX Without Elevation ] ------------------------------------- #
+
+- name: 'PLAY | Exercise POSIX Without Elevation'
+  hosts: 'all'
+  become: true
+  gather_facts: false
+  vars:
+    ansible_become: true
+    credential_resolver_candidates:
+      - {name: 'command-failure', connection: 'ssh', user: 'posix-command-failure',
+         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      - {name: 'user', connection: 'ssh', user: 'posix-user',
+         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+    credential_resolver_require_elevated: false
+  tasks:
+
+    #region ------ [ Process: Resolve An Unelevated Identity ] -------------------------------- #
+
+    - name: 'PROCESS | Resolve An Unelevated POSIX Identity'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
+
+    #endregion --- [ Process: Resolve An Unelevated Identity ] -------------------------------- #
+
+    #region ------ [ End: Assert The Unelevated Result ] -------------------------------------- #
+
+    - name: 'END | Assert The Unelevated POSIX Result'
+      vars:
+        __posix_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+        __posix_questions__: >-
+          {{ __posix_log__.splitlines()
+             | select('search', 'USER=posix-command-failure|USER=posix-user')
+             | select('search', 'powershell.exe|id -u') | list }}
+      ansible.builtin.assert:
+        fail_msg: >-
+          The POSIX pass did not reject a failed command and adopt uid 1000 without sudo.
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'user'
+          - __credential_resolver_attempts__ | map(attribute='observation') | list ==
+            ['command failed', 'works']
+          - >-
+            __credential_resolver_attempts__[0].posix ==
+            {'msg': 'non-zero return code', 'rc': 7,
+            'stdout': 'POSIX-FAILURE-OUT\r\n', 'stderr': 'POSIX-FAILURE-ERR\r\n'}
+          - >-
+            __credential_resolver_attempts__[1].posix ==
+            {'msg': None, 'rc': 0, 'stdout': '1000\r\n', 'stderr': ''}
+          - __posix_questions__ | length == 4
+          - __posix_questions__[0] is search('USER=posix-command-failure.*powershell.exe')
+          - __posix_questions__[1] is search('USER=posix-command-failure.*id -u')
+          - __posix_questions__[2] is search('USER=posix-user.*powershell.exe')
+          - __posix_questions__[3] is search('USER=posix-user.*id -u')
+          - __posix_questions__ | select('search', 'sudo') | list | length == 0
+
+    #endregion --- [ End: Assert The Unelevated Result ] -------------------------------------- #
+
+#endregion --- [ Play: Exercise POSIX Without Elevation ] ------------------------------------- #

@@ -72,6 +72,9 @@
           ~ (candidate.name | regex_replace('^ssh-', ''))
           ~ ' .*ARGS=.*ControlPath="none".*powershell.exe')
       - candidate.connection != 'ssh'
+        or ssh_log is search('USER=' ~ candidate.user
+          ~ ' .*ARGS=.* -O check 127.0.0.1')
+      - candidate.connection != 'ssh'
         or ssh_log is search('USER=' ~ candidate.user ~ ' AUTH='
           ~ (candidate.name | regex_replace('^ssh-', ''))
           ~ ' .*ARGS=.*echo after')

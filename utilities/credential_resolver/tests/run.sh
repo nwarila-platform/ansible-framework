@@ -61,6 +61,16 @@ case "$user" in
       if [ "$user" = posix-low ]; then printf '1000\r\n'; else printf '0\r\n'; fi ;;
     *) refuse ;;
   esac ;;
+  posix-command-failure|posix-user) case "$args" in
+    *powershell.exe*) printf 'sh: powershell.exe: command not found\r\n' >&2; exit 127 ;;
+    *'id -u'*)
+      if [ "$user" = posix-command-failure ]; then
+        printf 'POSIX-FAILURE-OUT\r\n'; printf 'POSIX-FAILURE-ERR\r\n' >&2; exit 7
+      else
+        printf '1000\r\n'
+      fi ;;
+    *) refuse ;;
+  esac ;;
   *) refuse ;;
 esac
 STUB

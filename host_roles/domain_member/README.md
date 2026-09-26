@@ -68,7 +68,7 @@ URL and never the value: check controller credentials, region, and `boto3` first
           user: 'svc-domainjoin@corp.example.com'
           password: >-
             {{ lookup('secret',
-                's3://<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
+                's3://123456789012-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
                 '<sha256 of the stored bytes>') }}
           computer_ou: 'OU=Servers,OU=Prod,DC=corp,DC=example,DC=com'
 
