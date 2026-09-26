@@ -1,0 +1,126 @@
+---
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/main.yml' | Version 1.0.0                                        #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Goes down credential_resolver_candidates ONCE, in order. The first set that authenticates --
+# and, when asked, is elevated and answers from a boot newer than the floor -- becomes this
+# host's connection identity for the rest of the run. Every attempt's response is reported as
+# received. Nothing here retries or waits: a host that answers no set fails with what each
+# attempt got back, and waiting for a host is the playbook's job.
+#
+# ============================================================================================= #
+
+#region ------ [ Begin: Check The Sets And Start The Pass ] ----------------------------------- #
+
+- name: 'BEGIN | Check The Sets And Start The Pass'
+  # Begin The 'Begin' Block
+  block:
+
+    #region ------ [ Begin: Validate The Credential Sets ] ------------------------------------ #
+
+    - name: 'BEGIN | Validate The Credential Sets'
+      ansible.builtin.include_tasks:
+        file: 'validate.yml'
+
+    #endregion --- [ Begin: Validate The Credential Sets ] ------------------------------------ #
+
+    #region ------ [ Begin: Start The Pass With No Winner ] ----------------------------------- #
+
+    - name: 'BEGIN | Start The Pass With No Winner'
+      ansible.builtin.set_fact:
+        __credential_resolver_attempts__: []
+        __credential_resolver_winner__: ''
+
+    #endregion --- [ Begin: Start The Pass With No Winner ] ----------------------------------- #
+
+#endregion --- [ Begin: Check The Sets And Start The Pass ] ----------------------------------- #
+
+#region ------ [ Process: Try Each Credential Set In Order ] ---------------------------------- #
+
+- name: 'PROCESS | Try Each Credential Set In Order'
+  # Begin The 'Process' Block
+  block:
+
+    #region ------ [ Process: Try Each Credential Set In Order ] ------------------------------ #
+
+    # Positions, not the sets: a set is rendered only when its turn comes, so a later set's
+    # failing lookup cannot stop an earlier set from winning. The attempt's identity is passed
+    # as include parameters: they outrank facts and inventory,
+    # so an identity published earlier never leaks into this one, and null hides a value the set
+    # does not give. ansible_password stays a LITERAL null: Ansible copies it unrendered into the
+    # play context, and ssh would submit that text as a password; the set's password travels in
+    # the per-plugin names instead. ControlPath none gives every attempt its own logon.
+    - name: 'PROCESS | Attempt One Credential Set'
+      loop: "{{ range(credential_resolver_candidates | length) | list }}"
+      loop_control:
+        label: "set {{ __credential_resolver_index__ + 1 }}"
+        loop_var: '__credential_resolver_index__'
+      vars:
+        __credential_resolver_set__: >-
+          {{ credential_resolver_candidates[__credential_resolver_index__] }}
+        ansible_connection: "{{ __credential_resolver_set__.connection }}"
+        ansible_control_path: 'none'
+        ansible_password: null
+        ansible_port: "{{ __credential_resolver_set__.port | default(None) }}"
+        ansible_private_key: "{{ __credential_resolver_set__.private_key | default(None) }}"
+        ansible_private_key_file: >-
+          {{ __credential_resolver_set__.private_key_file | default(None) }}
+        ansible_ssh_password: "{{ __credential_resolver_set__.password | default(None) }}"
+        ansible_user: "{{ __credential_resolver_set__.user }}"
+        # WinRM over HTTP (5985) must encrypt or refuse to send; over HTTPS, TLS carries it.
+        ansible_winrm_message_encryption: >-
+          {{ None if __credential_resolver_set__.connection != 'winrm'
+             else 'always' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+             else 'auto' }}
+        ansible_winrm_password: "{{ __credential_resolver_set__.password | default(None) }}"
+        ansible_winrm_scheme: >-
+          {{ None if __credential_resolver_set__.connection != 'winrm'
+             else 'http' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+             else 'https' }}
+        ansible_winrm_transport: "{{ __credential_resolver_set__.transport | default(None) }}"
+
+      ansible.builtin.include_tasks:
+        file: 'attempt.yml'
+
+    #endregion --- [ Process: Try Each Credential Set In Order ] ------------------------------ #
+
+#endregion --- [ Process: Try Each Credential Set In Order ] ---------------------------------- #
+
+#region ------ [ End: Report The Outcome And Reconnect ] -------------------------------------- #
+
+- name: 'END | Report The Outcome And Reconnect'
+  # Begin The 'End' Block
+  block:
+
+    #region ------ [ End: Report The Outcome ] ------------------------------------------------ #
+
+    - name: 'END | Fail When No Credential Set Works'
+      when: not __credential_resolver_winner__
+
+      ansible.builtin.fail:
+        msg: >-
+          No credential set works on '{{ inventory_hostname }}' --
+          {{ __credential_resolver_attempts__ }}
+
+    - name: 'END | Report The Working Credential Set'
+      changed_when: false
+
+      ansible.builtin.debug:
+        msg: >-
+          '{{ inventory_hostname }}' works as '{{ __credential_resolver_winner__ }}'
+          ({{ ansible_connection }}, user '{{ ansible_user }}') --
+          {{ __credential_resolver_attempts__ }}
+
+    #endregion --- [ End: Report The Outcome ] ------------------------------------------------ #
+
+    #region ------ [ End: Connect As The Working Set ] ---------------------------------------- #
+
+    # This identity may still hold a master connection from before a restart or from an earlier
+    # run, carrying an older logon; the next task logs on afresh.
+    - name: 'END | Connect As The Working Credential Set From Here On'
+      ansible.builtin.meta: 'reset_connection'
+
+    #endregion --- [ End: Connect As The Working Set ] ---------------------------------------- #
+
+#endregion --- [ End: Report The Outcome And Reconnect ] -------------------------------------- #
