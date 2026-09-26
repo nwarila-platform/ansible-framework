@@ -29,15 +29,15 @@ serial** on AWS. CI/CD supplies the literal value, or AWS entries can resolve it
 
 ## Two kinds of logic (kept distinct)
 
-- **Targeting** — dispatch to the declared `platform` provider and address each disk by a stable
-  `/dev/disk/by-id/` name, writing fstab by UUID. VMware and Proxmox entries declare
-  `unique_id`; AWS entries may instead declare `function`, which `tasks/resolve_aws.yml` maps
-  to the attached EBS volume's NVMe by-id serial before any device probe.
+- **Targeting** — dispatch to the effective `platform` and address each disk by a stable
+  `/dev/disk/by-id/` name, writing fstab by UUID. VMware and Proxmox entries declare `unique_id`;
+  AWS entries may instead declare `function`, which `tasks/resolve_aws.yml` maps to the attached
+  EBS volume's NVMe by-id serial before any device probe.
 - **Defensive validation** — `tasks/validate.yml` rejects unsupported platforms, ambiguous
   identities, and duplicate declared identities or mount points. Immediately before `parted`,
   read-only probes reject a foreign or occupied disk; this guard is load-bearing because
-  `parted` can replace a non-GPT partition table instead of failing loudly. There is deliberately
-  no detected-vendor match.
+  `parted` can replace a non-GPT partition table instead of failing loudly. A declared platform
+  is used as given and is never checked against the detected vendor.
 
 ## Configuration
 
@@ -52,8 +52,8 @@ Declare these in the `linux_disk_manager:` override dict:
 
 | key | Required | Default | Purpose |
 |-----|----------|---------|---------|
-| `platform` | ✅ | — | `vmware`, `proxmox`, or `aws`; all select the same shared by-id provider block. |
-| `disks` | ✅ | `[]` | List of disks to manage. An empty list performs no disk mutation, but `platform` remains required. |
+| `platform` | No | `''` | Empty reads the host: `Amazon EC2` → `aws`; `VMware, Inc.` → `vmware`; `QEMU` → `proxmox`. A declared value is normalized and used as given. |
+| `disks` | No | `[]` | List of disks to manage. An empty list performs no disk mutation. |
 
 Each `disks[]` entry:
 

@@ -3,11 +3,11 @@
 The Windows sibling of `linux_disk_manager`. It establishes a stable disk identity,
 drive-letter, and formatting contract for Windows hosts on VMware and AWS.
 
-The role validates configuration and confirms that the declared platform matches the detected
-system vendor. It trusts each declared literal disk identity, prepares non-clustered disks, and
-provisions only positively recognized blank or unformatted disks. A foreign classification
-refuses provisioning for the entire declaration set. A disk already owned by Failover Clustering
-is converged and left unchanged.
+The role reads the platform from the host when none is declared. It validates configuration and
+confirms that any declared platform matches the detected system vendor. It trusts each declared
+literal disk identity, prepares non-clustered disks, and provisions only positively recognized
+blank or unformatted disks. A foreign classification refuses provisioning for the entire
+declaration set. A disk already owned by Failover Clustering is converged and left unchanged.
 
 ## Configuration
 
@@ -19,7 +19,7 @@ no-op), not a key of the `windows_disk_manager:` dictionary; a `state` key there
 
 | key | Required | Default | Purpose |
 |-----|----------|---------|---------|
-| `platform` | Yes | `''` | `vmware` or `aws`. Proxmox is not accepted until its Windows identity path is measured. |
+| `platform` | No | `''` | Empty reads the host: `Amazon EC2` → `aws`; `VMware, Inc.` → `vmware`. A declared `vmware` or `aws` must match the host. Proxmox is not accepted until its Windows identity path is measured. |
 | `disks` | No | `[]` | Disk declarations to provision. An empty list completes after the vendor check. |
 
 Each `disks[]` entry uses this contract:
@@ -40,8 +40,9 @@ letter, so equivalent spellings such as `D`, `d:`, and `D:\` are duplicates.
 
 ## Provisioning behavior
 
-- `platform: vmware` requires detected vendor `VMware, Inc.`.
-- `platform: aws` requires detected vendor `Amazon EC2`.
+- An empty `platform` maps detected vendor `VMware, Inc.` to `vmware` and `Amazon EC2` to `aws`.
+- A declared `platform` is normalized and must match the detected host, as before.
+- Proxmox vendor `QEMU` remains unsupported on Windows.
 - All validation guards are scoped to `state=present`; `state=clean` is a supported no-op.
 - Literal `unique_id` values are trusted configuration. After resolving each declared disk, the
   role first recognizes cluster ownership; otherwise it applies the online/writable fixup and
