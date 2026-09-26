@@ -1,0 +1,46 @@
+---
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/validate.yml' | Version 1.0.0                                    #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The shape of every credential set, checked before anything connects. main.yml runs it, and a
+# playbook that waits for a host before the first pass runs it first (tasks_from: validate.yml),
+# so no malformed set is ever submitted.
+#
+# ============================================================================================= #
+
+#region ------ [ Begin: Validate The Credential Sets ] ---------------------------------------- #
+
+# Loops over positions, not the sets: at -vvv Ansible prints the whole loop item, secrets and
+# all.
+- name: 'BEGIN | Require Each Set To Be Complete'
+  loop: "{{ range(credential_resolver_candidates | length) | list }}"
+  loop_control:
+    label: "{{ __credential_resolver_set__.name | default('?') }}"
+    loop_var: '__credential_resolver_index__'
+  vars:
+    __credential_resolver_set__: >-
+      {{ credential_resolver_candidates[__credential_resolver_index__] }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Set '{{ __credential_resolver_set__.name | default('?') }}' needs a name, a user, and
+      either connection ssh with a private_key, private_key_file or password, or connection
+      winrm with a password and a transport of ntlm or kerberos (Kerberos over HTTPS only, not
+      port 5985).
+    quiet: true
+    that:
+      - (__credential_resolver_set__.name | default('', true) | string | length) > 0
+      - (__credential_resolver_set__.user | default('', true) | string | length) > 0
+      - >-
+        (__credential_resolver_set__.connection | default('') == 'ssh'
+         and (['private_key', 'private_key_file', 'password']
+              | select('in', __credential_resolver_set__) | list | length) > 0)
+        or
+        (__credential_resolver_set__.connection | default('') == 'winrm'
+         and 'password' in __credential_resolver_set__
+         and (__credential_resolver_set__.transport | default('') == 'ntlm'
+              or (__credential_resolver_set__.transport | default('') == 'kerberos'
+                  and (__credential_resolver_set__.port | default(5986) | int) != 5985)))
+
+#endregion --- [ Begin: Validate The Credential Sets ] ---------------------------------------- #

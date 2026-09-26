@@ -1,0 +1,37 @@
+---
+- name: 'PLAY | Exercise Published Connection Identities'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    publication_password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
+    publication_cases:
+      - candidate: {name: 'ssh-password', connection: 'ssh', user: 'publication-password',
+                    password: "{{ publication_password }}"}
+      - candidate:
+          {name: 'ssh-key-content', connection: 'ssh', user: 'publication-key-content',
+           private_key: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE')) }}"}
+      - candidate:
+          {name: 'ssh-key-file', connection: 'ssh', user: 'publication-key-file',
+           private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"}
+      - {candidate: {name: 'default', connection: 'winrm',
+                     user: 'default', transport: 'ntlm',
+                     password: "{{ publication_password }}"},
+         scheme: 'https', encryption: 'auto'}
+      - {candidate: {name: 'string-http', connection: 'winrm',
+                     user: 'string-http', transport: 'ntlm', port: '5985',
+                     password: "{{ publication_password }}"},
+         scheme: 'http', encryption: 'always'}
+      - {candidate: {name: 'custom-https', connection: 'winrm',
+                     user: 'custom-https', transport: 'ntlm', port: 55986,
+                     password: "{{ publication_password }}"},
+         scheme: 'https', encryption: 'auto'}
+      - {candidate: {name: 'integer-http', connection: 'winrm',
+                     user: 'integer-http', transport: 'ntlm', port: 5985,
+                     password: "{{ publication_password }}"},
+         scheme: 'http', encryption: 'always'}
+  tasks:
+    - name: 'PROCESS | Check Each Published Identity'
+      loop: "{{ range(publication_cases | length) | list }}"
+      loop_control: {label: "{{ publication_case.candidate.name }}", loop_var: 'case_index'}
+      vars: {publication_case: "{{ publication_cases[case_index] }}"}
+      ansible.builtin.include_tasks: 'publication-case.yml'

@@ -1,0 +1,115 @@
+---
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/attempt.yml' | Version 1.0.0                                     #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# One attempt, as the identity main.yml passed in. The probe is raw because the resolver runs
+# before os_bootstrap, when a Windows host's OpenSSH shell is not the one a module needs; the
+# same command reads correctly in cmd.exe, PowerShell and PowerShell under WinRM.
+#
+# ============================================================================================= #
+
+#region ------ [ Process: Attempt One Credential Set ] ---------------------------------------- #
+
+- name: 'PROCESS | Attempt {{ __credential_resolver_set__.name }}'
+  vars:
+    __credential_resolver_windows__: >-
+      {{ __credential_resolver_set__.connection == 'winrm'
+         or (platform | default('') | string | lower | trim) == 'windows'
+         or ((platform | default('') | string | lower | trim) != 'linux'
+             and (ansible_shell_type | default('') | string | lower | trim) == 'powershell') }}
+    __credential_resolver_lines__: >-
+      {{ __credential_resolver_probe__.stdout_lines | default([]) }}
+    # The High integrity label, found by its SID so it reads the same in every locale.
+    __credential_resolver_elevated__: >-
+      {{ (__credential_resolver_probe__.stdout | default('') is search('S-1-16-12288'))
+         if __credential_resolver_windows__
+         else ((__credential_resolver_lines__ | first | default('') | trim) == '0') }}
+    __credential_resolver_boot__: >-
+      {{ __credential_resolver_lines__ | last | default('0') | trim }}
+    __credential_resolver_floor__: "{{ credential_resolver_boot_time_after | string | trim }}"
+    __credential_resolver_floor_met__: >-
+      {{ (__credential_resolver_floor__ | length) == 0
+         or not __credential_resolver_windows__
+         or (__credential_resolver_boot__ | int) > (__credential_resolver_floor__ | int) }}
+    __credential_resolver_works__: >-
+      {{ __credential_resolver_probe__ is not unreachable
+         and __credential_resolver_probe__ is not failed
+         and (__credential_resolver_elevated__
+              or not (credential_resolver_require_elevated | bool))
+         and __credential_resolver_floor_met__ }}
+    # The resolver's own reading, kept apart from the response itself.
+    __credential_resolver_observation__: >-
+      {%- if __credential_resolver_probe__ is unreachable -%} unreachable
+      {%- elif __credential_resolver_probe__ is failed -%} command failed
+      {%- elif (credential_resolver_require_elevated | bool)
+               and not __credential_resolver_elevated__ -%} not elevated
+      {%- elif not __credential_resolver_floor_met__ -%} boot not newer than the floor
+      {%- else -%} works
+      {%- endif -%}
+  when: not __credential_resolver_winner__
+  # Begin The 'Process' Block
+  block:
+
+    #region ------ [ Process: Probe The Set ] ------------------------------------------------- #
+
+    # The boot time only when a floor asks for it: Windows refuses its query to a token that is
+    # not elevated, and such a token must still be reported as what it is.
+    - name: 'PROCESS | Probe {{ __credential_resolver_set__.name }}'
+      become: >-
+        {{ (credential_resolver_require_elevated | bool)
+           and not __credential_resolver_windows__ }}
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      ignore_unreachable: true
+      register: '__credential_resolver_probe__'
+
+      ansible.builtin.raw: >-
+        {{ ('powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh'
+            ~ ('; (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()'
+               if (__credential_resolver_floor__ | length) > 0 else '')
+            ~ '"')
+           if __credential_resolver_windows__ else 'id -u' }}
+
+    #endregion --- [ Process: Probe The Set ] ------------------------------------------------- #
+
+    #region ------ [ Process: Record The Response ] ------------------------------------------- #
+
+    - name: 'PROCESS | Record The Response Of {{ __credential_resolver_set__.name }}'
+      ansible.builtin.set_fact:
+        __credential_resolver_attempts__: >-
+          {{ __credential_resolver_attempts__ + [{
+               'set': __credential_resolver_set__.name,
+               'observation': __credential_resolver_observation__,
+               'msg': __credential_resolver_probe__.msg | default(None),
+               'rc': __credential_resolver_probe__.rc | default(None),
+               'stdout': __credential_resolver_probe__.stdout | default(None),
+               'stderr': __credential_resolver_probe__.stderr | default(None)}] }}
+
+    #endregion --- [ Process: Record The Response ] ------------------------------------------- #
+
+    #region ------ [ Process: Adopt The Set That Works ] -------------------------------------- #
+
+    # The attempt's include parameters become facts, so the identity outlives this include.
+    - name: 'PROCESS | Adopt {{ __credential_resolver_set__.name }}'
+      no_log: true
+      when: __credential_resolver_works__ | bool
+
+      ansible.builtin.set_fact:
+        __credential_resolver_winner__: "{{ __credential_resolver_set__.name }}"
+        ansible_connection: "{{ ansible_connection }}"
+        ansible_password: null
+        ansible_port: "{{ ansible_port }}"
+        ansible_private_key: "{{ ansible_private_key }}"
+        ansible_private_key_file: "{{ ansible_private_key_file }}"
+        ansible_ssh_password: "{{ ansible_ssh_password }}"
+        ansible_user: "{{ ansible_user }}"
+        ansible_winrm_message_encryption: "{{ ansible_winrm_message_encryption }}"
+        ansible_winrm_password: "{{ ansible_winrm_password }}"
+        ansible_winrm_scheme: "{{ ansible_winrm_scheme }}"
+        ansible_winrm_transport: "{{ ansible_winrm_transport }}"
+
+    #endregion --- [ Process: Adopt The Set That Works ] -------------------------------------- #
+
+#endregion --- [ Process: Attempt One Credential Set ] ---------------------------------------- #

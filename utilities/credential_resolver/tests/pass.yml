@@ -1,0 +1,43 @@
+---
+- name: 'PLAY | Exercise Failed Credential Passes'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    pass_cases:
+      closed:
+        candidates:
+          - {name: 'closed-one', connection: 'ssh', user: 'closed-one', port: 62001,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+          - {name: 'closed-two', connection: 'ssh', user: 'closed-two', port: 62002,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
+      kerberos:
+        candidates:
+          - {name: 'kerberos-https', connection: 'winrm', user: 'u@example.com',
+             transport: 'kerberos', port: 55986,
+             password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      ntlm:
+        candidates:
+          - {name: 'ntlm-http', connection: 'winrm', user: 'u', transport: 'ntlm',
+             port: '5985', password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"}
+  tasks:
+    - name: 'PROCESS | Check Each Failed Pass'
+      loop: ['closed', 'kerberos', 'ntlm']
+      vars:
+        pass_case: "{{ pass_cases[item] }}"
+      ansible.builtin.include_tasks: 'failure-case.yml'
+    - name: 'END | Require An Empty List To Fail Without An Attempt'
+      block:
+        - name: 'END | Run The Empty Pass'
+          vars:
+            credential_resolver_candidates: []
+          ansible.builtin.include_role: {name: 'credential_resolver'}
+        - name: 'END | Reject An Unexpected Empty-List Winner'
+          ansible.builtin.fail: {msg: 'An empty credential list unexpectedly worked.'}
+      rescue:
+        - name: 'END | Assert The Empty Result'
+          ansible.builtin.assert:
+            fail_msg: 'An empty list did not produce the resolver failure and no attempts.'
+            quiet: true
+            that:
+              - ansible_failed_result.msg is search('No credential set works')
+              - __credential_resolver_attempts__ == []

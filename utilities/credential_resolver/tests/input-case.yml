@@ -1,0 +1,17 @@
+---
+- name: 'BEGIN | Refuse Malformed Set {{ __input_key__ }}'
+  block:
+    - name: 'BEGIN | Validate Malformed Set {{ __input_key__ }}'
+      vars:
+        credential_resolver_candidates: ["{{ input_cases[__input_key__] }}"]
+      ansible.builtin.include_role: {name: 'credential_resolver'}
+    - name: 'BEGIN | Reject An Accepted Malformed Set'
+      ansible.builtin.fail: {msg: 'A malformed credential set passed validation.'}
+  rescue:
+    - name: 'BEGIN | Assert Validation Refused The Set'
+      ansible.builtin.assert:
+        fail_msg: 'A malformed set reached a connection attempt instead of the shape check.'
+        quiet: true
+        that:
+          - ansible_failed_result | string is search('needs a name, a user')
+          - lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) | length == 0

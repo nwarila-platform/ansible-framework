@@ -1,0 +1,29 @@
+---
+- name: 'PLAY | Exercise POSIX Elevation'
+  hosts: 'all'
+  gather_facts: false
+  vars:
+    credential_resolver_candidates:
+      - {name: 'not-root', connection: 'ssh', user: 'posix-low',
+         password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      - {name: 'root', connection: 'ssh', user: 'posix-root',
+         private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"}
+    credential_resolver_require_elevated: true
+    platform: 'linux'
+  tasks:
+    - name: 'PROCESS | Resolve An Elevated POSIX Identity'
+      ansible.builtin.include_role: {name: 'credential_resolver'}
+    - name: 'END | Assert The Elevated POSIX Result'
+      vars:
+        __posix_log__: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+      ansible.builtin.assert:
+        fail_msg: 'The POSIX pass did not refuse uid 1000 and adopt uid 0 through sudo.'
+        quiet: true
+        that:
+          - __credential_resolver_winner__ == 'root'
+          - __credential_resolver_attempts__ | map(attribute='observation') | list ==
+            ['not elevated', 'works']
+          - __credential_resolver_attempts__ | map(attribute='stdout') | list ==
+            ['1000\r\n', '0\r\n']
+          - __posix_log__ | regex_findall('sudo -H -S -n .*?-u root /bin/sh -c') | length == 2
+          - __posix_log__ | regex_findall('id -u') | length == 2

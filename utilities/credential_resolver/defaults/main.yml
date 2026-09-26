@@ -1,0 +1,20 @@
+---
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml' | Version 1.0.0                                     #
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The resolver's inputs. The play declares its credential sets; the other two stay off unless
+# the caller asks for them.
+#
+# ============================================================================================= #
+
+# Ordered credential sets; the first that works becomes this host's connection identity.
+credential_resolver_candidates: []
+
+# Also require an elevated session: the High integrity label on Windows, uid 0 through become
+# on POSIX.
+credential_resolver_require_elevated: false
+
+# Windows only: the answer must come from a boot newer than this FILETIME, such as
+# domain_member's __domain_member_boot_time__ after its restart. Empty means no floor.
+credential_resolver_boot_time_after: ''

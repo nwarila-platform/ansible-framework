@@ -1,0 +1,16 @@
+---
+all:
+  hosts:
+    localhost:
+      ansible_host: '127.0.0.1'
+      ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
+      ansible_ssh_host_key_checking: false
+      caller_pause: 0
+      caller_post_join_set:
+        name: 'unused-post-join'
+        connection: 'ssh'
+        user: 'unused-post-join'
+        private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
+      caller_rounds: 1
+      caller_sets:
+        - "{{ input_cases[lookup('env', 'CREDENTIAL_RESOLVER_INPUT_CASE')] }}"

@@ -1,0 +1,63 @@
+---
+- name: 'PROCESS | Seed Conflicting Facts Before {{ publication_case.candidate.name }}'
+  no_log: true
+  when: publication_case.candidate.name != 'ssh-password'
+  ansible.builtin.set_fact:
+    ansible_password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"
+    ansible_port: 65000
+    ansible_user: 'stale-user'
+    ansible_winrm_message_encryption: 'never'
+    ansible_winrm_scheme: 'http'
+    ansible_winrm_transport: 'basic'
+- name: 'PROCESS | Resolve {{ publication_case.candidate.name }}'
+  vars:
+    credential_resolver_candidates: ["{{ publication_case.candidate }}"]
+  ansible.builtin.include_role: {name: 'credential_resolver'}
+- name: 'PROCESS | Connect Again With {{ publication_case.candidate.name }}'
+  changed_when: false
+  register: '__publication_after__'
+  ansible.builtin.raw: 'echo after'
+- name: 'PROCESS | Assert {{ publication_case.candidate.name }}'
+  no_log: true
+  vars:
+    candidate: "{{ publication_case.candidate }}"
+    ssh_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+    winrm_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_WINRM_LOG')) }}"
+    attempt: "{{ __credential_resolver_attempts__[0] }}"
+  ansible.builtin.assert:
+    fail_msg: 'A winning identity was not published to its follow-up connection.'
+    quiet: true
+    that:
+      - >-
+        [__credential_resolver_winner__, ansible_connection, ansible_user,
+        ansible_password, ansible_port,
+        ansible_private_key, ansible_private_key_file, ansible_ssh_password,
+        ansible_winrm_password, ansible_winrm_transport, ansible_winrm_scheme,
+        ansible_winrm_message_encryption] ==
+        [candidate.name, candidate.connection, candidate.user, None,
+        candidate.port | default(None),
+        candidate.private_key | default(None), candidate.private_key_file | default(None),
+        candidate.password | default(None), candidate.password | default(None),
+        candidate.transport | default(None), publication_case.scheme | default(None),
+        publication_case.encryption | default(None)]
+      - __publication_after__.stdout == 'AFTER-OUT\r\n'
+        or candidate.connection == 'winrm'
+      - candidate.connection != 'ssh'
+        or ssh_log is search('USER=' ~ candidate.user ~ ' AUTH='
+          ~ (candidate.name | regex_replace('^ssh-', ''))
+          ~ ' .*ARGS=.*ControlPath="none".*powershell')
+      - candidate.connection != 'ssh'
+        or ssh_log is search('USER=' ~ candidate.user ~ ' AUTH='
+          ~ (candidate.name | regex_replace('^ssh-', ''))
+          ~ ' .*ARGS=.*echo after')
+      - candidate.name == 'ssh-password' or ssh_log is not search('stale-user')
+      - candidate.connection != 'winrm'
+        or [attempt.msg, attempt.rc, attempt.stdout, attempt.stderr]
+           == [None, 0, 'S-1-16-12288\r\n200\r\n', '']
+      - candidate.connection != 'winrm'
+        or winrm_log.splitlines()
+           | select('equalto', 'USER=' ~ candidate.user ~ ' ENDPOINT='
+             ~ publication_case.scheme ~ '://127.0.0.1:'
+             ~ (candidate.port | default(5986) | string) ~ '/wsman'
+             ~ ' TRANSPORT=ntlm ENCRYPTION=' ~ publication_case.encryption)
+           | list | length == 2

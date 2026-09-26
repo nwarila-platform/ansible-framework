@@ -1,0 +1,31 @@
+---
+all:
+  hosts:
+    localhost:
+      ansible_host: '127.0.0.1'
+      ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
+      ansible_ssh_host_key_checking: false
+      platform: 'Windows'
+      caller_pause: 0
+      caller_rounds: 2
+      caller_sets:
+        - name: 'not-elevated'
+          connection: 'ssh'
+          port: 62022
+          user: 'not-elevated'
+          password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
+        - name: 'command-failure'
+          connection: 'ssh'
+          user: 'command-failure'
+          password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"
+        - name: 'elevated-winner'
+          connection: 'ssh'
+          user: 'elevated-winner'
+          private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"
+        - {name: 'winrm-unused', connection: 'winrm', user: 'winrm-unused', transport: 'ntlm',
+           password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"}
+      caller_post_join_set:
+        name: 'post-join'
+        connection: 'ssh'
+        user: "{{ lookup('env', 'CREDENTIAL_RESOLVER_POST_USER') | default('post-new', true) }}"
+        private_key_file: "{{ lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE') }}"

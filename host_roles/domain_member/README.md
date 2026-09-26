@@ -68,7 +68,7 @@ URL and never the value: check controller credentials, region, and `boto3` first
           user: 'svc-domainjoin@corp.example.com'
           password: >-
             {{ lookup('secret',
-                's3://123456789012-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
+                's3://<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
                 '<sha256 of the stored bytes>') }}
           computer_ou: 'OU=Servers,OU=Prod,DC=corp,DC=example,DC=com'
 
@@ -158,8 +158,12 @@ When repair does not restore the channel, it writes the marker and runs
 A successful password reset requires a restart. With `restart_wait: true`, the role waits and
 retests. With `restart_wait: false`, it records the pre-restart FILETIME in
 `__domain_member_boot_time__`, schedules the restart, and ends the role. The caller's next play
-passes that fact as `host_readiness_boot_time_after`, reconnects under the joined identity, and
-invokes this role again for its ordinary membership proof.
+publishes the expected post-join SSH identity as facts, then uses a looped `raw` probe until that
+identity is elevated on a boot newer than `__domain_member_boot_time__`. It runs
+`credential_resolver` with only the post-join set and that FILETIME as
+`credential_resolver_boot_time_after`, then calls `host_readiness` and this role again for the
+ordinary membership proof. See
+[`credential_resolver/tests/caller-example.yml`](../../utilities/credential_resolver/tests/caller-example.yml).
 
 The marker deliberately turns permanent damage into an operator decision. Replace the host; or,
 when the computer object is intact, keep it without relying on the broken channel: open an
