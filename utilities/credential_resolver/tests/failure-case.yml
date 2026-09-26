@@ -27,6 +27,7 @@
         quiet: true
         that:
           - ansible_failed_result.msg is search('No credential set works')
+          - (__credential_resolver_attempts__ | string) in ansible_failed_result.msg
           - __credential_resolver_attempts__ | map(attribute='set') | list == expected_names
           - __credential_resolver_attempts__ | map(attribute='observation') | unique | list
             == ['unreachable']
