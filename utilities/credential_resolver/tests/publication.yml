@@ -5,9 +5,8 @@
   vars:
     publication_password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_A') }}"
     publication_cases:
-      - candidate:
-          {name: 'ssh-password', connection: 'ssh', user: 'publication-password',
-           password: "{{ publication_password }}"}
+      - candidate: {name: 'ssh-password', connection: 'ssh', user: 'publication-password',
+                    password: "{{ publication_password }}"}
       - candidate:
           {name: 'ssh-key-content', connection: 'ssh', user: 'publication-key-content',
            private_key: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_KEY_FILE')) }}"}

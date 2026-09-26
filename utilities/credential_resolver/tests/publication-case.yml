@@ -50,6 +50,7 @@
         or ssh_log is search('USER=' ~ candidate.user ~ ' AUTH='
           ~ (candidate.name | regex_replace('^ssh-', ''))
           ~ ' .*ARGS=.*echo after')
+      - candidate.name == 'ssh-password' or ssh_log is not search('stale-user')
       - candidate.connection != 'winrm'
         or [attempt.msg, attempt.rc, attempt.stdout, attempt.stderr]
            == [None, 0, 'S-1-16-12288\r\n200\r\n', '']
