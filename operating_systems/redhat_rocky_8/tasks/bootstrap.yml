@@ -64,12 +64,20 @@
           *) echo "redhat_rocky_8 refuses $ID $VERSION_ID"; exit 1 ;;
         esac
         python_bin={{ rhel8_bootstrap_python_bin | quote }}
-        is_312() { "$python_bin" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))' 2>/dev/null; }
+        is_312() {
+          "$python_bin" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 12))' 2>/dev/null
+        }
         if ! is_312; then
-          [ "$python_bin" = /usr/bin/python3.12 ] || { echo "$python_bin is not Python 3.12"; exit 1; }
+          if [ "$python_bin" != /usr/bin/python3.12 ]; then
+            echo "$python_bin is not Python 3.12"
+            exit 1
+          fi
           dnf -y install python3.12 || exit 1
           echo 'redhat_rocky_8: installed python3.12'
-          is_312 || { echo "$python_bin is not Python 3.12"; exit 1; }
+          if ! is_312; then
+            echo "$python_bin is not Python 3.12"
+            exit 1
+          fi
         fi
 
   #endregion --- [ Process: Install The Python That Modules Need ] ---------------------------- #

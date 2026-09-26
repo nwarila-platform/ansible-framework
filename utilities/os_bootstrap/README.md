@@ -38,6 +38,10 @@ allocation so their return codes remain trustworthy:
 2. If that probe fails, a `raw` PowerShell probe reads the Windows product type and build. The
    ignored POSIX failure is expected on every Windows host.
 
+On Windows, the probe reads WMI with `Get-CimInstance Win32_OperatingSystem`, which Windows
+refuses to a non-elevated token, so the identity must be elevated as the Windows roles themselves
+require (`BEGIN | Require An Elevated Session Token`).
+
 Only Windows product types 2 (domain controller) and 3 (server) proceed. The dispatcher refuses a
 workstation before a server role can change its OpenSSH configuration.
 
