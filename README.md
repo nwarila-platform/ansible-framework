@@ -92,10 +92,11 @@ modified.
 
 ### Utilities
 
-| Role             | Description                                                          | Status |
-|------------------|----------------------------------------------------------------------|--------|
-| `host_readiness` | Proves the transport answers before anything that assumes it runs     | Stable |
-| `os_bootstrap`   | Detects the OS and includes that role's `bootstrap.yml` entry point   | Stable |
+| Role                  | Description                                                               | Status |
+|-----------------------|---------------------------------------------------------------------------|--------|
+| `credential_resolver` | Tries ordered credentials once and publishes the first working identity   | Stable |
+| `host_readiness`      | Proves the transport answers before anything that assumes it runs         | Stable |
+| `os_bootstrap`        | Detects the OS and includes that role's `bootstrap.yml` entry point       | Stable |
 
 ### Host Roles
 

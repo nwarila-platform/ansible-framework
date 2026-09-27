@@ -132,6 +132,11 @@
 
 # A helper the PLAY uses, owning no host state of its own.
 !/utilities/
+!/utilities/credential_resolver/
+!/utilities/credential_resolver/defaults/
+!/utilities/credential_resolver/tasks/
+!/utilities/credential_resolver/tests/
+!/utilities/credential_resolver/tests/run.sh
 !/utilities/host_readiness/
 !/utilities/host_readiness/defaults/
 !/utilities/host_readiness/files/
