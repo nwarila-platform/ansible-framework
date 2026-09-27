@@ -32,6 +32,7 @@ galaxy_info:
   platforms:
     - name: 'Windows'
       versions:
+        - '2019'
         - '2022'
         - '2025'
 
