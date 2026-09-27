@@ -14,10 +14,9 @@
 
 #region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
 
-# Every module in tasks/bootstrap.yml runs under this Python 3.12 interpreter, which the role
-# installs before its first module. RPM-owned at this path on RHEL/Rocky 8 deterministically, so
-# it is a literal rather than a 'which' lookup and has no PATH dependency. Exposed as a knob only
-# so a non-standard build can redirect it.
+# On fresh RHEL/Rocky 8, the python3.12 package installed /usr/bin/python3.12 (2026-09-26).
+# No PATH lookup; only custom builds override. Raw installs it first; all Python-backed tasks in
+# tasks/bootstrap.yml use it. Stock EL8 Python 3.6 is below core 2.21's 3.9 floor (2026-09-26).
 rhel8_bootstrap_python_bin: '/usr/bin/python3.12'
 
 # Parent directory of the venv. Root-owned, SELinux usr_t (exec-capable).
@@ -39,7 +38,8 @@ rhel8_bootstrap_venv_path: '/opt/ansible/venv'
 
 #region ------ [ Package And Python Dependency Sets ] ----------------------------------------- #
 
-# The role's pip module runs under the pinned python3.12 and needs its pkg_resources.
+# The role's pip module runs under the pinned Python 3.12 and needs its pkg_resources, measured
+# on fresh RHEL and Rocky Linux 8 hosts, 2026-09-26.
 rhel8_bootstrap_packages:
   - 'python3.12'
   - 'python3.12-setuptools'

@@ -24,17 +24,19 @@
 #     'roles_path = applications:operating_systems:utilities:host_roles'; a consuming product
 #     whose ansible.cfg overwrites it during composition must re-add the entry, or use the path
 #     form 'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
-#   * HOST SELECTION IS THE CALLER'S JOB. Select only RHEL/Rocky 8; the raw install refuses a
-#     wrong host before changing it. Windows hosts call their matching
-#     'Windows_Server_<release>/tasks/bootstrap.yml' instead.
-#   * 'gather_facts: false' is required on a fresh EL8 host. Play-level fact gathering runs a
-#     module before this role can install Python 3.12.
+#   * HOST SELECTION IS THE CALLER'S JOB. Select only RHEL/Rocky 8; on 2026-09-26 the raw
+#     install refused a fresh RHEL 9 host before changing it. Windows hosts call their matching
+#     'windows_server_<release>/tasks/bootstrap.yml' instead.
+#   * 'gather_facts: false' is required on fresh EL8: play-level fact gathering runs before any
+#     role (ansible-core 2.21.4 source, read 2026-09-27) and needs Python >= 3.9, while stock EL8
+#     ships 3.6 (measured 2026-09-26).
 #
 # --- [ Privilege Model ] --------------------------------------------------------------------- #
-# The raw Python install runs with 'become: true' before the unprivileged INIT. INIT uses both
-# the keyword and connection variable so the 'user' facts report the LOGIN user, which must own
-# the remote-tmp base. MAIN runs under 'become: true'. Include parameters and extra vars outrank
-# block vars; callers must not force ansible_become there.
+# Raw installs Python with become before 'BEGIN | Read The Host And Confirm It Is Supported',
+# which stays unprivileged (keyword and connection variable) so the remote-tmp owner resolves to
+# the login user (login-user-owned on fresh Rocky Linux 8, measured 2026-09-26). Include
+# parameters and extra vars outrank block vars (ansible-core 2.21.4 source, read 2026-09-27):
+# never force ansible_become through them. 'PROCESS | Converge The Host' runs with become.
 # ============================================================================================= #
 
 #region ------ [ Process: Bootstrap The Host ] ------------------------------------------------ #
@@ -43,14 +45,15 @@
 # identify the explicitly selected entry point unambiguously.
 - name: 'PROCESS | Bootstrap The RHEL Or Rocky 8 Host'
   vars:
-    ansible_python_interpreter: '{{ rhel8_bootstrap_python_bin }}'
+    ansible_python_interpreter: "{{ rhel8_bootstrap_python_bin }}"
 
   block:
 
   #region ------ [ Process: Install The Python That Modules Need ] ---------------------------- #
 
-    # Modules need Python >= 3.9, while stock EL8 has 3.6, so raw installs it before any
-    # module can run. The release check keeps a direct role call from changing the wrong host.
+    # Stock EL8 Python 3.6 is below ansible-core 2.21's 3.9 floor, measured 2026-09-26; raw
+    # installs Python 3.12 before the first Python-backed task in tasks/bootstrap.yml. Every
+    # Python-backed task in that file runs under rhel8_bootstrap_python_bin.
     - name: 'PROCESS | Install The Python That Modules Need'
       become: true
       changed_when: >-
@@ -227,8 +230,7 @@
 
       #region ------ [ Process: Install The Prerequisite Packages ] --------------------------- #
 
-        # Package installation is not error-tolerant; a repository or package failure is
-        # reported at this task instead of surfacing later during venv work.
+        # Nothing below can run unless all prerequisite packages install successfully.
         - name: 'PROCESS | Install The Prerequisite Packages'
           ansible.builtin.dnf:
             name: "{{ rhel8_bootstrap_packages }}"

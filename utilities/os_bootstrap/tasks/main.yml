@@ -1,85 +1,89 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/tasks/main.yml'                                                        #
 # --- [ Description ] ------------------------------------------------------------------------- #
-# Reads the host's operating-system identity without an inventory hint, then runs the matching  #
-# release-specific bootstrap entry point.                                                       #
+# Reads the host identity without an inventory hint and runs the matching release's bootstrap   #
+# entry point. It refuses Windows workstations before a server role can change them.            #
 #                                                                                               #
-# Raw is the one primitive every target can run before bootstrap: stock EL8 may not have a      #
-# usable Python, and fresh Windows SSH may still serve cmd.exe regardless of the configured     #
-# module shell. The probes disable SSH TTY allocation so a failed POSIX command keeps its real  #
-# return code. Windows workstations are refused here before a server role can mutate them.      #
+# Raw is the only pre-bootstrap primitive [INV-01].                                             #
+# The probes run without an SSH TTY [INV-03].                                                   #
+# The probes run without privilege escalation [INV-04].                                         #
+# The role include is a sibling stage so detection block variables cannot reach it [INV-05].    #
 # ============================================================================================= #
 
-#region ------ [ Process: Bootstrap The Detected Operating System ] --------------------------- #
+#region ------ [ Begin: Select The Bootstrap Role ] ------------------------------------------- #
 
-- name: 'PROCESS | Bootstrap The Detected Operating System'
+- name: 'BEGIN | Select The Bootstrap Role'
+  become: false
+  check_mode: false
   vars:
-    __os_bootstrap_is_windows__: "{{ __os_bootstrap_posix_probe__ is failed }}"
-    __os_bootstrap_probe__: >-
+    ansible_become: false
+    ansible_ssh_use_tty: false
+    __is_windows__: >-
+      {{ (__os_bootstrap_posix_probe__.rc | default(1)) != 0 }}
+    __selected_probe__: >-
       {{ __os_bootstrap_windows_probe__
-         if __os_bootstrap_is_windows__
+         if __is_windows__
          else __os_bootstrap_posix_probe__ }}
-    __os_bootstrap_kind__: "{{ __os_bootstrap_probe__.stdout_lines[0] }}"
-    __os_bootstrap_release__: "{{ __os_bootstrap_probe__.stdout_lines[1] }}"
-    __os_bootstrap_role__: >-
-      {{ os_bootstrap_role_map[
-           'windows' if __os_bootstrap_is_windows__ else __os_bootstrap_kind__
-         ][__os_bootstrap_release__] }}
+    __detected_kind__: "{{ __selected_probe__.stdout_lines[0] }}"
+    __detected_release__: "{{ __selected_probe__.stdout_lines[1] }}"
 
   block:
+    # rc-contract: POSIX.1-2024 XCU 2.19 dot and 2.8.1: a shell that cannot source the file exits
+    # nonzero; cmd.exe and Windows PowerShell reject the command nonzero. [INV-02]
+    - name: 'BEGIN | Read The POSIX Release'
+      changed_when: false
+      failed_when: false
+      register: '__os_bootstrap_posix_probe__'
 
-  #region ------ [ Begin: Read The Release ] -------------------------------------------------- #
+      ansible.builtin.raw: >-
+        . /etc/os-release && printf '%s\n%s\n' "$ID" "${VERSION_ID%%.*}"
 
-    - name: 'BEGIN | Read The Release'
-      become: false
-      check_mode: false
-      vars:
-        ansible_become: false
-        ansible_ssh_use_tty: false
+    - name: 'BEGIN | Read The Windows Release'
+      changed_when: false
+      register: '__os_bootstrap_windows_probe__'
+      when: __is_windows__
 
-      block:
-        - name: 'BEGIN | Read The POSIX Release'
-          changed_when: false
-          ignore_errors: true
-          register: '__os_bootstrap_posix_probe__'
-
-          ansible.builtin.raw: . /etc/os-release && printf '%s\n%s\n' "$ID" "${VERSION_ID%%.*}"
-
-        - name: 'BEGIN | Read The Windows Release'
-          changed_when: false
-          register: '__os_bootstrap_windows_probe__'
-          when: __os_bootstrap_posix_probe__ is failed
-
-          ansible.builtin.raw: >-
-            powershell.exe -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName
-            Win32_OperatingSystem).ProductType; [Environment]::OSVersion.Version.Build"
-
-  #endregion --- [ Begin: Read The Release ] -------------------------------------------------- #
-
-  #region ------ [ Begin: Require A Windows Server ] ------------------------------------------ #
+      ansible.builtin.raw: >-
+        powershell.exe -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName
+        Win32_OperatingSystem).ProductType; [Environment]::OSVersion.Version.Build"
 
     - name: 'BEGIN | Require A Windows Server'
-      when: __os_bootstrap_is_windows__
+      when: __is_windows__
 
       ansible.builtin.assert:
         fail_msg: >-
-          The host reports Windows product type {{ __os_bootstrap_kind__ }} and build
-          {{ __os_bootstrap_release__ }}. os_bootstrap requires a Windows server.
+          Refusing to bootstrap Windows product type {{ __detected_kind__ }} (build
+          {{ __detected_release__ }}): os_bootstrap supports only product types 2 and 3. Target a
+          Windows Server host, or remove this workstation from the bootstrap play.
         quiet: true
-        that: __os_bootstrap_kind__ in ['2', '3']
+        that: __detected_kind__ in ['2', '3']
 
-  #endregion --- [ Begin: Require A Windows Server ] ------------------------------------------ #
+    - name: 'BEGIN | Record The Selected Bootstrap Role'
 
-  #region ------ [ Process: Run The Selected Bootstrap Role ] --------------------------------- #
+      ansible.builtin.set_fact:
+        __os_bootstrap_selected_role__: >-
+          {{ os_bootstrap_role_map[
+               'windows' if __is_windows__ else __detected_kind__
+             ][__detected_release__] }}
+        cacheable: false
 
-    # Unguarded on purpose. A role named by the repository map must exist and ship bootstrap.yml;
-    # include_role fails loudly if either framework invariant is broken.
-    - name: 'PROCESS | Run The Selected Bootstrap Role'
+#endregion --- [ Begin: Select The Bootstrap Role ] ------------------------------------------- #
+
+#region ------ [ Process: Run The Selected Bootstrap Role ] ----------------------------------- #
+
+- name: 'PROCESS | Run The Selected Bootstrap Role'
+  block:
+    - name: 'PROCESS | Include The Selected Bootstrap Role'
 
       ansible.builtin.include_role:
-        name: "{{ __os_bootstrap_role__ }}"
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: "{{ __os_bootstrap_selected_role__ }}"
+        public: false
+        rescuable: true
+        rolespec_validate: true
         tasks_from: 'bootstrap'
+        vars_from: 'main'
 
-  #endregion --- [ Process: Run The Selected Bootstrap Role ] --------------------------------- #
-
-#endregion --- [ Process: Bootstrap The Detected Operating System ] --------------------------- #
+#endregion --- [ Process: Run The Selected Bootstrap Role ] ----------------------------------- #

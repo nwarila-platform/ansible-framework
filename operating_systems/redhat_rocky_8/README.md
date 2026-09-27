@@ -45,12 +45,25 @@ Both entry points are re-runnable. The virtualenv is probed for drift — a wron
 
 ## Design invariants
 
-- **Python 3.12 is installed before any module runs.** The raw install command first refuses any host other than RHEL or Rocky 8, and every role module is pinned to `rhel8_bootstrap_python_bin`.
-- **The remote-tmp base is created in one pass before packaged prerequisites and venv work.** Ownership, mode and SELinux context are applied together.
-- **Prerequisite package installation is not error-tolerant.** A repository or package failure is reported at that task instead of surfacing later during venv work.
+- **Raw installs Python 3.12 before the first Python-backed task in `tasks/bootstrap.yml`.**
+  Stock EL8 Python 3.6 is below ansible-core 2.21's 3.9 floor, measured on fresh RHEL and Rocky
+  Linux 8 hosts on 2026-09-26; therefore every Python-backed task in that file runs under
+  `rhel8_bootstrap_python_bin`.
+- **The remote-tmp base is created in one pass before packaged prerequisites and venv work.**
+  Ownership, mode and SELinux context were applied together on Rocky Linux 8, measured
+  2026-09-26; therefore later non-pipelined tasks can stage their payloads.
+- **Prerequisite package installation is not error-tolerant.** At commit `5701b7f`, a static
+  reading of `PROCESS | Install The Prerequisite Packages` found no `ignore_errors` or
+  `failed_when`; therefore a repository or package failure remains reported at that task.
 - **Venv drift is detected structurally, not by message text.** The probe reads `lineinfile`'s documented `found` counter rather than its undocumented `msg` string, so an upstream rewording cannot silently disable drift detection and leave stale virtualenvs in place forever.
 - **fapolicyd trust is applied both before and after the pip work**, and the database is refreshed inline each time, because trust that takes effect later does not help an install happening now.
 
 ## Verification
 
-The raw Python install refuses the wrong distribution or major release before changing it. The module-based guard then asserts family, distribution and major version from identity operands in `vars/main.yml` rather than `defaults/`, so a caller cannot override the check into uselessness. The python3.12 version is read back for drift detection, and the hostname is confirmed against what the playbook declared.
+On fresh RHEL 9 on 2026-09-26, the raw install refused the wrong major release before changing
+anything; its shell guard permits only `rhel 8` and `rocky 8`. The module-based guard then
+asserts family, distribution and major version from identity operands in `vars/main.yml`. Role
+vars outrank inventory and play variables, while enclosing block vars, include parameters and
+vars, and extra vars can still override them (ansible-core 2.21.4: its variable-manager source
+and a block-variable spike, 2026-09-27). The Python 3.12 version is read back for drift
+detection, and the hostname is confirmed against what the playbook declared.
