@@ -179,11 +179,10 @@
     # below. The both-declared and duplicate cases are already rejected at loader
     # INIT by tasks/validate.yml.
     - name: 'BEGIN | Assert Every Disk Declares A Resolvable Identity'
-      when: (config.disks | length) > 0
       loop: "{{ config.disks }}"
       loop_control:
-        loop_var: '__disk__'
         label: "{{ __disk__.unique_id | default(__disk__.function | default('<missing>')) }}"
+        loop_var: '__disk__'
       vars:
         __has_unique_id__: >-
           {{ __disk__.unique_id is defined
@@ -191,6 +190,7 @@
         __has_function__: >-
           {{ __disk__.function is defined
           and (__disk__.function | string | trim | length) > 0 }}
+      when: (config.disks | length) > 0
 
       ansible.builtin.assert:
         fail_msg: >-
@@ -229,11 +229,10 @@
     # zero or multiple match names the function and the observed serials, not a
     # downstream empty-unique_id symptom.
     - name: 'BEGIN | Assert Exactly One Attached Disk Serial Per Resolved Function'
-      when: __platform__ == 'aws'
       loop: "{{ config.disks | selectattr('unique_id', 'undefined') | list }}"
       loop_control:
-        loop_var: '__disk__'
         label: "{{ __disk__.function }}"
+        loop_var: '__disk__'
       vars:
         __volume_id__: >-
           {{ (__windows_disk_manager_attached_volumes__.volumes | selectattr('tags')
@@ -246,6 +245,7 @@
           | selectattr('serial_number', 'defined')
           | selectattr('serial_number', 'match', '(?i)' ~ __expected_serial__)
           | list }}
+      when: __platform__ == 'aws'
 
       ansible.builtin.assert:
         fail_msg: >-
