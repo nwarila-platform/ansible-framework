@@ -198,6 +198,20 @@
     # gates cannot drift apart and run both rules, or neither.
     __dns_declared__: >-
       {{ (openvpn_client_running.dns.domain | default('', true) | string | trim | length) > 0 }}
+    # Matched by the DRIVER's description, since a connection name is renameable: DCO from build
+    # 19041 (the MSI's WIN102004 gate), TAP-Windows6 below it (measured 2026-09-27).
+    __tunnel_drivers__:
+      ovpn_dco:
+        adapter_description_match: 'OpenVPN*'
+        msi_feature: 'Drivers.OvpnDco'
+      tap_windows6:
+        adapter_description_match: 'TAP-Windows Adapter V9'
+        msi_feature: 'Drivers.TAPWindows6'
+    __tunnel_driver__: >-
+      {{ __tunnel_drivers__.ovpn_dco
+         if (ansible_facts.distribution_version
+             is version('10.0.19041', '>=', version_type='pep440'))
+         else __tunnel_drivers__.tap_windows6 }}
 
   # Begin The 'Process' Block
   block:
@@ -307,19 +321,9 @@
     #endregion --- [ Process: Copy The Installer To The Guest ] ------------------------------- #
 
     #region ------ [ Process: Install Silently From The Verified Copy ] ----------------------- #
-    # The feature set and the success codes are properties of this MSI, not operator choices, so
-    # they live beside the package invocation. ADDLOCAL names exactly what a headless client
-    # needs and nothing else: the client itself, the automatic service that runs config-auto, and
-    # the data channel offload driver -- no GUI, no TAP-Windows6, no documentation or sample
-    # configurations. Parents are listed with their children because Windows Installer installs
-    # only the features named. The DCO driver is the only driver, which holds on Server 2022 and
-    # later (the MSI itself gates it on Windows 10 2004) and is what the pinned profile's AEAD
-    # ciphers run on. The digest is verified on the guest, because that is the copy that
-    # executes. A wrong feature name would fail the install rather than prompt, but the run is
-    # still bounded so a hung installer fails inside Ansible. 3010 is accepted alongside 0
-    # because it is not a failure: the driver install can ask for a restart, the module turns
-    # that exact code into reboot_required, and the next region acts on it.
-
+    # Each parent is named with its child: Windows Installer installs only the features named.
+    # One tunnel driver: DCO where the 2.6.22 MSI's WIN102004 condition holds, TAP-Windows6 below
+    # it (measured 2026-09-27). 3010 is the driver's restart request, not a failure.
     - name: 'PROCESS | Install Silently From The Verified Copy'
       async: "{{ openvpn_client_running.install.timeout_seconds }}"
       poll: 15
@@ -329,7 +333,8 @@
         - not ansible_check_mode
 
       ansible.windows.win_package:
-        arguments: 'ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,Drivers.OvpnDco'
+        arguments: >-
+          ADDLOCAL=OpenVPN,OpenVPN.Service,Drivers,{{ __tunnel_driver__.msi_feature }}
         checksum: "{{ openvpn_client_running.installer.sha256 }}"
         checksum_algorithm: 'sha256'
         expected_return_code: [ 0, 3010 ]
@@ -650,7 +655,7 @@
         depth: 2
         error_action: 'stop'
         parameters:
-          AdapterDescriptionMatch: "{{ openvpn_client_running.adapter_description_match }}"
+          AdapterDescriptionMatch: "{{ __tunnel_driver__.adapter_description_match }}"
           PolicyPath: "{{ __registration_policy__ }}"
           RegisterThroughPolicy: "{{ __dns_declared__ | bool }}"
         remote_src: false
