@@ -38,12 +38,9 @@ rhel9_bootstrap_venv_path: '/opt/ansible/venv'
 
 #region ------ [ Package And Python Dependency Sets ] ----------------------------------------- #
 
-# RHEL/Rocky 9 ships the libselinux / dnf / firewalld C bindings ONLY for the platform python
-# (3.9): no python3.12-libselinux exists in AppStream or EPEL. python3-libselinux is therefore
-# the PLATFORM-python binding, and it is required for the 'selevel/serole/setype/seuser'
-# parameters used by this role's directory tasks -- a bare Rocky 9 image may not have it.
-# On later auto-discovery invocations, the pip module runs under Python 3.12 and needs its
-# pkg_resources.
+# python3.12 is the venv interpreter. python3.12-setuptools supplies pip's pkg_resources once
+# later runs discover Python 3.12, measured on fresh RHEL and Rocky Linux 9 hosts on
+# 2026-09-26.
 rhel9_bootstrap_packages:
   - 'python3.12'
   - 'python3.12-setuptools'

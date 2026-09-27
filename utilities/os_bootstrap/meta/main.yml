@@ -38,7 +38,6 @@ galaxy_info:
   galaxy_tags:
     - 'bootstrap'
     - 'dispatch'
-    - 'osfamily'
     - 'provisioning'
 
 allow_duplicates: false
