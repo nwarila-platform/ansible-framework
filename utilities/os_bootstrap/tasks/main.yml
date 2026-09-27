@@ -1,128 +1,85 @@
-- name: 'BEGIN | Initialize Dispatch State'
-  ansible.builtin.set_fact:
-    __os_bootstrap_detected_os__: ''
-    __os_bootstrap_detection_signal__: ''
-    __os_bootstrap_target_role__: ''
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/main.yml'                                                        #
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Reads the host's operating-system identity without an inventory hint, then runs the matching  #
+# release-specific bootstrap entry point.                                                       #
+#                                                                                               #
+# Raw is the one primitive every target can run before bootstrap: stock EL8 may not have a      #
+# usable Python, and fresh Windows SSH may still serve cmd.exe regardless of the configured     #
+# module shell. The probes disable SSH TTY allocation so a failed POSIX command keeps its real  #
+# return code. Windows workstations are refused here before a server role can mutate them.      #
+# ============================================================================================= #
 
-- name: 'BEGIN | Detect From Existing OS Family Fact'
-  when: (ansible_facts.os_family | default('') | string | trim | length) > 0
-  ansible.builtin.set_fact:
-    __os_bootstrap_detected_os__: "{{ ansible_facts.os_family | default('') | string | trim }}"
-    __os_bootstrap_detection_signal__: 'pre-populated ansible_facts.os_family'
+#region ------ [ Process: Bootstrap The Detected Operating System ] --------------------------- #
 
-- name: 'BEGIN | Detect Windows From EC2 Platform'
-  when:
-    - (__os_bootstrap_detected_os__ | default('') | length) == 0
-    - (platform | default('') | string | lower | trim) == 'windows'
-  ansible.builtin.set_fact:
-    __os_bootstrap_detected_os__: 'Windows'
-    __os_bootstrap_detection_signal__: 'inventory hostvar platform=Windows'
+- name: 'PROCESS | Bootstrap The Detected Operating System'
+  vars:
+    __os_bootstrap_is_windows__: "{{ __os_bootstrap_posix_probe__ is failed }}"
+    __os_bootstrap_probe__: >-
+      {{ __os_bootstrap_windows_probe__
+         if __os_bootstrap_is_windows__
+         else __os_bootstrap_posix_probe__ }}
+    __os_bootstrap_kind__: "{{ __os_bootstrap_probe__.stdout_lines[0] }}"
+    __os_bootstrap_release__: "{{ __os_bootstrap_probe__.stdout_lines[1] }}"
+    __os_bootstrap_role__: >-
+      {{ os_bootstrap_role_map[
+           'windows' if __os_bootstrap_is_windows__ else __os_bootstrap_kind__
+         ][__os_bootstrap_release__] }}
 
-- name: 'BEGIN | Detect Windows From PowerShell Hint'
-  when:
-    - (__os_bootstrap_detected_os__ | default('') | length) == 0
-    - (ansible_shell_type | default('') | string | lower | trim) == 'powershell'
-  ansible.builtin.set_fact:
-    __os_bootstrap_detected_os__: 'Windows'
-    __os_bootstrap_detection_signal__: 'connection hint ansible_shell_type=powershell'
-
-- name: 'BEGIN | Detect Windows From Connection Hint'
-  when:
-    - (__os_bootstrap_detected_os__ | default('') | length) == 0
-    - (ansible_connection | default('') | string | lower | trim) in ['winrm', 'psrp']
-  ansible.builtin.set_fact:
-    __os_bootstrap_detected_os__: 'Windows'
-    __os_bootstrap_detection_signal__: >-
-      connection hint ansible_connection={{ ansible_connection | default('') | string | lower |
-      trim }}
-
-- name: 'BEGIN | Mark Fact-Gather Fallback'
-  when: (__os_bootstrap_detected_os__ | default('') | length) == 0
-  ansible.builtin.set_fact:
-    __os_bootstrap_detection_signal__: 'fallback ansible.builtin.setup'
-
-- name: 'BEGIN | Detect From Fact-Gather Fallback'
-  when: (__os_bootstrap_detected_os__ | default('') | length) == 0
   block:
-    - name: 'BEGIN | Gather OS Family Fact As Last Resort'
-      register: '__os_bootstrap_fallback_result__'
-      ignore_unreachable: true
-      ansible.builtin.setup:
-        gather_subset:
-          - '!all'
-          - '!min'
-          - 'distribution'
 
-    - name: 'BEGIN | Require OS Family From Fact-Gather Fallback'
+  #region ------ [ Begin: Read The Release ] -------------------------------------------------- #
+
+    - name: 'BEGIN | Read The Release'
+      become: false
+      check_mode: false
+      vars:
+        ansible_become: false
+        ansible_ssh_use_tty: false
+
+      block:
+        - name: 'BEGIN | Read The POSIX Release'
+          changed_when: false
+          ignore_errors: true
+          register: '__os_bootstrap_posix_probe__'
+
+          ansible.builtin.raw: . /etc/os-release && printf '%s\n%s\n' "$ID" "${VERSION_ID%%.*}"
+
+        - name: 'BEGIN | Read The Windows Release'
+          changed_when: false
+          register: '__os_bootstrap_windows_probe__'
+          when: __os_bootstrap_posix_probe__ is failed
+
+          ansible.builtin.raw: >-
+            powershell.exe -NoProfile -NonInteractive -Command "(Get-CimInstance -ClassName
+            Win32_OperatingSystem).ProductType; [Environment]::OSVersion.Version.Build"
+
+  #endregion --- [ Begin: Read The Release ] -------------------------------------------------- #
+
+  #region ------ [ Begin: Require A Windows Server ] ------------------------------------------ #
+
+    - name: 'BEGIN | Require A Windows Server'
+      when: __os_bootstrap_is_windows__
+
       ansible.builtin.assert:
-        that:
-          - ((__os_bootstrap_fallback_result__ | default({})) is not failed)
-          - ((__os_bootstrap_fallback_result__ | default({})) is not unreachable)
-          - (ansible_facts.os_family | default('') | string | trim | length) > 0
         fail_msg: >-
-          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal:
-          '{{ __os_bootstrap_detection_signal__ | default('') }}'. The fallback fact gather
-          did not return ansible_facts.os_family.
+          The host reports Windows product type {{ __os_bootstrap_kind__ }} and build
+          {{ __os_bootstrap_release__ }}. os_bootstrap requires a Windows server.
         quiet: true
+        that: __os_bootstrap_kind__ in ['2', '3']
 
-    - name: 'BEGIN | Record Fallback OS Family'
-      ansible.builtin.set_fact:
-        __os_bootstrap_detected_os__: >-
-          {{ ansible_facts.os_family | default('') | string | trim }}
-        __os_bootstrap_detection_signal__: 'fallback-gathered ansible_facts.os_family'
+  #endregion --- [ Begin: Require A Windows Server ] ------------------------------------------ #
 
-  rescue:
-    - name: 'BEGIN | Fail When Fact-Gather Fallback Cannot Detect OS'
-      ansible.builtin.fail:
-        msg: >-
-          OS bootstrap detection failed. Detected OS: '<none>'. Detection signal: '{{
-          __os_bootstrap_detection_signal__ | default('') }}'. Detail: {{
-          ansible_failed_result.msg | default('fact gathering did not return an OS family') }}.
+  #region ------ [ Process: Run The Selected Bootstrap Role ] --------------------------------- #
 
-# An inventory may name the role itself. Detection resolves an OS FAMILY, and on Windows it does
-# so before facts exist, so the map cannot tell two releases of one family apart -- yet the
-# inventory already knows which image it launched. A host variable is the only override that
-# arrives early enough to matter and does not become a role parameter, which this role's callers
-# are told never to pass.
-# The inventory hint is LOWER-CASED before it is used. Role directories are snake_case, but the
-# hint is hand-written in an inventory and two consumers still spell it 'Windows_Server_2022'
-# from when the directories were CamelCase. Normalising here keeps those inventories working
-# without a coordinated cross-repo merge, and a hand-supplied hostvar is exactly the input that
-# should not be case-sensitive. It does NOT make a wrong name succeed: an unmapped or misspelled
-# value still resolves to a role that does not exist and fails at the route guard below.
-- name: 'BEGIN | Resolve Bootstrap Role'
-  ansible.builtin.set_fact:
-    __os_bootstrap_target_role__: >-
-      {{
-        (os_bootstrap_role | default('', true) | string | trim | lower)
-        or
-        (os_bootstrap_role_map | default({})).get(
-          __os_bootstrap_detected_os__ | default(''),
-          ''
-        )
-      }}
-    __os_bootstrap_detection_signal__: >-
-      {{
-        (os_bootstrap_role | default('', true) | string | trim)
-        | ternary('inventory hostvar os_bootstrap_role',
-                  __os_bootstrap_detection_signal__ | default(''))
-      }}
+    # Unguarded on purpose. A role named by the repository map must exist and ship bootstrap.yml;
+    # include_role fails loudly if either framework invariant is broken.
+    - name: 'PROCESS | Run The Selected Bootstrap Role'
 
-- name: 'BEGIN | Fail When OS Has No Route'
-  when: (__os_bootstrap_target_role__ | default('') | length) == 0
-  ansible.builtin.fail:
-    msg: >-
-      OS bootstrap dispatch failed. Detected OS: '{{ __os_bootstrap_detected_os__ |
-      default('<none>', true) }}'. Detection signal:
-      '{{ __os_bootstrap_detection_signal__ | default('<none>', true) }}'. No bootstrap role is
-      mapped for that OS.
+      ansible.builtin.include_role:
+        name: "{{ __os_bootstrap_role__ }}"
+        tasks_from: 'bootstrap'
 
-# Unguarded on purpose. A mapped role that does not exist, or ships no bootstrap.yml, is a
-# framework defect in a two-entry map, and include_role fails the play on either. Re-adding a
-# check would buy only a better message for the second case -- it names the missing file but not
-# the role -- at the cost of deciding where the role lives, which is the search ansible has
-# already done and this role has no business repeating.
-- name: 'PROCESS | Run The Selected Bootstrap Role'
-  ansible.builtin.include_role:
-    name: "{{ __os_bootstrap_target_role__ | default('') }}"
-    tasks_from: 'bootstrap'
+  #endregion --- [ Process: Run The Selected Bootstrap Role ] --------------------------------- #
+
+#endregion --- [ Process: Bootstrap The Detected Operating System ] --------------------------- #

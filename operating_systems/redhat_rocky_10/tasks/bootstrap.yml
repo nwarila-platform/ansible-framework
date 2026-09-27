@@ -51,10 +51,6 @@
 # keeps meaning the same thing if a later AppStream python becomes the default. Reference: RHEL #
 # 10, Installing and using dynamic programming languages, chapter 1.                            #
 #                                                                                               #
-# UNVERIFIED AGAINST A TARGET: that /usr/bin/python3.12 exists on a bare image of this release. #
-# It follows from python3 being 3.12, but nothing here has run on one. Confirm with: rpm        #
-# -q --whatprovides /usr/bin/python3.12                                                         #
-#                                                                                               #
 # NO hardening.yml. redhat_rocky_8 carries one; this role does not, and it is not a copy away.  #
 # Its SECOND task asserts distribution_major_version == 8 -- the first only gathers the         #
 # distribution facts -- so a copy here would abort before changing anything. Nor is deleting    #

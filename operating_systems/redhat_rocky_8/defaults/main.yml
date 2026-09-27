@@ -14,10 +14,10 @@
 
 #region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
 
-# The python3.12 interpreter installed by 'rhel8_bootstrap_packages' below. RPM-owned at this
-# path on RHEL/Rocky 8 deterministically, so it is a literal rather than a 'which' lookup —
-# discovery would cost two extra tasks plus a 'which' package, and introduces a PATH dependency
-# inside a become context. Exposed as a knob only so a non-standard build can redirect it.
+# Every module in tasks/bootstrap.yml runs under this Python 3.12 interpreter, which the role
+# installs before its first module. RPM-owned at this path on RHEL/Rocky 8 deterministically, so
+# it is a literal rather than a 'which' lookup and has no PATH dependency. Exposed as a knob only
+# so a non-standard build can redirect it.
 rhel8_bootstrap_python_bin: '/usr/bin/python3.12'
 
 # Parent directory of the venv. Root-owned, SELinux usr_t (exec-capable).
@@ -39,15 +39,12 @@ rhel8_bootstrap_venv_path: '/opt/ansible/venv'
 
 #region ------ [ Package And Python Dependency Sets ] ----------------------------------------- #
 
-# RHEL/Rocky 8 ships the libselinux / dnf / firewalld C bindings ONLY for platform-python (3.6):
-# no python3.12-libselinux exists in AppStream or EPEL. python3-libselinux is therefore the
-# PLATFORM-python binding, and it is required for the 'selevel/serole/setype/seuser' parameters
-# used by this role's directory tasks — a bare Rocky 8 image may not have it.
+# The role's pip module runs under the pinned python3.12 and needs its pkg_resources.
 rhel8_bootstrap_packages:
   - 'python3.12'
+  - 'python3.12-setuptools'
   - 'python3-pip'
   - 'python3-setuptools'
-  - 'python3-libselinux'
 
 # Bumped to latest FIRST, in their own task, so the pinned boto3/botocore install that follows
 # resolves under a modern pip resolver. This ordering is load-bearing — see bootstrap.yml.

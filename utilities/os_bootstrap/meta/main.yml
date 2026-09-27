@@ -13,12 +13,11 @@ galaxy_info:
   namespace: 'ansible_framework'
   author: 'nwarila-platform'
   description: >-
-    Selects and runs the bootstrap role for each host. Detects the operating system from
-    facts already gathered, from the EC2 platform, or from the connection, falling back to a
-    single gather only when nothing else answers, then includes that OS role's bootstrap
-    entry point by bare name through roles_path. Routes on OS family rather than
-    distribution or release, because the selected role owns strict release validation and
-    must reject an unsupported one itself. Converges nothing of its own.
+    Selects and runs the bootstrap role for each host. Reads the host's identity without an
+    inventory hint through POSIX and Windows raw probes, then routes by Linux distribution
+    and major release or by Windows build. Refuses Windows workstations before including a
+    server role. Includes the selected bootstrap entry point by bare name through roles_path
+    and converges nothing of its own.
 
   license: 'MIT'
   min_ansible_version: '2.21'

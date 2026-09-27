@@ -42,8 +42,11 @@ rhel9_bootstrap_venv_path: '/opt/ansible/venv'
 # (3.9): no python3.12-libselinux exists in AppStream or EPEL. python3-libselinux is therefore
 # the PLATFORM-python binding, and it is required for the 'selevel/serole/setype/seuser'
 # parameters used by this role's directory tasks -- a bare Rocky 9 image may not have it.
+# On later auto-discovery invocations, the pip module runs under Python 3.12 and needs its
+# pkg_resources.
 rhel9_bootstrap_packages:
   - 'python3.12'
+  - 'python3.12-setuptools'
   - 'python3-pip'
   - 'python3-setuptools'
   - 'python3-libselinux'

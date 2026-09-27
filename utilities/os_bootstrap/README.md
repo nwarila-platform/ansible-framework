@@ -26,76 +26,50 @@ try a PowerShell module before a fresh Windows host's OpenSSH DefaultShell has b
 those as inventory variables so the selected bootstrap role can apply its own task-scoped
 transport and privilege settings.
 
-No play-level privilege escalation is required. `redhat_rocky_8` runs only its main bootstrap
-block with `become: true`; `windows_server_2025` explicitly disables become. A dynamic role
-include does not replace those settings.
+No play-level privilege escalation is required. Each selected OS role scopes its own privilege
+settings, and a dynamic role include does not replace them.
 
 ## Detection and routing
 
-Detection uses the first available signal in this order:
+The dispatcher reads the host directly and needs no inventory hint. Both probes disable SSH TTY
+allocation so their return codes remain trustworthy:
 
-1. An already-populated `ansible_facts.os_family`.
-2. The `aws_ec2` inventory host variable `platform` when its value is `Windows`. EC2 omits this
-   variable for Linux, so absence is never treated as a Linux signal.
-3. An `ansible_shell_type` value of `powershell`.
-4. An `ansible_connection` value of `winrm` or `psrp`.
-5. A narrow `ansible.builtin.setup` fact gather as the last resort.
+1. A POSIX `raw` probe reads the lower-case `ID` and major `VERSION_ID` from `/etc/os-release`.
+2. If that probe fails, a `raw` PowerShell probe reads the Windows product type and build. The
+   ignored POSIX failure is expected on every Windows host.
 
-The first four checks are controller-side and open no target connection. Every optional value is
-handled with an explicit empty default. The fallback is suitable for Linux and for a connection
-already configured to execute its platform's modules. It cannot make an unlabelled fresh Windows
-SSH host safe: inventory for that host must supply either `platform: Windows` or a Windows
-connection hint so dispatch reaches `windows_server_2025` before any module runs.
+On Windows, the probe reads WMI with `Get-CimInstance Win32_OperatingSystem`, which Windows
+refuses to a non-elevated token, so the identity must be elevated as the Windows roles themselves
+require (`BEGIN | Require An Elevated Session Token`).
 
-Routing is by OS family:
+Only Windows product types 2 (domain controller) and 3 (server) proceed. The dispatcher refuses a
+workstation before a server role can change its OpenSSH configuration.
 
-- `RedHat` routes to `redhat_rocky_8`.
-- `Windows` routes to `windows_server_2025`.
+The nested map in `vars/main.yml` routes Linux by distribution and major release, and Windows by
+build:
 
-The dispatcher does not validate a distribution, version, Windows product type, or build.
-Each selected bootstrap role retains that responsibility and fails if the target is unsupported.
-For example, another RedHat-family release is intentionally routed to `redhat_rocky_8`, whose
-strict RHEL/Rocky 8 assertion rejects it.
+- RHEL and Rocky Linux 8, 9 and 10 route to their matching `redhat_rocky_*` roles.
+- Windows builds 14393, 17763, 20348 and 26100 route to Server 2016, 2019, 2022 and 2025 roles.
+
+Server 2016 is routed but has not been live-proven by this change.
+
+The probes run under `--check`, so routing can still be inspected. A fresh EL8 host cannot
+complete in check mode because its selected role's Python installation remains skipped.
 
 ## Failure contract
 
-Dispatch never skips an unknown route. Failure messages report the detected OS and the signal
-used, and a failed or empty fallback fact gather is converted to the same loud detection failure.
+If neither probe can read the host, the Windows probe fails with its return code and diagnostic.
+Malformed probe output fails when its required lines are indexed. A Windows workstation fails the
+server guard before a role is included.
 
-The dispatcher owns detection and routing, and nothing else. It does not check that the mapped
-role exists or ships an entry point, because a map naming a role this framework does not have is
-a framework defect and `include_role` already fails the play on it. The two failures read
-differently: an absent role is reported by name against every path searched, while a role that
-exists without `tasks/bootstrap.yml` reports only `Could not find specified file in role:
-tasks/bootstrap` and names neither the role nor the detected OS -- the role is recoverable from
-the preceding `Resolve Bootstrap Role` task, which prints it under `-v`.
+An unknown distribution, release or build fails the direct nested-map lookup while finalizing the
+role include, and the native error names the missing key. A mapped role that is absent or lacks
+`tasks/bootstrap.yml` is a framework defect that `include_role` also fails loudly.
 
 ## Adding an OS
 
 Ship the new role under `operating_systems/<role>/` — an OS role converges a host, so it stays
 in that namespace — with a named `tasks/bootstrap.yml` entry point and its own strict OS support
-assertion. Then extend
-`os_bootstrap_role_map` in `vars/main.yml`. Add the new paths to the repository-rooted
+assertion. Then add its lower-case `/etc/os-release` ID and major release, or its Windows build,
+to the corresponding nested map in `vars/main.yml`. Add any new paths to the repository-rooted
 `.gitignore` allowlist and run the repository checks.
-
-### A second release of a family already in the map
-
-Detection yields an OS FAMILY, and on Windows it resolves before facts are available, so the map
-holds one role per family and cannot tell two releases apart. Adding `windows_server_2022`
-beside `windows_server_2025` therefore does NOT mean editing the map: pointing `Windows` at
-either one routes every Windows host to it and fails the other release's support assertion.
-
-Name the role in the INVENTORY instead. `os_bootstrap_role`, when set on a host, wins over the
-map:
-
-```yaml
-compose:
-  os_bootstrap_role: >-
-    (aws_ec2_tags.Function | default('', true) == 'workstation')
-    | ternary('windows_server_2022', '')
-```
-
-A host variable is the only override that arrives before detection runs and does not become a
-role parameter — callers of this role are told to pass it none, because a role parameter
-outranks the connection scoping the pre-flip stage depends on. An empty value falls through to
-the map, so hosts that say nothing keep the default.
