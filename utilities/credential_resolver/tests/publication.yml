@@ -40,6 +40,28 @@
                      password: "{{ publication_password }}"},
          scheme: 'http', encryption: 'always'}
   tasks:
+
+    #region ------ [ Process: Assert Lazy Candidate Rendering ] ------------------------------- #
+
+    - name: 'PROCESS | Assert The First Candidate Wins Before Rendering The Second'
+      block:
+        - name: 'PROCESS | Resolve Before The Missing Password Lookup'
+          vars:
+            credential_resolver_candidates:
+              - {name: 'lazy-winner', connection: 'ssh', user: 'publication-password',
+                 password: "{{ publication_password }}"}
+              - {name: 'unused-missing-password', connection: 'ssh',
+                 user: 'publication-password',
+                 password: "{{ lookup('file', playbook_dir ~ '/missing-password') }}"}
+          ansible.builtin.include_role: {name: 'credential_resolver'}
+        - name: 'PROCESS | Assert The Lazy Winner'
+          ansible.builtin.assert:
+            fail_msg: 'The first candidate did not win before the second was rendered.'
+            quiet: true
+            that: __credential_resolver_winner__ == 'lazy-winner'
+
+    #endregion --- [ Process: Assert Lazy Candidate Rendering ] ------------------------------- #
+
     - name: 'PROCESS | Check Each Published Identity'
       loop: "{{ range(publication_cases | length) | list }}"
       loop_control: {label: "{{ publication_case.candidate.name }}", loop_var: 'case_index'}

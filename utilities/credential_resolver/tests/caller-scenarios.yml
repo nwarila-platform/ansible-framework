@@ -57,6 +57,7 @@
                 'S-1-16-12288\r\n200\r\n']
           - __credential_resolver_attempts__ | map(attribute='stderr') | list
             == ['REFUSAL-ERR\r\n', 'FAILURE-ERR\r\n', 'WINNER-ERR\r\n']
+          - __credential_resolver_attempts__ | map(attribute='posix') | unique | list == [None]
 
     #endregion --- [ Process: Assert The First Pass ] ----------------------------------------- #
 
