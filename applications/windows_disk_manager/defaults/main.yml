@@ -16,8 +16,9 @@
 windows_disk_manager_defaults:
 
   #region ------ [ Platform targeting ] ------------------------------------------------------- #
-  # Declared infrastructure platform (vmware | aws). REQUIRED in the windows_disk_manager:
-  # override dict; no default is safe. Proxmox is intentionally excluded until its Windows
+  # Infrastructure platform (vmware | aws). When empty, the role reads the host's reported
+  # system vendor: Amazon EC2 -> aws; VMware, Inc. -> vmware. A declared value is normalized and
+  # must match the host, as before. Proxmox is intentionally excluded until its Windows
   # disk-identity path has been measured.
   platform: ''
   #endregion --- [ Platform targeting ] ------------------------------------------------------- #

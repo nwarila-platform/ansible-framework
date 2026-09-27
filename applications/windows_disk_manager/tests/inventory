@@ -1,0 +1,10 @@
+# ============================================================================================= #
+# File: 'applications/windows_disk_manager/tests/inventory'
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Local inventory for the windows_disk_manager platform tests.
+# ============================================================================================= #
+---
+all:
+  hosts:
+    localhost:
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"

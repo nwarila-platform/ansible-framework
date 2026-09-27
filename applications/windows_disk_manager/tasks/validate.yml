@@ -11,20 +11,21 @@
 
 #region ------ [ Begin: Guard The Platform Declaration ] -------------------------------------- #
 
-- name: 'VALIDATE | Assert Platform Is Declared And Supported'
-  when: (state | default('present') | string | lower | trim) == 'present'
+- name: 'VALIDATE | Assert Platform Is Empty Or Supported'
   vars:
-    __platform__: "{{ config.platform | default('') | string | trim }}"
+    __platform__: "{{ config.platform | default('') | string | lower | trim }}"
+  when: (state | default('present') | string | lower | trim) == 'present'
+
   ansible.builtin.assert:
-    that:
-      - (__platform__ | length) > 0
-      - (__platform__ | lower) in ['vmware', 'aws']
     fail_msg: >-
       windows_disk_manager.platform is
       {{ 'unset/empty' if (__platform__ | length) == 0 else ("'" ~ __platform__ ~ "'") }}.
-      Set 'platform' in the windows_disk_manager override dict to vmware or aws. Proxmox is
-      intentionally unsupported until its Windows disk-identity path has been measured.
+      Leave 'platform' empty to read it from the host, or set it in the windows_disk_manager
+      override dict to vmware or aws. Proxmox is intentionally unsupported until its Windows
+      disk-identity path has been measured.
     quiet: true
+    that:
+      - (__platform__ | length) == 0 or __platform__ in ['vmware', 'aws']
 
 #endregion --- [ Begin: Guard The Platform Declaration ] -------------------------------------- #
 

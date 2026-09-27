@@ -5,46 +5,71 @@
 # first_found. Receives the merged running config as 'config'.
 #
 # TWO KINDS OF LOGIC, kept distinct:
-#   * TARGETING (the role's function — kept explicit and robust): dispatch to the declared
-#     `platform` provider, and target each SPECIFIC disk by its stable, globally-unique
+#   * TARGETING (the role's function — kept explicit and robust): use the normalized declaration,
+#     or detect `platform` from the host when it is empty, and target each SPECIFIC disk by its
+#     stable, globally-unique
 #     `unique_id` (a /dev/disk/by-id/ name — the VMware disk WWN, the Proxmox/QEMU by-id serial,
 #     the AWS NVMe/EBS serial), operating entirely through /dev/disk/by-id/<unique_id> and
 #     writing fstab by filesystem UUID. NEVER /dev/sdX / /dev/nvmeXnY (Nitro failure mode).
 #   * DEFENSIVE VALIDATION (CI/CD's responsibility — mostly NOT done here): the role trusts the
-#     declared inputs and lets the modules fail loudly on bad input. No input re-checks, no
-#     vendor-match assert. EXCEPTION (§4c): a read-only mutation-safety guard runs immediately
-#     before the first parted mutation below and refuses a foreign/occupied disk — parted's
-#     mklabel would otherwise silently destroy it. See tasks/validate.yml for the companion
-#     platform-enum guard (loader INIT hook).
+#     declared inputs after tasks/validate.yml checks a non-empty platform at loader INIT. An
+#     empty platform is detected and checked here. A read-only mutation-safety guard also runs
+#     immediately before the first parted mutation below and refuses a foreign/occupied disk —
+#     parted's mklabel would otherwise silently destroy it.
 # ============================================================================================= #
 
 #region ------ [ Process: Provision The Declared Disks On The RedHat Family ] ----------------- #
 
 - name: 'PROCESS | Provision The Declared Disks On The RedHat Family'
   become: true
+  vars:
+    __declared_platform__: >-
+      {{ config.platform | default('') | string | lower | trim }}
+    __reported_vendor__: "{{ ansible_facts.system_vendor | default('') }}"
+    __detected_platform__: >-
+      {{ linux_disk_manager_vendor_platforms.get(__reported_vendor__, '') }}
+    __platform__: >-
+      {{ __declared_platform__ or __detected_platform__ }}
   block:
+
+    - name: 'BEGIN | Load Hardware Facts For Platform Detection'
+      when:
+        - (__declared_platform__ | length) == 0
+        - ansible_facts.system_vendor is not defined
+
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - 'hardware'
+
+    - name: 'BEGIN | Assert Platform Was Detected From The Host'
+      when: (__declared_platform__ | length) == 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          linux_disk_manager could not resolve a supported platform from reported system vendor
+          '{{ __reported_vendor__ | default('<missing>', true) }}'. Supported vendor/platform
+          pairs are 'Amazon EC2' -> aws, 'VMware, Inc.' -> vmware, and 'QEMU' -> proxmox.
+        quiet: true
+        that:
+          - __platform__ in ['vmware', 'proxmox', 'aws']
 
     #region ------ [ Process: Dispatch To The Shared By-Id Provider ] ------------------------- #
 
-    # Platform TARGETING: run the SHARED by-id provider for every platform whose disk identity is
-    # a stable /dev/disk/by-id/ NAME. `vmware` (disk WWN), `proxmox` (QEMU by-id serial), and
-    # `aws` (NVMe/EBS serial) are implemented here as ONE block, not as per-platform siblings —
-    # the pipeline below (parted -> wait_for -> mkfs -> mount-by-UUID -> growfs) only ever
-    # addresses `/dev/disk/by-id/{{ item.unique_id }}`, so it is already platform-agnostic; a new
-    # platform is added by widening this `when:` list (and the matching enum in
-    # tasks/validate.yml), never by duplicating the block. On VMware the `unique_id` is the disk
-    # WWN, which requires disk.EnableUUID=TRUE on the VM so /dev/disk/by-id/wwn-* exists; on
-    # Proxmox it is the QEMU by-id serial (e.g. `scsi-SQEMU_QEMU_HARDDISK_<serial>`); on AWS it
-    # is the NVMe/EBS serial by-id name (Nitro).
+    # Platform TARGETING: run the SHARED by-id provider for the effective platform selected
+    # above.
+    # A declared value is checked by tasks/validate.yml; an empty value is detected and asserted
+    # before this block. `vmware` (disk WWN), `proxmox` (QEMU by-id serial), and `aws` (NVMe/EBS
+    # serial) are implemented here as ONE block, not as per-platform siblings — the pipeline
+    # below (parted -> wait_for -> mkfs -> mount-by-UUID -> growfs) only ever addresses
+    # `/dev/disk/by-id/{{ item.unique_id }}`, so it is already platform-agnostic. On VMware the
+    # `unique_id` is the disk WWN, which requires disk.EnableUUID=TRUE on the VM so
+    # /dev/disk/by-id/wwn-* exists; on Proxmox it is the QEMU by-id serial (for example,
+    # `scsi-SQEMU_QEMU_HARDDISK_<serial>`); on AWS it is the NVMe/EBS serial by-id name (Nitro).
     #
-    # An unset/unsupported platform never actually reaches this `when:` as false in practice:
-    # tasks/validate.yml (run by the loader's INIT hook, before MAIN starts) asserts platform is
-    # one of the three values above and fails the whole role loudly first. This `when:` is
-    # defense in depth, not the primary guard.
     - name: 'PROCESS | Provision The Declared Disks Through The Shared By-Id Provider'
-      when: (config.platform | string | lower | trim) in ['vmware', 'proxmox', 'aws']
       vars:
-        __platform__: "{{ config.platform | string | lower | trim }}"
         __instance_id__: >-
           {{ instance_id | default(ansible_host) }}
         # R3: derive the provider's normalized list inside this block so it cannot bleed into
@@ -89,8 +114,9 @@
         # companion ambiguous-identity guard (loader INIT hook, before this file is reached).
         - name: 'BEGIN | Resolve AWS Function-Tagged Disks To Their Unique Id'
           when:
-            - (config.platform | string | lower | trim) == 'aws'
+            - __platform__ == 'aws'
             - config.disks | selectattr('unique_id', 'undefined') | list | length > 0
+
           ansible.builtin.include_tasks: 'resolve_aws.yml'
 
         #endregion --- [ Begin: Resolve AWS Function Tags Before Any Device Probing ] --------- #

@@ -28,18 +28,18 @@
 linux_disk_manager_defaults:
 
   #region ------ [ Platform targeting ] ------------------------------------------------------- #
-  # Declared infrastructure platform (vmware | proxmox | aws). REQUIRED in the
-  # linux_disk_manager: override dict; no default is safe. present_redhat.yml dispatches all
-  # three to the SAME shared by-id provider block because every identity is a /dev/disk/by-id/
-  # NAME. There is deliberately NO detected-vendor match.
+  # Infrastructure platform (vmware | proxmox | aws). When empty, the role reads the host's
+  # reported system vendor: Amazon EC2 -> aws; VMware, Inc. -> vmware; QEMU -> proxmox. A
+  # declared platform is normalized and used as given; it is never checked against the vendor.
+  # All three platforms use the SAME shared by-id provider block because every identity is a
+  # /dev/disk/by-id/ NAME.
   platform: ''
   #endregion --- [ Platform targeting ] ------------------------------------------------------- #
 
   #region ------ [ Managed disks ] ------------------------------------------------------------ #
-  # Declared disks to manage. Empty by default, but `platform` is still required whenever this
-  # role is invoked. Each entry declares EXACTLY ONE of unique_id / function. tasks/validate.yml
-  # rejects the silent-wrong BOTH case at loader INIT; missing/unusable identities fail loudly in
-  # the resolver/device tasks:
+  # Declared disks to manage. Empty by default. Each entry declares EXACTLY ONE of unique_id /
+  # function. tasks/validate.yml rejects the silent-wrong BOTH case at loader INIT;
+  # missing/unusable identities fail loudly in the resolver/device tasks:
   #
   #   - unique_id:   Stable /dev/disk/by-id/ NAME of the WHOLE disk (VMware WWN 'wwn-0x...',
   #                  Proxmox QEMU by-id serial, or AWS NVMe serial by-id name). Never a /dev/sdX

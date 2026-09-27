@@ -1,0 +1,277 @@
+# ============================================================================================= #
+# File: 'applications/linux_disk_manager/tests/test.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+# Local cases for declared and host-reported platform selection.
+# ============================================================================================= #
+---
+
+#region ------ [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
+
+- name: 'TEST | Detect AWS From Amazon EC2'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Amazon EC2'
+    config:
+      disks: []
+      platform: ''
+    __expected_platform__: 'aws'
+  tasks:
+
+    - name: 'TEST | Accept An Empty Platform Declaration'
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        tasks_from: 'validate.yml'
+
+    - name: 'TEST | Run The Linux Entry Point For Amazon EC2'
+      register: '__entrypoint_result__'
+
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        public: true
+        tasks_from: 'present_redhat.yml'
+
+    - name: 'TEST | Read The Effective Platform Dataflow And Gather Guard'
+      changed_when: false
+      register: '__dataflow_metrics__'
+
+      ansible.builtin.command:
+        argv:
+          - 'awk'
+          - |-
+            {
+              if ($0 ~ /^[[:space:]]*#/) next
+              if ($0 ~ /^    __declared_platform__: >-$/) declaration_line = NR
+              if (NR == declaration_line + 1 &&
+                  index($0, "config.platform | default('') | string | lower | trim")) norm++
+              if ($0 ~ /^    __platform__: >-$/) assignment_line = NR
+              if (NR == assignment_line + 1 &&
+                  index($0, "__declared_platform__ or __detected_platform__")) assignment++
+              declaration += gsub(/config[.]platform/, "&")
+              effective += gsub(/__platform__/, "&")
+              if (index($0, "BEGIN | Load Hardware Facts For Platform Detection")) gather = NR
+              if (index($0, "ansible.builtin.setup:")) setup++
+              if (index($0, "- 'hardware'")) hardware++
+              if (index($0, "(__declared_platform__ | length) == 0")) empty++
+              if (index($0, "ansible_facts.system_vendor is not defined")) missing++
+              if (index($0, "BEGIN | Assert Platform Was Detected From The Host")) detected = NR
+            }
+            END {
+              before = (gather > 0 && detected > gather)
+              printf "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d", assignment, declaration, effective,
+                (gather > 0), setup, hardware, empty, missing, before, norm
+            }
+          - "{{ playbook_dir }}/../tasks/present_redhat.yml"
+
+    - name: 'TEST | Assert The Effective Platform Dataflow And Gather Guard'
+      ansible.builtin.assert:
+        fail_msg: >-
+          The Linux entry point must derive and use one effective platform, with its guarded
+          hardware gather before the detection assertion.
+        quiet: true
+        that:
+          - (__dataflow_metrics__.stdout | default('')) == '1:1:4:1:1:1:2:1:1:1'
+
+    - name: 'TEST | Assert Amazon EC2 Resolves To AWS'
+      ansible.builtin.assert:
+        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
+        quiet: true
+        that:
+          - __entrypoint_result__ is succeeded
+          - >-
+            linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+
+#endregion --- [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
+
+#region ------ [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
+
+- name: 'TEST | Detect VMware From VMware Inc'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'VMware, Inc.'
+    config:
+      disks: []
+      platform: ''
+    __expected_platform__: 'vmware'
+  tasks:
+
+    - name: 'TEST | Run The Linux Entry Point For VMware Inc'
+      register: '__entrypoint_result__'
+
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        public: true
+        tasks_from: 'present_redhat.yml'
+
+    - name: 'TEST | Assert VMware Inc Resolves To VMware'
+      ansible.builtin.assert:
+        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
+        quiet: true
+        that:
+          - __entrypoint_result__ is succeeded
+          - >-
+            linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+
+#endregion --- [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
+
+#region ------ [ Play: Detect Proxmox From QEMU ] --------------------------------------------- #
+
+- name: 'TEST | Detect Proxmox From QEMU'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'QEMU'
+    config:
+      disks: []
+      platform: ''
+    __expected_platform__: 'proxmox'
+  tasks:
+
+    - name: 'TEST | Run The Linux Entry Point For QEMU'
+      register: '__entrypoint_result__'
+
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        public: true
+        tasks_from: 'present_redhat.yml'
+
+    - name: 'TEST | Assert QEMU Resolves To Proxmox'
+      ansible.builtin.assert:
+        fail_msg: 'QEMU did not resolve to the expected platform.'
+        quiet: true
+        that:
+          - __entrypoint_result__ is succeeded
+          - >-
+            linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
+            == __expected_platform__
+
+#endregion --- [ Play: Detect Proxmox From QEMU ] --------------------------------------------- #
+
+#region ------ [ Play: Use A Declared Platform Without Gathering ] ---------------------------- #
+
+- name: 'TEST | Use A Declared Platform Without Gathering'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_python_interpreter: '/nonexistent/python3'
+    config:
+      disks: []
+      platform: 'AWS '
+    __expected_platform__: 'aws'
+  tasks:
+
+    - name: 'TEST | Accept The Padded Upper-Case Declaration'
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        tasks_from: 'validate.yml'
+
+    - name: 'TEST | Run The Linux Entry Point With A Declaration'
+      register: '__entrypoint_result__'
+
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        public: true
+        tasks_from: 'present_redhat.yml'
+
+    - name: 'TEST | Assert The Declaration Is Used Without Gathering'
+      ansible.builtin.assert:
+        fail_msg: 'The declared platform was not used as the expected supported value.'
+        quiet: true
+        that:
+          - __entrypoint_result__ is succeeded
+          - (config.platform | string | lower | trim) == __expected_platform__
+          - >-
+            linux_disk_manager_vendor_platforms.values()
+            | select('equalto', __expected_platform__) | list | length == 1
+
+#endregion --- [ Play: Use A Declared Platform Without Gathering ] ---------------------------- #
+
+#region ------ [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
+
+- name: 'TEST | Reject An Unknown Reported Value'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Unknown Compute'
+    config:
+      disks: []
+      platform: ''
+  tasks:
+
+    - name: 'TEST | Exercise Unknown Platform Detection'
+      block:
+
+        - name: 'TEST | Run The Linux Entry Point For An Unknown Value'
+          ansible.builtin.include_role:
+            name: 'linux_disk_manager'
+            tasks_from: 'present_redhat.yml'
+
+        - name: 'TEST | Fail On Unexpected Unknown Value Success'
+          ansible.builtin.fail:
+            msg: 'The unknown-value case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names The Unknown Value'
+          ansible.builtin.assert:
+            fail_msg: 'The detection failure did not name the unknown reported value.'
+            quiet: true
+            that:
+              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
+
+#endregion --- [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
+
+#region ------ [ Play: Reject An Unsupported Declaration ] ------------------------------------ #
+
+- name: 'TEST | Reject An Unsupported Declaration'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    ansible_facts:
+      system_vendor: 'Amazon EC2'
+    config:
+      disks: []
+      platform: 'hyperv'
+  tasks:
+
+    - name: 'TEST | Exercise Unsupported Platform Validation'
+      block:
+
+        - name: 'TEST | Validate The Unsupported Linux Declaration'
+          ansible.builtin.include_role:
+            name: 'linux_disk_manager'
+            tasks_from: 'validate.yml'
+
+        - name: 'TEST | Fail On Unexpected Unsupported Declaration Success'
+          ansible.builtin.fail:
+            msg: 'The unsupported declaration case unexpectedly succeeded.'
+
+      rescue:
+
+        - name: 'TEST | Assert The Failure Names The Unsupported Declaration'
+          ansible.builtin.assert:
+            fail_msg: 'Validation did not name the unsupported declaration.'
+            quiet: true
+            that:
+              - "'hyperv' in (ansible_failed_result.msg | default(''))"
+
+#endregion --- [ Play: Reject An Unsupported Declaration ] ------------------------------------ #
