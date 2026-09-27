@@ -48,9 +48,8 @@
 # longer the only usable one -- but the venv is still built from 3.12 so that every host in the #
 # fleet presents the same interpreter to the suite. On this release 3.12 comes from AppStream   #
 # as the package "python3.12", which is what defaults/main.yml asks for.                        #
-# A fresh host's first run discovers platform 3.9; later runs discover installed 3.12, measured #
-# 2026-09-26. The unversioned pip, setuptools and libselinux packages serve platform 3.9;       #
-# python3.12-setuptools supplies pkg_resources once discovery selects Python 3.12.              #
+# Fresh RHEL/Rocky 9 first runs discovered 3.9; later runs found installed 3.12 (2026-09-26).   #
+# Under 3.12, python3.12-setuptools supplied pkg_resources to the pip module (2026-09-26).      #
 #                                                                                               #
 # NO hardening.yml. redhat_rocky_8 carries one; this role does not, and it is not a copy away.  #
 # Its SECOND task asserts distribution_major_version == 8 -- the first only gathers the         #

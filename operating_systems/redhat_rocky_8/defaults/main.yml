@@ -14,9 +14,9 @@
 
 #region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
 
-# The python3.12 package's fixed path, so no PATH lookup; override only for a non-standard build.
-# Raw installs it before the first Python-backed task in tasks/bootstrap.yml and every such task
-# runs under it: stock EL8 Python 3.6 is below ansible-core 2.21's 3.9 floor (2026-09-26).
+# On fresh RHEL/Rocky 8, the python3.12 package installed /usr/bin/python3.12 (2026-09-26).
+# No PATH lookup; only custom builds override. Raw installs it first; all Python-backed tasks in
+# tasks/bootstrap.yml use it. Stock EL8 Python 3.6 is below core 2.21's 3.9 floor (2026-09-26).
 rhel8_bootstrap_python_bin: '/usr/bin/python3.12'
 
 # Parent directory of the venv. Root-owned, SELinux usr_t (exec-capable).
