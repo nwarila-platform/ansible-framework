@@ -36,6 +36,7 @@
       when:
         - (__declared_platform__ | length) == 0
         - ansible_facts.system_vendor is not defined
+
       ansible.builtin.setup:
         gather_subset:
           - '!all'
@@ -44,6 +45,7 @@
 
     - name: 'BEGIN | Assert Platform Was Detected From The Host'
       when: (__declared_platform__ | length) == 0
+
       ansible.builtin.assert:
         fail_msg: >-
           linux_disk_manager could not resolve a supported platform from reported system vendor
@@ -114,6 +116,7 @@
           when:
             - __platform__ == 'aws'
             - config.disks | selectattr('unique_id', 'undefined') | list | length > 0
+
           ansible.builtin.include_tasks: 'resolve_aws.yml'
 
         #endregion --- [ Begin: Resolve AWS Function Tags Before Any Device Probing ] --------- #
