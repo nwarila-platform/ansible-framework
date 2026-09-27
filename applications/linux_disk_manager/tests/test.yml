@@ -28,6 +28,7 @@
 
     - name: 'TEST | Run The Linux Entry Point For Amazon EC2'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'linux_disk_manager'
         public: true
@@ -36,12 +37,16 @@
     - name: 'TEST | Read The Effective Platform Dataflow And Gather Guard'
       changed_when: false
       register: '__dataflow_metrics__'
+
       ansible.builtin.command:
         argv:
           - 'awk'
           - |-
             {
               if ($0 ~ /^[[:space:]]*#/) next
+              if ($0 ~ /^    __declared_platform__: >-$/) declaration_line = NR
+              if (NR == declaration_line + 1 &&
+                  index($0, "config.platform | default('') | string | lower | trim")) norm++
               if ($0 ~ /^    __platform__: >-$/) assignment_line = NR
               if (NR == assignment_line + 1 &&
                   index($0, "__declared_platform__ or __detected_platform__")) assignment++
@@ -56,8 +61,8 @@
             }
             END {
               before = (gather > 0 && detected > gather)
-              printf "%d:%d:%d:%d:%d:%d:%d:%d:%d", assignment, declaration, effective,
-                (gather > 0), setup, hardware, empty, missing, before
+              printf "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d", assignment, declaration, effective,
+                (gather > 0), setup, hardware, empty, missing, before, norm
             }
           - "{{ playbook_dir }}/../tasks/present_redhat.yml"
 
@@ -68,7 +73,7 @@
           hardware gather before the detection assertion.
         quiet: true
         that:
-          - (__dataflow_metrics__.stdout | default('')) == '1:1:4:1:1:1:2:1:1'
+          - (__dataflow_metrics__.stdout | default('')) == '1:1:4:1:1:1:2:1:1:1'
 
     - name: 'TEST | Assert Amazon EC2 Resolves To AWS'
       ansible.builtin.assert:
@@ -100,6 +105,7 @@
 
     - name: 'TEST | Run The Linux Entry Point For VMware Inc'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'linux_disk_manager'
         public: true
@@ -135,6 +141,7 @@
 
     - name: 'TEST | Run The Linux Entry Point For QEMU'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'linux_disk_manager'
         public: true
@@ -167,8 +174,14 @@
     __expected_platform__: 'aws'
   tasks:
 
+    - name: 'TEST | Accept The Padded Upper-Case Declaration'
+      ansible.builtin.include_role:
+        name: 'linux_disk_manager'
+        tasks_from: 'validate.yml'
+
     - name: 'TEST | Run The Linux Entry Point With A Declaration'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'linux_disk_manager'
         public: true

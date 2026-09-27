@@ -28,6 +28,7 @@
 
     - name: 'TEST | Run The Windows Entry Point For Amazon EC2'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'windows_disk_manager'
         public: true
@@ -36,6 +37,7 @@
     - name: 'TEST | Read The Effective Platform Dataflow'
       changed_when: false
       register: '__dataflow_metrics__'
+
       ansible.builtin.command:
         argv:
           - 'awk'
@@ -88,6 +90,7 @@
 
     - name: 'TEST | Run The Windows Entry Point For VMware Inc'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'windows_disk_manager'
         public: true
@@ -121,8 +124,14 @@
     __expected_platform__: 'aws'
   tasks:
 
+    - name: 'TEST | Accept The Padded Upper-Case Declaration'
+      ansible.builtin.include_role:
+        name: 'windows_disk_manager'
+        tasks_from: 'validate.yml'
+
     - name: 'TEST | Run The Windows Entry Point With A Matching Declaration'
       register: '__entrypoint_result__'
+
       ansible.builtin.include_role:
         name: 'windows_disk_manager'
         public: true
