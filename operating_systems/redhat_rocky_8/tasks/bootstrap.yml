@@ -25,15 +25,18 @@
 #     whose ansible.cfg overwrites it during composition must re-add the entry, or use the path
 #     form 'name: "{{ playbook_dir }}/../operating_systems/redhat_rocky_8"'.
 #   * HOST SELECTION IS THE CALLER'S JOB. Select only RHEL/Rocky 8; on 2026-09-26 the raw
-#     install refused a wrong host before changing it. Windows hosts call their matching
+#     install refused a fresh RHEL 9 host before changing it. Windows hosts call their matching
 #     'windows_server_<release>/tasks/bootstrap.yml' instead.
-#   * 'gather_facts: false' is required on fresh EL8: measured 2026-09-26, play-level fact
-#     gathering runs a Python-backed task before this role can install Python 3.12.
+#   * 'gather_facts: false' is required on fresh EL8: play-level fact gathering runs before any
+#     role (ansible-core 2.21.4 source, read 2026-09-27) and needs Python >= 3.9, while stock EL8
+#     ships 3.6 (measured 2026-09-26).
 #
 # --- [ Privilege Model ] --------------------------------------------------------------------- #
-# Raw installs Python with become before 'BEGIN | Read The Host And Confirm It Is Supported'.
-# Its unprivileged facts named the login owner of remote-tmp, measured 2026-09-26. 'PROCESS |
-# Converge The Host' uses become; callers must not override it via include or extra vars.
+# Raw installs Python with become before 'BEGIN | Read The Host And Confirm It Is Supported',
+# which stays unprivileged (keyword and connection variable) so the remote-tmp owner resolves to
+# the login user (login-user-owned on fresh Rocky Linux 8, measured 2026-09-26). Include
+# parameters and extra vars outrank block vars (ansible-core 2.21.4 source, read 2026-09-27):
+# never force ansible_become through them. 'PROCESS | Converge The Host' runs with become.
 # ============================================================================================= #
 
 #region ------ [ Process: Bootstrap The Host ] ------------------------------------------------ #

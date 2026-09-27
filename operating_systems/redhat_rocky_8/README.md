@@ -60,10 +60,10 @@ Both entry points are re-runnable. The virtualenv is probed for drift — a wron
 
 ## Verification
 
-Measured on fresh RHEL and Rocky Linux 8 hosts on 2026-09-26, the raw install refuses the wrong
-distribution or major release before changing anything; the module-based guard then asserts
-family, distribution and major version from identity operands in `vars/main.yml`. In
-ansible-core 2.21.4, measured 2026-09-27, role vars outrank inventory and play variables, while
-enclosing block vars, include parameters and vars, and extra vars can still override them.
-The Python 3.12 version is read back for drift detection, and the hostname is confirmed against
-what the playbook declared.
+On fresh RHEL 9 on 2026-09-26, the raw install refused the wrong major release before changing
+anything; its shell guard permits only `rhel 8` and `rocky 8`. The module-based guard then
+asserts family, distribution and major version from identity operands in `vars/main.yml`. Role
+vars outrank inventory and play variables, while enclosing block vars, include parameters and
+vars, and extra vars can still override them (ansible-core 2.21.4: its variable-manager source
+and a block-variable spike, 2026-09-27). The Python 3.12 version is read back for drift
+detection, and the hostname is confirmed against what the playbook declared.

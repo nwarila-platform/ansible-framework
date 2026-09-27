@@ -6,8 +6,8 @@
 # This role takes nothing from a caller. It reads the host to decide which operating            #
 # system it is looking at, then includes that OS role's bootstrap entry point. The one          #
 # thing it does consult -- the distribution/release-to-role map -- is a property of which       #
-# roles exist in this repository, not a choice a play makes, so it lives in                     #
-# vars/main.yml.                                                                                #
+# roles exist in this repository, not a choice a play makes, so it lives in vars/main.yml,      #
+# which outranks inventory variables (ansible-core 2.21.4 source, read 2026-09-27).             #
 #                                                                                               #
 # The file exists for role-skeleton parity and as the home for any future caller-facing         #
 # default.                                                                                      #

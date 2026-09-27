@@ -14,9 +14,9 @@
 
 #region ------ [ Interpreter And Venv Layout ] ------------------------------------------------ #
 
-# Stock EL8 Python 3.6 is below ansible-core 2.21's 3.9 floor, measured 2026-09-26. Raw installs
-# Python 3.12 before the first Python-backed task in tasks/bootstrap.yml; every Python-backed
-# task in that file runs under this interpreter.
+# The python3.12 package's fixed path, so no PATH lookup; override only for a non-standard build.
+# Raw installs it before the first Python-backed task in tasks/bootstrap.yml and every such task
+# runs under it: stock EL8 Python 3.6 is below ansible-core 2.21's 3.9 floor (2026-09-26).
 rhel8_bootstrap_python_bin: '/usr/bin/python3.12'
 
 # Parent directory of the venv. Root-owned, SELinux usr_t (exec-capable).
