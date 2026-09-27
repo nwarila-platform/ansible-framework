@@ -63,22 +63,22 @@
 
     - name: 'TEST | Assert The Effective Platform Dataflow And Gather Guard'
       ansible.builtin.assert:
-        that:
-          - (__dataflow_metrics__.stdout | default('')) == '1:1:4:1:1:1:2:1:1'
         fail_msg: >-
           The Linux entry point must derive and use one effective platform, with its guarded
           hardware gather before the detection assertion.
         quiet: true
+        that:
+          - (__dataflow_metrics__.stdout | default('')) == '1:1:4:1:1:1:2:1:1'
 
     - name: 'TEST | Assert Amazon EC2 Resolves To AWS'
       ansible.builtin.assert:
+        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - >-
             linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
 
@@ -107,13 +107,13 @@
 
     - name: 'TEST | Assert VMware Inc Resolves To VMware'
       ansible.builtin.assert:
+        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - >-
             linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
 
@@ -142,13 +142,13 @@
 
     - name: 'TEST | Assert QEMU Resolves To Proxmox'
       ansible.builtin.assert:
+        fail_msg: 'QEMU did not resolve to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - >-
             linux_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'QEMU did not resolve to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Detect Proxmox From QEMU ] --------------------------------------------- #
 
@@ -176,14 +176,14 @@
 
     - name: 'TEST | Assert The Declaration Is Used Without Gathering'
       ansible.builtin.assert:
+        fail_msg: 'The declared platform was not used as the expected supported value.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - (config.platform | string | lower | trim) == __expected_platform__
           - >-
             linux_disk_manager_vendor_platforms.values()
             | select('equalto', __expected_platform__) | list | length == 1
-        fail_msg: 'The declared platform was not used as the expected supported value.'
-        quiet: true
 
 #endregion --- [ Play: Use A Declared Platform Without Gathering ] ---------------------------- #
 
@@ -218,10 +218,10 @@
 
         - name: 'TEST | Assert The Failure Names The Unknown Value'
           ansible.builtin.assert:
-            that:
-              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
             fail_msg: 'The detection failure did not name the unknown reported value.'
             quiet: true
+            that:
+              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
 
 #endregion --- [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
 
@@ -256,9 +256,9 @@
 
         - name: 'TEST | Assert The Failure Names The Unsupported Declaration'
           ansible.builtin.assert:
-            that:
-              - "'hyperv' in (ansible_failed_result.msg | default(''))"
             fail_msg: 'Validation did not name the unsupported declaration.'
             quiet: true
+            that:
+              - "'hyperv' in (ansible_failed_result.msg | default(''))"
 
 #endregion --- [ Play: Reject An Unsupported Declaration ] ------------------------------------ #

@@ -45,13 +45,13 @@
     - name: 'BEGIN | Assert Platform Was Detected From The Host'
       when: (__declared_platform__ | length) == 0
       ansible.builtin.assert:
-        that:
-          - __platform__ in ['vmware', 'proxmox', 'aws']
         fail_msg: >-
           linux_disk_manager could not resolve a supported platform from reported system vendor
           '{{ __reported_vendor__ | default('<missing>', true) }}'. Supported vendor/platform
           pairs are 'Amazon EC2' -> aws, 'VMware, Inc.' -> vmware, and 'QEMU' -> proxmox.
         quiet: true
+        that:
+          - __platform__ in ['vmware', 'proxmox', 'aws']
 
     #region ------ [ Process: Dispatch To The Shared By-Id Provider ] ------------------------- #
 

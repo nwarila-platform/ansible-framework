@@ -156,13 +156,6 @@
 
     - name: 'BEGIN | Assert Vendor Resolves And Matches Any Platform Declaration'
       ansible.builtin.assert:
-        that:
-          - >-
-            (__detected_platform__ | length) > 0 and
-            (
-              (__declared_platform__ | length) == 0 or
-              __declared_platform__ == __detected_platform__
-            )
         fail_msg: >-
           windows_disk_manager could not resolve a supported platform from reported system vendor
           '{{ __reported_vendor__ | default('<missing>', true) }}' for declaration
@@ -170,6 +163,13 @@
           pairs are 'Amazon EC2' -> aws and 'VMware, Inc.' -> vmware. A non-empty declaration
           must match the reported vendor. Proxmox ('QEMU') is not yet supported on Windows.
         quiet: true
+        that:
+          - >-
+            (__detected_platform__ | length) > 0 and
+            (
+              (__declared_platform__ | length) == 0 or
+              __declared_platform__ == __detected_platform__
+            )
 
     # Identity-mode guard, before any facts or mutation: a disk with NO resolvable identity must
     # fail here, so an absent ID can never become an empty Get-Disk match. On non-aws platforms
@@ -191,8 +191,6 @@
           {{ __disk__.function is defined
           and (__disk__.function | string | trim | length) > 0 }}
       ansible.builtin.assert:
-        that:
-          - (__has_unique_id__ | bool) or (__platform__ == 'aws' and (__has_function__ | bool))
         fail_msg: >-
           windows_disk_manager.disks entry '{{ __disk__.unique_id | default(__disk__.function |
           default('<missing>')) }}' declares no resolvable identity. Platform
@@ -200,6 +198,8 @@
           {{ '(or an EBS `function` tag value)' if __platform__ == 'aws'
           else '(`function` is AWS-only)' }}.
         quiet: true
+        that:
+          - (__has_unique_id__ | bool) or (__platform__ == 'aws' and (__has_function__ | bool))
 
     # AWS `function` resolution: one controller-side describe for the whole host maps each
     # declared Function tag to its attached volume-id (see resolve_aws.yml). The volume-id is
@@ -244,8 +244,6 @@
           | selectattr('serial_number', 'match', '(?i)' ~ __expected_serial__)
           | list }}
       ansible.builtin.assert:
-        that:
-          - __serial_matches__ | length == 1
         fail_msg: >-
           Expected exactly one attached disk whose serial starts with
           '{{ __expected_serial__ }}' (volume {{ __volume_id__ }},
@@ -254,6 +252,8 @@
           | default('unknown') }}, serial={{ attached.serial_number | default('unknown')
           }}{%- if not loop.last %}; {% endif %}{% endfor %}.
         quiet: true
+        that:
+          - __serial_matches__ | length == 1
 
     - name: 'BEGIN | Assert Declared Disks Are Attached'
       when: (config.disks | length) > 0

@@ -51,22 +51,22 @@
 
     - name: 'TEST | Assert The Effective Platform Dataflow'
       ansible.builtin.assert:
-        that:
-          - (__dataflow_metrics__.stdout | default('')) == '1:1:6'
         fail_msg: >-
           The Windows entry point must derive its effective platform from detection and use only
           that effective value for every later platform decision.
         quiet: true
+        that:
+          - (__dataflow_metrics__.stdout | default('')) == '1:1:6'
 
     - name: 'TEST | Assert Amazon EC2 Resolves To AWS'
       ansible.builtin.assert:
+        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - >-
             windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'Amazon EC2 did not resolve to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Detect AWS From Amazon EC2 ] ------------------------------------------- #
 
@@ -95,13 +95,13 @@
 
     - name: 'TEST | Assert VMware Inc Resolves To VMware'
       ansible.builtin.assert:
+        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - >-
             windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'VMware, Inc. did not resolve to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Detect VMware From VMware Inc ] ---------------------------------------- #
 
@@ -130,14 +130,14 @@
 
     - name: 'TEST | Assert The Matching Declaration Is Normalized'
       ansible.builtin.assert:
+        fail_msg: 'The matching declaration did not normalize to the expected platform.'
+        quiet: true
         that:
           - __entrypoint_result__ is succeeded
           - (config.platform | string | lower | trim) == __expected_platform__
           - >-
             windows_disk_manager_vendor_platforms[ansible_facts.system_vendor]
             == __expected_platform__
-        fail_msg: 'The matching declaration did not normalize to the expected platform.'
-        quiet: true
 
 #endregion --- [ Play: Normalize A Matching AWS Declaration ] --------------------------------- #
 
@@ -172,11 +172,11 @@
 
         - name: 'TEST | Assert The Failure Names The Declaration And Reported Value'
           ansible.builtin.assert:
+            fail_msg: 'The conflicting declaration failure did not name both values.'
+            quiet: true
             that:
               - "'aws' in (ansible_failed_result.msg | default(''))"
               - "'VMware, Inc.' in (ansible_failed_result.msg | default(''))"
-            fail_msg: 'The conflicting declaration failure did not name both values.'
-            quiet: true
 
 #endregion --- [ Play: Reject A Declaration That Conflicts With The Host ] -------------------- #
 
@@ -211,11 +211,11 @@
 
         - name: 'TEST | Assert The Failure Names QEMU And Its Current Status'
           ansible.builtin.assert:
+            fail_msg: 'The QEMU failure did not explain its current Windows status.'
+            quiet: true
             that:
               - "'QEMU' in (ansible_failed_result.msg | default(''))"
               - "'Proxmox' in (ansible_failed_result.msg | default(''))"
-            fail_msg: 'The QEMU failure did not explain its current Windows status.'
-            quiet: true
 
 #endregion --- [ Play: Reject QEMU On Windows ] ----------------------------------------------- #
 
@@ -250,10 +250,10 @@
 
         - name: 'TEST | Assert The Failure Names The Unknown Value'
           ansible.builtin.assert:
-            that:
-              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
             fail_msg: 'The detection failure did not name the unknown reported value.'
             quiet: true
+            that:
+              - "'Unknown Compute' in (ansible_failed_result.msg | default(''))"
 
 #endregion --- [ Play: Reject An Unknown Reported Value ] ------------------------------------- #
 
@@ -288,9 +288,9 @@
 
         - name: 'TEST | Assert The Failure Names The Unsupported Declaration'
           ansible.builtin.assert:
-            that:
-              - "'hyperv' in (ansible_failed_result.msg | default(''))"
             fail_msg: 'Validation did not name the unsupported declaration.'
             quiet: true
+            that:
+              - "'hyperv' in (ansible_failed_result.msg | default(''))"
 
 #endregion --- [ Play: Reject An Unsupported Declaration ] ------------------------------------ #
