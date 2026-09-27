@@ -37,6 +37,7 @@
       loop: ['closed', 'kerberos', 'ntlm']
       vars:
         pass_case: "{{ pass_cases[item] }}"
+
       ansible.builtin.include_tasks: 'failure-case.yml'
 
     #endregion --- [ Process: Check Each Failed Pass ] ---------------------------------------- #
@@ -48,6 +49,7 @@
         - name: 'END | Run The Empty Pass'
           vars:
             credential_resolver_candidates: []
+
           ansible.builtin.include_role: {name: 'credential_resolver'}
         - name: 'END | Reject An Unexpected Empty-List Winner'
           ansible.builtin.fail: {msg: 'An empty credential list unexpectedly worked.'}

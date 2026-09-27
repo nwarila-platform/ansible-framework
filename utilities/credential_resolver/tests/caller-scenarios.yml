@@ -45,6 +45,7 @@
 
     - name: 'PROCESS | Assert The First Pass And Skipped Post-Join Wait'
       when: __domain_member_boot_time__ is not defined
+
       ansible.builtin.assert:
         fail_msg: 'The first pass did not preserve the refusal, failure, and winner responses.'
         quiet: true
@@ -65,6 +66,7 @@
 
     - name: 'PROCESS | Assert The Post-Join Publication And Wait'
       when: __domain_member_boot_time__ is defined
+
       ansible.builtin.assert:
         fail_msg: 'The post-join publication, wait, or new-boot pass did not run.'
         quiet: true

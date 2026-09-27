@@ -12,6 +12,7 @@
     - name: 'PROCESS | Run The Failed Pass For {{ item }}'
       vars:
         credential_resolver_candidates: "{{ pass_case.candidates }}"
+
       ansible.builtin.include_role: {name: 'credential_resolver'}
     - name: 'PROCESS | Reject An Unexpected Winner For {{ item }}'
       ansible.builtin.fail: {msg: 'A credential set expected to fail unexpectedly worked.'}
@@ -22,6 +23,7 @@
         probe: "{{ __credential_resolver_windows_answer__ }}"
         response_fields: ['msg', 'rc', 'stdout', 'stderr']
         ssh_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
+
       ansible.builtin.assert:
         fail_msg: 'A failed pass did not retain each response or use the resolver failure.'
         quiet: true

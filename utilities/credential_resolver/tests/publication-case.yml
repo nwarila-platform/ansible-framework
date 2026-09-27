@@ -12,6 +12,7 @@
 - name: 'PROCESS | Seed Conflicting Facts Before {{ publication_case.candidate.name }}'
   no_log: true
   when: publication_case.candidate.name != 'ssh-password'
+
   ansible.builtin.set_fact:
     ansible_password: "{{ lookup('env', 'CREDENTIAL_RESOLVER_CANARY_B') }}"
     ansible_port: 65000
@@ -27,6 +28,7 @@
 - name: 'PROCESS | Resolve {{ publication_case.candidate.name }}'
   vars:
     credential_resolver_candidates: ["{{ publication_case.candidate }}"]
+
   ansible.builtin.include_role: {name: 'credential_resolver'}
 
 #endregion --- [ Process: Resolve The Identity ] ---------------------------------------------- #
@@ -36,6 +38,7 @@
 - name: 'PROCESS | Connect Again With {{ publication_case.candidate.name }}'
   changed_when: false
   register: '__publication_after__'
+
   ansible.builtin.raw: 'echo after'
 
 #endregion --- [ Process: Connect With The Identity ] ----------------------------------------- #
@@ -49,6 +52,7 @@
     ssh_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_TEST_LOG')) }}"
     winrm_log: "{{ lookup('file', lookup('env', 'CREDENTIAL_RESOLVER_WINRM_LOG')) }}"
     attempt: "{{ __credential_resolver_attempts__[0] }}"
+
   ansible.builtin.assert:
     fail_msg: 'A winning identity was not published to its follow-up connection.'
     quiet: true

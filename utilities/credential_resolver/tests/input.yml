@@ -17,6 +17,7 @@
       loop: "{{ input_cases | list }}"
       loop_control:
         loop_var: '__input_key__'
+
       ansible.builtin.include_tasks: 'input-case.yml'
 
 #endregion --- [ Play: Exercise Credential Input Validation ] --------------------------------- #
