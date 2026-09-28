@@ -6,14 +6,14 @@
 #
 # ============================================================================================= #
 
-#region ------ [ Local WinRM Test Host ] ------------------------------------------------------ #
+#region ------ [ Loopback WinRM Test Host ] --------------------------------------------------- #
 
 all:
   hosts:
-    localhost:
+    winrm-target:
       ansible_connection: 'winrm'
       ansible_host: '127.0.0.1'
       credential_test_transport: 'winrm'
       platform: 'Linux'
 
-#endregion --- [ Local WinRM Test Host ] ------------------------------------------------------ #
+#endregion --- [ Loopback WinRM Test Host ] --------------------------------------------------- #

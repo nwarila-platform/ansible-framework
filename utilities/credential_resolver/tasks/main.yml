@@ -23,6 +23,7 @@
 
       ansible.builtin.set_fact:
         __credential_resolver_attempts__: []
+        __credential_resolver_selected_indexes__: []
         __credential_resolver_winner__: ''
         cacheable: false
 
@@ -31,14 +32,19 @@
       ansible.builtin.include_tasks:
         file: 'validate.yml'
 
-    - name: 'BEGIN | Select The Sets For The Declared Transport'
+    - name: 'BEGIN | Select The Set Positions For The Declared Transport'
       no_log: true
+      loop: "{{ range(credential_resolver_candidates | length) | list }}"
+      loop_control:
+        label: "set {{ __credential_resolver_index__ + 1 }}"
+        loop_var: '__credential_resolver_index__'
+      when: >-
+        credential_resolver_candidates[__credential_resolver_index__].connection
+        == __credential_resolver_transport__
 
       ansible.builtin.set_fact:
-        __credential_resolver_selected_candidates__: >-
-          {{ credential_resolver_candidates
-             | selectattr('connection', 'equalto', __credential_resolver_transport__)
-             | list }}
+        __credential_resolver_selected_indexes__: >-
+          {{ __credential_resolver_selected_indexes__ + [__credential_resolver_index__] }}
         cacheable: false
 
     - name: 'BEGIN | Require A Set For The Declared Transport'
@@ -50,7 +56,7 @@
         quiet: true
         success_msg: 'The declared transport has at least one credential set.'
         that:
-          - __credential_resolver_selected_candidates__ | length > 0
+          - __credential_resolver_selected_indexes__ | length > 0
 
 #endregion --- [ Begin: Select And Prepare The Credential Sets ] ------------------------------ #
 
@@ -58,8 +64,7 @@
 
 - name: 'BEGIN | Read The EC2 Launch Passwords'
   vars:
-    __credential_resolver_indexes__: >-
-      {{ range(__credential_resolver_selected_candidates__ | length) | list }}
+    __credential_resolver_indexes__: "{{ __credential_resolver_selected_indexes__ }}"
   block:
     - name: 'BEGIN | Wait For The EC2 Launch Password Data'
       changed_when: false
@@ -68,15 +73,14 @@
       loop: "{{ __credential_resolver_indexes__ }}"
       loop_control:
         label: >-
-          {{ __credential_resolver_selected_candidates__[__credential_resolver_index__].name }}
+          {{ credential_resolver_candidates[__credential_resolver_index__].name }}
         loop_var: '__credential_resolver_index__'
       vars:
         __credential_resolver_launch__: >-
-          {{ __credential_resolver_selected_candidates__[__credential_resolver_index__]
-             .launch_password }}
+          {{ credential_resolver_candidates[__credential_resolver_index__].launch_password }}
       when: >-
         'launch_password' in
-        __credential_resolver_selected_candidates__[__credential_resolver_index__]
+        credential_resolver_candidates[__credential_resolver_index__]
 
       ansible.builtin.command:
         argv:
@@ -108,11 +112,10 @@
           register: '__credential_resolver_launch_passwords__'
           vars:
             __credential_resolver_launch__: >-
-              {{ __credential_resolver_selected_candidates__[__credential_resolver_index__]
-                 .launch_password }}
+              {{ credential_resolver_candidates[__credential_resolver_index__].launch_password }}
           when: >-
             'launch_password' in
-            __credential_resolver_selected_candidates__[__credential_resolver_index__]
+            credential_resolver_candidates[__credential_resolver_index__]
 
           ansible.builtin.command:
             argv:
@@ -148,13 +151,13 @@
                  | first }}
           when: >-
             'launch_password' in
-            __credential_resolver_selected_candidates__[__credential_resolver_index__]
+            credential_resolver_candidates[__credential_resolver_index__]
 
           ansible.builtin.assert:
             fail_msg: >-
               EC2 launch-password decryption failed for set
-              '{{ __credential_resolver_selected_candidates__[__credential_resolver_index__].name
-              }}': rc={{ __credential_resolver_launch_result__.rc | default('unknown') }},
+              '{{ credential_resolver_candidates[__credential_resolver_index__].name }}':
+              rc={{ __credential_resolver_launch_result__.rc | default('unknown') }},
               {{ __credential_resolver_launch_result__.msg | default('no message') }}.
             quiet: true
             success_msg: 'The EC2 launch password was decrypted.'
@@ -174,19 +177,19 @@
   ignore_unreachable: true
   loop: >-
     {{ range(credential_resolver_wait_rounds | int)
-       | product(range(__credential_resolver_selected_candidates__ | length)) | list }}
+       | product(__credential_resolver_selected_indexes__) | list }}
   loop_control:
     break_when:
       - __credential_resolver_first_answer__ is not unreachable
       - __credential_resolver_first_answer__ is not failed
     label: >-
       round {{ item.0 + 1 }}:
-      {{ __credential_resolver_selected_candidates__[item.1].name }}
+      {{ credential_resolver_candidates[item.1].name }}
     pause: "{{ credential_resolver_wait_pause_seconds | int }}"
   register: '__credential_resolver_first_answer__'
   vars:
     __credential_resolver_set__: >-
-      {{ __credential_resolver_selected_candidates__[item.1] }}
+      {{ credential_resolver_candidates[item.1] }}
     __credential_resolver_password__: >-
       {{ __credential_resolver_set__.password
          if 'password' in __credential_resolver_set__
@@ -229,7 +232,7 @@
     fail_msg: >-
       No credential set for transport '{{ __credential_resolver_transport__ }}' answered in
       {{ credential_resolver_wait_rounds }} rounds of
-      {{ __credential_resolver_selected_candidates__ | length }} sets,
+      {{ __credential_resolver_selected_indexes__ | length }} sets,
       with {{ credential_resolver_wait_pause_seconds }} seconds between attempts. Each attempt's
       answer is in the task above. Restore the host or its declared credentials.
     quiet: true
@@ -245,12 +248,15 @@
 - name: 'PROCESS | Publish The First Set For The New-Boot Wait'
   no_log: true
   vars:
-    __credential_resolver_set__: "{{ __credential_resolver_selected_candidates__ | first }}"
+    __credential_resolver_first_index__: "{{ __credential_resolver_selected_indexes__ | first }}"
+    __credential_resolver_set__: >-
+      {{ credential_resolver_candidates[__credential_resolver_first_index__] }}
     __credential_resolver_password__: >-
       {{ __credential_resolver_set__.password
          if 'password' in __credential_resolver_set__
          else ((__credential_resolver_launch_passwords__ | default({})).results | default([])
-               | selectattr('__credential_resolver_index__', 'equalto', 0)
+               | selectattr('__credential_resolver_index__', 'equalto',
+                            __credential_resolver_first_index__)
                | map(attribute='stdout') | first | default(None)) }}
   when:
     - (credential_resolver_wait_rounds | int) > 0
@@ -361,13 +367,13 @@
         __credential_resolver_winner__: ''
 
     - name: 'PROCESS | Attempt One Credential Set'
-      loop: "{{ range(__credential_resolver_selected_candidates__ | length) | list }}"
+      loop: "{{ __credential_resolver_selected_indexes__ }}"
       loop_control:
         label: "set {{ __credential_resolver_index__ + 1 }}"
         loop_var: '__credential_resolver_index__'
       vars:
         __credential_resolver_set__: >-
-          {{ __credential_resolver_selected_candidates__[__credential_resolver_index__] }}
+          {{ credential_resolver_candidates[__credential_resolver_index__] }}
         __credential_resolver_password__: >-
           {{ __credential_resolver_set__.password
              if 'password' in __credential_resolver_set__

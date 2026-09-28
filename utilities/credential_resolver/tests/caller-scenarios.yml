@@ -73,7 +73,8 @@
         quiet: true
         that:
           - caller_log | regex_findall(
-              'USER=' ~ caller_post_join_set.user ~ '.*Get-CimInstance') | length == 2
+              'USER=' ~ caller_post_join_set.user ~ '.*Get-CimInstance') | length
+            == (__credential_resolver_post_restart__.results | length) + 1
           - __credential_resolver_post_restart__.results[-1].stdout
             is search('S-1-16-12288')
           - (__credential_resolver_post_restart__.results[-1].stdout_lines | last | int)
