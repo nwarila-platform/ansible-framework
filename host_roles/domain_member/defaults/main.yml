@@ -94,6 +94,9 @@ domain_member_defaults:
   # leaves its completion proof to the caller's next play under the joined identity.
   restart_wait: true
 
+  # Windows only: identities the resolver may use after a waited restart retires the current one.
+  post_restart_credentials: []
+
   #endregion --- [ Join behaviour ] ----------------------------------------------------------- #
 
   #region ------ [ Name publication ] --------------------------------------------------------- #

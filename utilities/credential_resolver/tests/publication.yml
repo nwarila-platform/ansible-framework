@@ -44,6 +44,7 @@
     #region ------ [ Process: Assert Lazy Candidate Rendering ] ------------------------------- #
 
     - name: 'PROCESS | Assert The First Candidate Wins Before Rendering The Second'
+      when: credential_test_transport == 'ssh'
       block:
         - name: 'PROCESS | Resolve Before The Missing Password Lookup'
           vars:
@@ -69,6 +70,7 @@
       loop: "{{ range(publication_cases | length) | list }}"
       loop_control: {label: "{{ publication_case.candidate.name }}", loop_var: 'case_index'}
       vars: {publication_case: "{{ publication_cases[case_index] }}"}
+      when: publication_case.candidate.connection == credential_test_transport
 
       ansible.builtin.include_tasks: 'publication-case.yml'
 

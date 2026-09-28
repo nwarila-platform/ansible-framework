@@ -2,9 +2,7 @@
 # File: '{{ role_path }}/tasks/validate.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
-# The shape of every credential set, checked before anything connects. main.yml runs it, and a
-# playbook that waits for a host before the first pass runs it first (tasks_from: validate.yml),
-# so no malformed set is ever submitted.
+# The shape of every credential set, checked before anything connects or waits.
 #
 # ============================================================================================= #
 ---
@@ -19,28 +17,48 @@
     label: "{{ __credential_resolver_set__.name | default('?') }}"
     loop_var: '__credential_resolver_index__'
   vars:
+    __auth_keys__: ['private_key', 'private_key_file', 'password', 'launch_password']
     __credential_resolver_set__: >-
       {{ credential_resolver_candidates[__credential_resolver_index__] }}
+    __has_launch__: "{{ 'launch_password' in __credential_resolver_set__ }}"
+    __has_password__: "{{ 'password' in __credential_resolver_set__ }}"
+    __launch_keys__: ['instance_id', 'region', 'private_key_file']
 
   ansible.builtin.assert:
     fail_msg: >-
-      Set '{{ __credential_resolver_set__.name | default('?') }}' needs a name, a user, and
-      either connection ssh with a private_key, private_key_file or password, or connection
-      winrm with a password and a transport of ntlm or kerberos (Kerberos over HTTPS only, not
-      port 5985).
+      Set '{{ __credential_resolver_set__.name | default('?') }}' needs a name, a user, one
+      supported authentication declaration, and a valid connection contract. password and
+      launch_password are mutually exclusive. launch_password must contain exactly non-empty
+      instance_id, region, and private_key_file values. WinRM also needs an ntlm or kerberos
+      transport (Kerberos over HTTPS only, not port 5985).
     quiet: true
     that:
       - (__credential_resolver_set__.name | default('', true) | string | length) > 0
       - (__credential_resolver_set__.user | default('', true) | string | length) > 0
+      - not (__has_password__ and __has_launch__)
       - >-
         (__credential_resolver_set__.connection | default('') == 'ssh'
-         and (['private_key', 'private_key_file', 'password']
+         and (__auth_keys__
               | select('in', __credential_resolver_set__) | list | length) > 0)
         or
         (__credential_resolver_set__.connection | default('') == 'winrm'
-         and 'password' in __credential_resolver_set__
+         and [__has_password__, __has_launch__]
+             | select('equalto', true) | list | length == 1
          and (__credential_resolver_set__.transport | default('') == 'ntlm'
               or (__credential_resolver_set__.transport | default('') == 'kerberos'
                   and (__credential_resolver_set__.port | default(5986) | int) != 5985)))
+      - >-
+        not __has_launch__
+        or (
+          __credential_resolver_set__.launch_password is mapping
+          and (__launch_keys__
+               | difference(__credential_resolver_set__.launch_password.keys() | list)
+               | length) == 0
+          and ((__credential_resolver_set__.launch_password.keys() | list)
+               | difference(__launch_keys__) | length) == 0
+          and (__launch_keys__
+               | map('extract', __credential_resolver_set__.launch_password)
+               | map('string') | map('trim') | reject('equalto', '') | list | length) == 3
+        )
 
 #endregion --- [ Begin: Validate The Credential Sets ] ---------------------------------------- #

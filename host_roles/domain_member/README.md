@@ -33,6 +33,7 @@ dict. Tasks read the merged result as `domain_member_running`.
 | `force_rejoin` | No | `false` | Leave the current realm and join again from scratch. |
 | `identity_scope` | No | `''` | Must be `local` for a forced Windows rejoin, declaring that the ambient identity survives the leave and restart. |
 | `restart_wait` | No | `true` | Wait for a Windows post-join or machine-password-reset restart. False schedules it and leaves proof to the caller's next invocation under the joined identity. |
+| `post_restart_credentials` | No | `[]` | Windows resolver sets for a waited restart that retires the current identity. Non-empty requires `restart_wait: true`; the first set matching the inventory-declared transport is used for the wait. |
 | `timesync_source` | No | `null` | Host or address to synchronise the clock with. |
 
 `ENV` is required by the loader — it selects the environment-specific overlay layer
@@ -53,10 +54,11 @@ The repair/reset values are passed as sensitive parameters and are never interpo
 text, which protects script text and output but does not change payload staging. Enable pipelining
 for plays running this role if that transit matters to you.
 
-The lookup runs **on the controller, with the controller's own ambient AWS credentials** — this
-role never authenticates to S3 and has no task targeting `localhost`, so a play needs no controller
-inventory host on this role's account. A read failure is reported by the lookup, which names the
-URL and never the value: check controller credentials, region, and `boto3` first.
+The secret lookup runs **on the controller, with the controller's own ambient AWS credentials**.
+This role never authenticates to S3. When `post_restart_credentials` contains a `launch_password`,
+the nested resolver also delegates its EC2 waiter and decrypt command to `localhost`; the normal
+domain-only post-restart set performs no AWS command. A lookup failure names the URL and never the
+value: check controller credentials, region, and `boto3` first.
 
 ```yaml
 - hosts: 'domain_members'
@@ -155,15 +157,18 @@ an SRV-advertised controller that answers on TCP/389, refuses a repeated automat
 When repair does not restore the channel, it writes the marker and runs
 `Reset-ComputerMachinePassword -Credential`. The role never leaves the realm on this path.
 
-A successful password reset requires a restart. With `restart_wait: true`, the role waits and
-retests. With `restart_wait: false`, it records the pre-restart FILETIME in
-`__domain_member_boot_time__`, schedules the restart, and ends the role. The caller's next play
-publishes the expected post-join SSH identity as facts, then uses a looped `raw` probe until that
-identity is elevated on a boot newer than `__domain_member_boot_time__`. It runs
-`credential_resolver` with only the post-join set and that FILETIME as
-`credential_resolver_boot_time_after`, then calls `host_readiness` and this role again for the
-ordinary membership proof. See
-[`credential_resolver/tests/caller-example.yml`](../../utilities/credential_resolver/tests/caller-example.yml).
+A successful password reset or join requires a restart. With `restart_wait: true` and no
+`post_restart_credentials`, the role uses its existing 600-second `win_reboot` path, retests a reset,
+then continues through posture and END. With post-restart sets, it records the pre-restart FILETIME,
+schedules the restart, calls `credential_resolver` with a 60-round, ten-second wait and that boot
+floor, confirms `host_readiness`, retests a reset, and continues through posture and END under the new
+identity. SSH makes 60 attempts with 59 inter-attempt pauses, plus each attempt's duration. WinRM
+delays 60 seconds and then permits attempts to start during a 600-second window; its final in-flight
+attempt and following sleep are not clamped, so no hard wall-clock ceiling is claimed. The first
+transport-matched set owns this wait; a later one cannot rescue it.
+
+With `restart_wait: false`, the role records `__domain_member_boot_time__`, schedules the restart,
+and ends the role exactly as before, leaving proof to a later invocation.
 
 The marker deliberately turns permanent damage into an operator decision. Replace the host; or,
 when the computer object is intact, keep it without relying on the broken channel: open an

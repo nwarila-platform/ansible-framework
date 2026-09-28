@@ -67,6 +67,25 @@
         or __timesync__ is match('^[A-Za-z0-9]([A-Za-z0-9.:-]*[A-Za-z0-9])?$')
       - domain_member_running.force_rejoin is boolean
       - domain_member_running.restart_wait is boolean
+      - domain_member_running.post_restart_credentials is sequence
+      - domain_member_running.post_restart_credentials is not mapping
+      - domain_member_running.post_restart_credentials is not string
+
+- name: 'VALIDATE | Require A Supported Post-Restart Identity Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing the post-restart identity contract: domain_member.post_restart_credentials may be
+      non-empty only for Windows when domain_member.restart_wait is true. Use an empty list when
+      the current identity survives the restart or the caller will reconnect in a later
+      invocation.
+    quiet: true
+    that:
+      - >-
+        domain_member_running.post_restart_credentials | default([], true) | length == 0
+        or ((ansible_facts.os_family | lower) == 'windows'
+            and domain_member_running.restart_wait | bool)
 
 - name: 'VALIDATE | Require The RedHat Proof Commands And Machine Account Posture'
   when:
