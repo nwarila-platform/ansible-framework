@@ -168,8 +168,12 @@ for input_case in basic kerberos_integer kerberos_string missing_name null_name 
   require_text 'needs a name, a user' "$run_dir/2c-caller-$input_case.out"
   [ ! -s "$CREDENTIAL_RESOLVER_TEST_LOG" ]
 done
-export CREDENTIAL_RESOLVER_DOWN_CALLS=3
 export CREDENTIAL_RESOLVER_POST_USER=post-new
+run_case ok 2e-caller-no-floor-clean inventory-caller.yml caller-example.yml
+require_text 'TASK [credential_resolver : PROCESS | Wait For The Post-Restart SSH Identity]' \
+  "$run_dir/2e-caller-no-floor-clean.out"
+reject_text 'Error while evaluating conditional' "$run_dir/2e-caller-no-floor-clean.out"
+export CREDENTIAL_RESOLVER_DOWN_CALLS=3
 run_case ok 2e-caller-no-restart inventory-caller.yml caller-scenarios.yml
 run_case ok 2e-caller-new-boot inventory-caller.yml caller-scenarios.yml -e __domain_member_boot_time__=250
 export CREDENTIAL_RESOLVER_POST_USER=post-old

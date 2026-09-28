@@ -294,11 +294,12 @@
   loop_control:
     break_when:
       - >-
-        __credential_resolver_post_restart__ is not unreachable
-        and __credential_resolver_post_restart__ is not failed
-        and __credential_resolver_post_restart__.stdout is search('S-1-16-12288')
-        and (__credential_resolver_post_restart__.stdout_lines | last | default('0') | int)
-            > (credential_resolver_boot_time_after | int)
+        __credential_resolver_post_restart__ is skipped
+        or (__credential_resolver_post_restart__ is not unreachable
+            and __credential_resolver_post_restart__ is not failed
+            and __credential_resolver_post_restart__.stdout is search('S-1-16-12288')
+            and (__credential_resolver_post_restart__.stdout_lines
+                 | last | default('0') | int) > (credential_resolver_boot_time_after | int))
     label: "attempt {{ item + 1 }}"
     pause: "{{ credential_resolver_wait_pause_seconds | int }}"
   register: '__credential_resolver_post_restart__'
