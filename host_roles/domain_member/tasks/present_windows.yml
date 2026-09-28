@@ -154,6 +154,10 @@
     __restart_required__: >-
       {{ (__domain_member_join__.reboot_required | default(false) | bool)
          or (__reset_worked__ is true) }}
+    __domain_member_resolve_after_restart__: >-
+      {{ domain_member_running.restart_wait | bool
+         and (domain_member_running.post_restart_credentials
+              | default([], true) | length) > 0 }}
     __timesync_declared__: >-
       {{ (domain_member_running.timesync_source | default('', true) | string | trim | length) > 0
       }}
@@ -486,6 +490,7 @@
       when:
         - __restart_required__ | bool
         - domain_member_running.restart_wait | bool
+        - not (__domain_member_resolve_after_restart__ | bool)
 
       ansible.windows.win_reboot:
         connect_timeout: 5
@@ -496,67 +501,15 @@
 
     # ----------------------------------------------------------------------------------------- #
 
-    - name: 'PROCESS | Retest The Machine Account Credential After The Reset Restart'
-      changed_when: false
-      check_mode: false
-      ignore_errors: true
-      register: '__domain_member_reset_retest__'
-      when:
-        - __reset_worked__ is true
-        - domain_member_running.restart_wait | bool
-
-      ansible.windows.win_powershell:
-        depth: 2
-        error_action: 'stop'
-        remote_src: false
-        script: 'Test-ComputerSecureChannel'
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Require The Reset Credential To Work After Restart'
-      when:
-        - __reset_worked__ is true
-        - domain_member_running.restart_wait | bool
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          The machine-account password reset completed and the host restarted, but the secure
-          channel still tests false. Use the documented out-of-band repair sequence or replace
-          the host; the role will not leave and rejoin automatically.
-        quiet: true
-        that:
-          - >-
-            __domain_member_reset_retest__.output
-            | default([], true) | first | default(false) | bool
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Clear The Automatic Repair Marker After A Working Channel'
-      when:
-        - __currently_joined__ | bool
-        - not ansible_check_mode
-        - >-
-          (__domain_member_channel__.output | default([], true) | first | default(false) | bool)
-          or (__domain_member_repair_retest__.output | default([], true) | first
-              | default(false) | bool)
-          or (__domain_member_reset_retest__.output | default([], true) | first
-              | default(false) | bool)
-
-      ansible.windows.win_regedit:
-        delete_key: false
-        name: 'RepairAttemptedUtc'
-        path: 'HKLM:\SOFTWARE\Ansible\domain_member'
-        state: 'absent'
-
-    # ----------------------------------------------------------------------------------------- #
-
     - name: 'PROCESS | Read The Boot Time Before Scheduling The Restart'
       changed_when: false
       check_mode: false
       register: '__domain_member_boot_time_read__'
       when:
         - __restart_required__ | bool
-        - not (domain_member_running.restart_wait | bool)
+        - >-
+          not (domain_member_running.restart_wait | bool)
+          or __domain_member_resolve_after_restart__ | bool
         - not ansible_check_mode
 
       ansible.windows.win_powershell:
@@ -572,7 +525,9 @@
     - name: 'PROCESS | Record The Boot Time For The Next Play'
       when:
         - __restart_required__ | bool
-        - not (domain_member_running.restart_wait | bool)
+        - >-
+          not (domain_member_running.restart_wait | bool)
+          or __domain_member_resolve_after_restart__ | bool
         - not ansible_check_mode
 
       ansible.builtin.set_fact:
@@ -588,7 +543,9 @@
       register: '__domain_member_shutdown__'
       when:
         - __restart_required__ | bool
-        - not (domain_member_running.restart_wait | bool)
+        - >-
+          not (domain_member_running.restart_wait | bool)
+          or __domain_member_resolve_after_restart__ | bool
         - not ansible_check_mode
 
       ansible.windows.win_command:
@@ -648,7 +605,9 @@
         __reissue_rc__: "{{ __domain_member_shutdown_reissue__.rc | default(-1) | int }}"
       when:
         - __restart_required__ | bool
-        - not (domain_member_running.restart_wait | bool)
+        - >-
+          not (domain_member_running.restart_wait | bool)
+          or __domain_member_resolve_after_restart__ | bool
         - not ansible_check_mode
 
       ansible.builtin.assert:
@@ -672,12 +631,109 @@
 
     # ----------------------------------------------------------------------------------------- #
 
+    # The restart work cannot run honestly under check mode, so neither can its reconnect.
+    - name: 'PROCESS | Resolve The Post-Restart Connection Identity'
+      vars:
+        credential_resolver_boot_time_after: "{{ __domain_member_boot_time__ }}"
+        credential_resolver_candidates: >-
+          {{ domain_member_running.post_restart_credentials }}
+        credential_resolver_require_elevated: true
+        credential_resolver_wait_pause_seconds: 10
+        credential_resolver_wait_rounds: 60
+      when:
+        - __restart_required__ | bool
+        - __domain_member_resolve_after_restart__ | bool
+        - not ansible_check_mode
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        name: 'credential_resolver'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+        tasks_from: 'main'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Readiness depends on the completed restart and therefore has no honest check-mode path.
+    - name: 'PROCESS | Confirm Readiness On The New Boot'
+      when:
+        - __restart_required__ | bool
+        - __domain_member_resolve_after_restart__ | bool
+        - not ansible_check_mode
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        name: 'host_readiness'
+        public: false
+        rescuable: true
+        rolespec_validate: true
+        tasks_from: 'main'
+
+    # ----------------------------------------------------------------------------------------- #
+
     - name: 'PROCESS | End After Scheduling The Identity Change Restart'
       when:
         - __restart_required__ | bool
         - not (domain_member_running.restart_wait | bool)
         - not ansible_check_mode
       ansible.builtin.meta: 'end_role'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Retest The Machine Account Credential After The Reset Restart'
+      changed_when: false
+      check_mode: false
+      ignore_errors: true
+      register: '__domain_member_reset_retest__'
+      when:
+        - __reset_worked__ is true
+        - domain_member_running.restart_wait | bool
+
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        remote_src: false
+        script: 'Test-ComputerSecureChannel'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Require The Reset Credential To Work After Restart'
+      when:
+        - __reset_worked__ is true
+        - domain_member_running.restart_wait | bool
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The machine-account password reset completed and the host restarted, but the secure
+          channel still tests false. Use the documented out-of-band repair sequence or replace
+          the host; the role will not leave and rejoin automatically.
+        quiet: true
+        that:
+          - >-
+            __domain_member_reset_retest__.output
+            | default([], true) | first | default(false) | bool
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Clear The Automatic Repair Marker After A Working Channel'
+      when:
+        - __currently_joined__ | bool
+        - not ansible_check_mode
+        - >-
+          (__domain_member_channel__.output | default([], true) | first | default(false) | bool)
+          or (__domain_member_repair_retest__.output | default([], true) | first
+              | default(false) | bool)
+          or (__domain_member_reset_retest__.output | default([], true) | first
+              | default(false) | bool)
+
+      ansible.windows.win_regedit:
+        delete_key: false
+        name: 'RepairAttemptedUtc'
+        path: 'HKLM:\SOFTWARE\Ansible\domain_member'
+        state: 'absent'
 
     #endregion --- [ Process: Restart To Complete The Identity Change ] ----------------------- #
 

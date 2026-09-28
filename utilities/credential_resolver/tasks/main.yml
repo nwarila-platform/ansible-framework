@@ -2,63 +2,386 @@
 # File: '{{ role_path }}/tasks/main.yml' | Version 1.0.0                                        #
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
-# Goes down credential_resolver_candidates ONCE, in order. The first set that authenticates --
-# and, when asked, is elevated and answers from a boot newer than the floor -- becomes this
-# host's connection identity for the rest of the run. Every attempt's response is reported as
-# received. Nothing here retries or waits: a host that answers no set fails with what each
-# attempt got back, and waiting for a host is the playbook's job.
+# Selects the credential sets matching the inventory-declared transport, optionally waits for
+# the host or a newer Windows boot, and publishes the first working identity.
 #
 # ============================================================================================= #
----
 
-#region ------ [ Begin: Check The Sets And Start The Pass ] ----------------------------------- #
+#region ------ [ Begin: Select And Prepare The Credential Sets ] ------------------------------ #
 
-- name: 'BEGIN | Check The Sets And Start The Pass'
-  # Begin The 'Begin' Block
+- name: 'BEGIN | Select And Prepare The Credential Sets'
   block:
+    - name: 'BEGIN | Record The Declared Transport'
+      when: __credential_resolver_transport__ is not defined
 
-    #region ------ [ Begin: Validate The Credential Sets ] ------------------------------------ #
+      ansible.builtin.set_fact:
+        __credential_resolver_transport__: >-
+          {{ ansible_connection | default('ssh', true) | string | lower | trim }}
+        cacheable: false
+
+    - name: 'BEGIN | Start With No Credential Attempts'
+
+      ansible.builtin.set_fact:
+        __credential_resolver_attempts__: []
+        __credential_resolver_selected_indexes__: []
+        __credential_resolver_winner__: ''
+        cacheable: false
 
     - name: 'BEGIN | Validate The Credential Sets'
+
       ansible.builtin.include_tasks:
         file: 'validate.yml'
 
-    #endregion --- [ Begin: Validate The Credential Sets ] ------------------------------------ #
+    - name: 'BEGIN | Select The Set Positions For The Declared Transport'
+      no_log: true
+      loop: "{{ range(credential_resolver_candidates | length) | list }}"
+      loop_control:
+        label: "set {{ __credential_resolver_index__ + 1 }}"
+        loop_var: '__credential_resolver_index__'
+      when: >-
+        credential_resolver_candidates[__credential_resolver_index__].connection
+        == __credential_resolver_transport__
 
-    #region ------ [ Begin: Start The Pass With No Winner ] ----------------------------------- #
-
-    - name: 'BEGIN | Start The Pass With No Winner'
       ansible.builtin.set_fact:
-        __credential_resolver_attempts__: []
-        __credential_resolver_winner__: ''
+        __credential_resolver_selected_indexes__: >-
+          {{ __credential_resolver_selected_indexes__ + [__credential_resolver_index__] }}
+        cacheable: false
 
-    #endregion --- [ Begin: Start The Pass With No Winner ] ----------------------------------- #
+    - name: 'BEGIN | Require A Set For The Declared Transport'
 
-#endregion --- [ Begin: Check The Sets And Start The Pass ] ----------------------------------- #
+      ansible.builtin.assert:
+        fail_msg: >-
+          No credential set declares connection '{{ __credential_resolver_transport__ }}' for
+          '{{ inventory_hostname }}'. Add a set for that transport or correct the inventory.
+        quiet: true
+        success_msg: 'The declared transport has at least one credential set.'
+        that:
+          - __credential_resolver_selected_indexes__ | length > 0
+
+#endregion --- [ Begin: Select And Prepare The Credential Sets ] ------------------------------ #
+
+#region ------ [ Begin: Read The EC2 Launch Passwords ] --------------------------------------- #
+
+- name: 'BEGIN | Read The EC2 Launch Passwords'
+  vars:
+    __credential_resolver_indexes__: "{{ __credential_resolver_selected_indexes__ }}"
+  block:
+    - name: 'BEGIN | Wait For The EC2 Launch Password Data'
+      changed_when: false
+      check_mode: false
+      delegate_to: 'localhost'
+      loop: "{{ __credential_resolver_indexes__ }}"
+      loop_control:
+        label: >-
+          {{ credential_resolver_candidates[__credential_resolver_index__].name }}
+        loop_var: '__credential_resolver_index__'
+      vars:
+        __credential_resolver_launch__: >-
+          {{ credential_resolver_candidates[__credential_resolver_index__].launch_password }}
+      when: >-
+        'launch_password' in
+        credential_resolver_candidates[__credential_resolver_index__]
+
+      ansible.builtin.command:
+        argv:
+          - 'aws'
+          - 'ec2'
+          - 'wait'
+          - 'password-data-available'
+          - '--instance-id'
+          - "{{ __credential_resolver_launch__.instance_id }}"
+          - '--region'
+          - "{{ __credential_resolver_launch__.region }}"
+        expand_argument_vars: false
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    - name: 'BEGIN | Read The Decrypted EC2 Launch Passwords'
+      no_log: true
+      block:
+        - name: 'BEGIN | Read One Decrypted EC2 Launch Password'
+          changed_when: false
+          check_mode: false
+          delegate_to: 'localhost'
+          ignore_errors: true
+          loop: "{{ __credential_resolver_indexes__ }}"
+          loop_control:
+            label: >-
+              set {{ __credential_resolver_index__ + 1 }}
+            loop_var: '__credential_resolver_index__'
+          register: '__credential_resolver_launch_passwords__'
+          vars:
+            __credential_resolver_launch__: >-
+              {{ credential_resolver_candidates[__credential_resolver_index__].launch_password }}
+          when: >-
+            'launch_password' in
+            credential_resolver_candidates[__credential_resolver_index__]
+
+          ansible.builtin.command:
+            argv:
+              - 'aws'
+              - 'ec2'
+              - 'get-password-data'
+              - '--instance-id'
+              - "{{ __credential_resolver_launch__.instance_id }}"
+              - '--priv-launch-key'
+              - "{{ __credential_resolver_launch__.private_key_file }}"
+              - '--region'
+              - "{{ __credential_resolver_launch__.region }}"
+              - '--query'
+              - 'PasswordData'
+              - '--output'
+              - 'text'
+            expand_argument_vars: false
+            stdin_add_newline: true
+            strip_empty_ends: true
+
+        - name: 'BEGIN | Require Every EC2 Launch Password'
+          no_log: false
+          loop: "{{ __credential_resolver_indexes__ }}"
+          loop_control:
+            label: >-
+              set {{ __credential_resolver_index__ + 1 }}
+            loop_var: '__credential_resolver_index__'
+          vars:
+            __credential_resolver_launch_result__: >-
+              {{ __credential_resolver_launch_passwords__.results
+                 | selectattr('__credential_resolver_index__', 'equalto',
+                              __credential_resolver_index__)
+                 | first }}
+          when: >-
+            'launch_password' in
+            credential_resolver_candidates[__credential_resolver_index__]
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              EC2 launch-password decryption failed for set
+              '{{ credential_resolver_candidates[__credential_resolver_index__].name }}':
+              rc={{ __credential_resolver_launch_result__.rc | default('unknown') }},
+              {{ __credential_resolver_launch_result__.msg | default('no message') }}.
+            quiet: true
+            success_msg: 'The EC2 launch password was decrypted.'
+            that:
+              - __credential_resolver_launch_result__ is not failed
+
+#endregion --- [ Begin: Read The EC2 Launch Passwords ] --------------------------------------- #
+
+#region ------ [ Begin: Wait For The First Answer ] ------------------------------------------- #
+
+# measured: 2026-09-26 -- a fresh host first answered at round 11 (resolver case 3b).
+- name: 'BEGIN | Wait Until The Host Answers As One Of Its Sets'
+  become: false
+  changed_when: false
+  check_mode: false
+  ignore_errors: true
+  ignore_unreachable: true
+  loop: >-
+    {{ range(credential_resolver_wait_rounds | int)
+       | product(__credential_resolver_selected_indexes__) | list }}
+  loop_control:
+    break_when:
+      - __credential_resolver_first_answer__ is not unreachable
+      - __credential_resolver_first_answer__ is not failed
+    label: >-
+      round {{ item.0 + 1 }}:
+      {{ credential_resolver_candidates[item.1].name }}
+    pause: "{{ credential_resolver_wait_pause_seconds | int }}"
+  register: '__credential_resolver_first_answer__'
+  vars:
+    __credential_resolver_set__: >-
+      {{ credential_resolver_candidates[item.1] }}
+    __credential_resolver_password__: >-
+      {{ __credential_resolver_set__.password
+         if 'password' in __credential_resolver_set__
+         else ((__credential_resolver_launch_passwords__ | default({})).results | default([])
+               | selectattr('__credential_resolver_index__', 'equalto', item.1)
+               | map(attribute='stdout') | first | default(None)) }}
+    ansible_become: false
+    ansible_connection: "{{ __credential_resolver_set__.connection }}"
+    ansible_control_path: 'none'
+    ansible_password: null
+    ansible_port: "{{ __credential_resolver_set__.port | default(None) }}"
+    ansible_private_key: "{{ __credential_resolver_set__.private_key | default(None) }}"
+    ansible_private_key_file: >-
+      {{ __credential_resolver_set__.private_key_file | default(None) }}
+    ansible_ssh_password: "{{ __credential_resolver_password__ }}"
+    ansible_ssh_use_tty: false
+    ansible_user: "{{ __credential_resolver_set__.user }}"
+    ansible_winrm_message_encryption: >-
+      {{ None if __credential_resolver_set__.connection != 'winrm'
+         else 'always' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+         else 'auto' }}
+    ansible_winrm_password: "{{ __credential_resolver_password__ }}"
+    ansible_winrm_scheme: >-
+      {{ None if __credential_resolver_set__.connection != 'winrm'
+         else 'http' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+         else 'https' }}
+    ansible_winrm_transport: "{{ __credential_resolver_set__.transport | default(None) }}"
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length == 0
+
+  ansible.builtin.raw: 'echo ready'
+
+- name: 'BEGIN | Require An Answer From One Of The Sets'
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length == 0
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      No credential set for transport '{{ __credential_resolver_transport__ }}' answered in
+      {{ credential_resolver_wait_rounds }} rounds of
+      {{ __credential_resolver_selected_indexes__ | length }} sets,
+      with {{ credential_resolver_wait_pause_seconds }} seconds between attempts. Each attempt's
+      answer is in the task above. Restore the host or its declared credentials.
+    quiet: true
+    success_msg: 'A credential set answered.'
+    that:
+      - (__credential_resolver_first_answer__.results | last) is not unreachable
+      - (__credential_resolver_first_answer__.results | last) is not failed
+
+#endregion --- [ Begin: Wait For The First Answer ] ------------------------------------------- #
+
+#region ------ [ Process: Wait For A New Boot ] ----------------------------------------------- #
+
+- name: 'PROCESS | Publish The First Set For The New-Boot Wait'
+  no_log: true
+  vars:
+    __credential_resolver_first_index__: "{{ __credential_resolver_selected_indexes__ | first }}"
+    __credential_resolver_set__: >-
+      {{ credential_resolver_candidates[__credential_resolver_first_index__] }}
+    __credential_resolver_password__: >-
+      {{ __credential_resolver_set__.password
+         if 'password' in __credential_resolver_set__
+         else ((__credential_resolver_launch_passwords__ | default({})).results | default([])
+               | selectattr('__credential_resolver_index__', 'equalto',
+                            __credential_resolver_first_index__)
+               | map(attribute='stdout') | first | default(None)) }}
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length > 0
+
+  ansible.builtin.set_fact:
+    ansible_connection: "{{ __credential_resolver_set__.connection }}"
+    ansible_password: null
+    ansible_port: "{{ __credential_resolver_set__.port | default(None) }}"
+    ansible_private_key: "{{ __credential_resolver_set__.private_key | default(None) }}"
+    ansible_private_key_file: >-
+      {{ __credential_resolver_set__.private_key_file | default(None) }}
+    ansible_ssh_password: "{{ __credential_resolver_password__ }}"
+    ansible_user: "{{ __credential_resolver_set__.user }}"
+    ansible_winrm_message_encryption: >-
+      {{ None if __credential_resolver_set__.connection != 'winrm'
+         else 'always' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+         else 'auto' }}
+    ansible_winrm_password: "{{ __credential_resolver_password__ }}"
+    ansible_winrm_scheme: >-
+      {{ None if __credential_resolver_set__.connection != 'winrm'
+         else 'http' if (__credential_resolver_set__.port | default(5986) | int) == 5985
+         else 'https' }}
+    ansible_winrm_transport: "{{ __credential_resolver_set__.transport | default(None) }}"
+    cacheable: false
+
+# measured: 8df5615 -- the join restart is scheduled 5 s out; the old boot may answer first.
+- name: 'PROCESS | Wait For The Post-Restart SSH Identity'
+  become: false
+  changed_when: false
+  check_mode: false
+  ignore_errors: true
+  ignore_unreachable: true
+  loop: "{{ range(credential_resolver_wait_rounds | int) | list }}"
+  loop_control:
+    break_when:
+      - >-
+        __credential_resolver_post_restart__ is skipped
+        or (__credential_resolver_post_restart__ is not unreachable
+            and __credential_resolver_post_restart__ is not failed
+            and __credential_resolver_post_restart__.stdout is search('S-1-16-12288')
+            and (__credential_resolver_post_restart__.stdout_lines
+                 | last | default('0') | int) > (credential_resolver_boot_time_after | int))
+    label: "attempt {{ item + 1 }}"
+    pause: "{{ credential_resolver_wait_pause_seconds | int }}"
+  register: '__credential_resolver_post_restart__'
+  vars:
+    ansible_become: false
+    ansible_control_path: 'none'
+    ansible_ssh_use_tty: false
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length > 0
+    - __credential_resolver_transport__ == 'ssh'
+
+  ansible.builtin.raw: >-
+    powershell -NoProfile -NonInteractive -Command "whoami /groups /fo csv /nh;
+    (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToFileTimeUtc()"
+
+- name: 'PROCESS | Require The Post-Restart SSH Identity'
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length > 0
+    - __credential_resolver_transport__ == 'ssh'
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      After {{ credential_resolver_wait_rounds }} attempts
+      {{ credential_resolver_wait_pause_seconds }} seconds apart, the first SSH set never
+      answered with a High-integrity token on a boot newer than
+      {{ credential_resolver_boot_time_after }}; the last attempt's answer is in the task above.
+      Restore that ordered identity or the host.
+    quiet: true
+    success_msg: 'The first SSH set is elevated on the new boot.'
+    that:
+      - (__credential_resolver_post_restart__.results | last) is not unreachable
+      - (__credential_resolver_post_restart__.results | last) is not failed
+      - (__credential_resolver_post_restart__.results | last).stdout
+        is search('S-1-16-12288')
+      - >-
+        ((__credential_resolver_post_restart__.results | last).stdout_lines
+         | last | default('0') | int) > (credential_resolver_boot_time_after | int)
+
+# measured: 8df5615 -- the join restart is scheduled 5 s out; delay skips the old boot.
+- name: 'PROCESS | Wait For The Post-Restart WinRM Identity'
+  when:
+    - (credential_resolver_wait_rounds | int) > 0
+    - credential_resolver_boot_time_after | string | trim | length > 0
+    - __credential_resolver_transport__ == 'winrm'
+
+  ansible.builtin.wait_for_connection:
+    connect_timeout: 5
+    delay: 60
+    sleep: "{{ credential_resolver_wait_pause_seconds | int }}"
+    timeout: >-
+      {{ (credential_resolver_wait_rounds | int)
+         * (credential_resolver_wait_pause_seconds | int) }}
+
+#endregion --- [ Process: Wait For A New Boot ] ----------------------------------------------- #
 
 #region ------ [ Process: Try Each Credential Set In Order ] ---------------------------------- #
 
 - name: 'PROCESS | Try Each Credential Set In Order'
-  # Begin The 'Process' Block
   block:
+    - name: 'PROCESS | Start The Pass With No Winner'
 
-    #region ------ [ Process: Try Each Credential Set In Order ] ------------------------------ #
+      ansible.builtin.set_fact:
+        __credential_resolver_attempts__: []
+        __credential_resolver_winner__: ''
 
-    # Positions, not the sets: a set is rendered only when its turn comes, so a later set's
-    # failing lookup cannot stop an earlier set from winning. The attempt's identity is passed
-    # as include parameters: they outrank facts and inventory,
-    # so an identity published earlier never leaks into this one, and null hides a value the set
-    # does not give. ansible_password stays a LITERAL null: Ansible copies it unrendered into the
-    # play context, and ssh would submit that text as a password; the set's password travels in
-    # the per-plugin names instead. ControlPath none gives every attempt its own logon.
     - name: 'PROCESS | Attempt One Credential Set'
-      loop: "{{ range(credential_resolver_candidates | length) | list }}"
+      loop: "{{ __credential_resolver_selected_indexes__ }}"
       loop_control:
         label: "set {{ __credential_resolver_index__ + 1 }}"
         loop_var: '__credential_resolver_index__'
       vars:
         __credential_resolver_set__: >-
           {{ credential_resolver_candidates[__credential_resolver_index__] }}
+        __credential_resolver_password__: >-
+          {{ __credential_resolver_set__.password
+             if 'password' in __credential_resolver_set__
+             else ((__credential_resolver_launch_passwords__ | default({})).results | default([])
+                   | selectattr('__credential_resolver_index__', 'equalto',
+                                __credential_resolver_index__)
+                   | map(attribute='stdout') | first | default(None)) }}
         ansible_connection: "{{ __credential_resolver_set__.connection }}"
         ansible_control_path: 'none'
         ansible_password: null
@@ -66,17 +389,14 @@
         ansible_private_key: "{{ __credential_resolver_set__.private_key | default(None) }}"
         ansible_private_key_file: >-
           {{ __credential_resolver_set__.private_key_file | default(None) }}
-        ansible_ssh_password: "{{ __credential_resolver_set__.password | default(None) }}"
-        # Under a tty, Windows OpenSSH reports a failed command as success; without one, every
-        # answer's exit status is its own.
+        ansible_ssh_password: "{{ __credential_resolver_password__ }}"
         ansible_ssh_use_tty: false
         ansible_user: "{{ __credential_resolver_set__.user }}"
-        # WinRM over HTTP (5985) must encrypt or refuse to send; over HTTPS, TLS carries it.
         ansible_winrm_message_encryption: >-
           {{ None if __credential_resolver_set__.connection != 'winrm'
              else 'always' if (__credential_resolver_set__.port | default(5986) | int) == 5985
              else 'auto' }}
-        ansible_winrm_password: "{{ __credential_resolver_set__.password | default(None) }}"
+        ansible_winrm_password: "{{ __credential_resolver_password__ }}"
         ansible_winrm_scheme: >-
           {{ None if __credential_resolver_set__.connection != 'winrm'
              else 'http' if (__credential_resolver_set__.port | default(5986) | int) == 5985
@@ -86,18 +406,12 @@
       ansible.builtin.include_tasks:
         file: 'attempt.yml'
 
-    #endregion --- [ Process: Try Each Credential Set In Order ] ------------------------------ #
-
 #endregion --- [ Process: Try Each Credential Set In Order ] ---------------------------------- #
 
 #region ------ [ End: Report The Outcome And Reconnect ] -------------------------------------- #
 
 - name: 'END | Report The Outcome And Reconnect'
-  # Begin The 'End' Block
   block:
-
-    #region ------ [ End: Report The Outcome ] ------------------------------------------------ #
-
     - name: 'END | Fail When No Credential Set Works'
       when: not __credential_resolver_winner__
 
@@ -115,15 +429,8 @@
           ({{ ansible_connection }}, user '{{ ansible_user }}') --
           {{ __credential_resolver_attempts__ }}
 
-    #endregion --- [ End: Report The Outcome ] ------------------------------------------------ #
-
-    #region ------ [ End: Connect As The Working Set ] ---------------------------------------- #
-
-    # This identity may still hold a master connection from before a restart or from an earlier
-    # run, carrying an older logon; the next task logs on afresh.
     - name: 'END | Connect As The Working Credential Set From Here On'
-      ansible.builtin.meta: 'reset_connection'
 
-    #endregion --- [ End: Connect As The Working Set ] ---------------------------------------- #
+      ansible.builtin.meta: 'reset_connection'
 
 #endregion --- [ End: Report The Outcome And Reconnect ] -------------------------------------- #

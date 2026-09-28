@@ -1,0 +1,19 @@
+# ============================================================================================= #
+# File: '{{ playbook_dir }}/inventory-winrm.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Declares WinRM so transport-latched cases run separately from the SSH cases.
+#
+# ============================================================================================= #
+
+#region ------ [ Loopback WinRM Test Host ] --------------------------------------------------- #
+
+all:
+  hosts:
+    winrm-target:
+      ansible_connection: 'winrm'
+      ansible_host: '127.0.0.1'
+      credential_test_transport: 'winrm'
+      platform: 'Linux'
+
+#endregion --- [ Loopback WinRM Test Host ] --------------------------------------------------- #

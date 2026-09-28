@@ -20,3 +20,32 @@ input_cases:
   missing_user: {name: 'missing-user', connection: 'ssh', password: "{{ input_canary_a }}"}
   null_user: {name: 'null-user', connection: 'ssh', user: null,
               password: "{{ input_canary_a }}"}
+  launch_and_password:
+    name: 'launch-and-password'
+    connection: 'winrm'
+    user: 'u'
+    password: "{{ input_canary_a }}"
+    launch_password: {instance_id: 'i-test', region: 'us-east-1', private_key_file: '/tmp/key'}
+    transport: 'ntlm'
+  launch_missing_key:
+    name: 'launch-missing-key'
+    connection: 'winrm'
+    user: 'u'
+    launch_password: {instance_id: 'i-test', region: 'us-east-1'}
+    transport: 'ntlm'
+  launch_extra_key:
+    name: 'launch-extra-key'
+    connection: 'winrm'
+    user: 'u'
+    launch_password:
+      instance_id: 'i-test'
+      private_key_file: '/tmp/key'
+      region: 'us-east-1'
+      unexpected: 'value'
+    transport: 'ntlm'
+  launch_empty_value:
+    name: 'launch-empty-value'
+    connection: 'winrm'
+    user: 'u'
+    launch_password: {instance_id: '', region: 'us-east-1', private_key_file: '/tmp/key'}
+    transport: 'ntlm'

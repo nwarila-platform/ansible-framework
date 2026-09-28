@@ -33,10 +33,11 @@
 
     #region ------ [ Process: Check Each Failed Pass ] ---------------------------------------- #
 
-    - name: 'PROCESS | Check Each Failed Pass'
+    - name: 'PROCESS | Check Each Failed Pass For The Declared Transport'
       loop: ['closed', 'kerberos', 'ntlm']
       vars:
         pass_case: "{{ pass_cases[item] }}"
+      when: pass_case.candidates[0].connection == credential_test_transport
 
       ansible.builtin.include_tasks: 'failure-case.yml'
 
@@ -59,7 +60,7 @@
             fail_msg: 'An empty list did not produce the resolver failure and no attempts.'
             quiet: true
             that:
-              - ansible_failed_result.msg is search('No credential set works')
+              - ansible_failed_result.msg is search('No credential set declares connection')
               - __credential_resolver_attempts__ == []
 
     #endregion --- [ End: Require An Empty List To Fail ] ------------------------------------- #

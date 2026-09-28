@@ -35,7 +35,8 @@
 #                                   is a choice, not an error, and so is not guarded.
 #
 # OPTIONAL: force_rejoin (leave and join again), timesync_source (the clock's source),
-# registration_address (the IPv4 address this host publishes in the realm's DNS; Windows only).
+# registration_address (the IPv4 address this host publishes in the realm's DNS; Windows only),
+# post_restart_credentials (resolver sets for a waited Windows identity transition).
 #
 # NOT OFFERED: any way to re-admit RC4. Both platforms exclude it unconditionally -- Windows by
 # the Kerberos encryption-types policy, RedHat by leaving the crypto policy alone rather than

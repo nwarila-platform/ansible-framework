@@ -15,6 +15,7 @@ all:
       ansible_host: '127.0.0.1'
       ansible_ssh_executable: "{{ lookup('env', 'CREDENTIAL_RESOLVER_TEST_SSH') }}"
       ansible_ssh_host_key_checking: false
+      credential_test_transport: 'ssh'
       platform: 'Linux'
 
 #endregion --- [ Local Test Host ] ------------------------------------------------------------ #

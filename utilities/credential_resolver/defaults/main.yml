@@ -2,8 +2,8 @@
 # File: '{{ role_path }}/defaults/main.yml' | Version 1.0.0                                     #
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
-# The resolver's inputs. The play declares its credential sets; the other two stay off unless
-# the caller asks for them.
+# The resolver's inputs. The play declares its credential sets; waits stay off unless the caller
+# asks for them.
 #
 # ============================================================================================= #
 ---
@@ -18,3 +18,9 @@ credential_resolver_require_elevated: false
 # Windows only: the answer must come from a boot newer than this FILETIME, such as
 # domain_member's __domain_member_boot_time__ after its restart. Empty means no floor.
 credential_resolver_boot_time_after: ''
+
+# Zero preserves the single-pass contract; a positive value bounds the role's connection wait.
+credential_resolver_wait_rounds: 0
+
+# Seconds between wait attempts. Each action's own duration is additional.
+credential_resolver_wait_pause_seconds: 10
