@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.4.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.3.0...v0.4.0) (2026-09-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **os_bootstrap:** the os_bootstrap_role inventory override is removed and now ignored, and os_bootstrap no longer reads platform, ansible_facts.os_family, ansible_shell_type or ansible_connection to decide the OS. The redhat_rocky_8 package list no longer ensures python3-libselinux.
+
+### Features
+
+* **credential_resolver,domain_member:** own the first-boot wait, the launch password and the post-restart identity ([#129](https://github.com/nwarila-platform/ansible-framework/issues/129)) [audited 0968da2] ([74edb7e](https://github.com/nwarila-platform/ansible-framework/commit/74edb7eab821bb7c636a4a85f1875b413201e4e3))
+* **credential_resolver:** try ordered credential sets once and keep the first that works ([#122](https://github.com/nwarila-platform/ansible-framework/issues/122)) [audited a5994d0] ([5701b7f](https://github.com/nwarila-platform/ansible-framework/commit/5701b7f810c53a2519a13e321a9308a321966623))
+* **framework:** select the connection identity per play, before and after the join ([#118](https://github.com/nwarila-platform/ansible-framework/issues/118)) ([c3b6652](https://github.com/nwarila-platform/ansible-framework/commit/c3b6652d1ffc033fe22418171e9a419bd2039349))
+* read the disk managers' platform from the host when none is declared ([#126](https://github.com/nwarila-platform/ansible-framework/issues/126)) [audited e48b643] ([f289616](https://github.com/nwarila-platform/ansible-framework/commit/f289616b80dd11879ae4ccf48443d68c199e152f))
+
+
+### Bug Fixes
+
+* **openvpn_client:** install the tunnel driver Server 2019 can run ([#128](https://github.com/nwarila-platform/ansible-framework/issues/128)) [audited 34dfc17] ([8df5615](https://github.com/nwarila-platform/ansible-framework/commit/8df5615b85ff2ca056af023a5a856720866430c3))
+* **os_bootstrap:** route each host to its own release's role [audited 6c4a396] ([0435e7f](https://github.com/nwarila-platform/ansible-framework/commit/0435e7f35eac8851535bed1b884802e6b5204e01))
+* **windows_disk_manager:** move kept disks to their letters before provisioning ([#121](https://github.com/nwarila-platform/ansible-framework/issues/121)) ([3fc34af](https://github.com/nwarila-platform/ansible-framework/commit/3fc34af314ee4e2070640805df626bef6bae0754))
+
+
+### Code Refactoring
+
+* **os_bootstrap:** select in one stage, include in another [audited 6374f1e] ([4ceb9f8](https://github.com/nwarila-platform/ansible-framework/commit/4ceb9f8578106dfed135de5daddeea24c49d237a))
+
+
+### Miscellaneous
+
+* **deps-dev:** update dependency ansible-core to &gt;=2.21.4,&lt;2.22 ([#123](https://github.com/nwarila-platform/ansible-framework/issues/123)) ([a14481b](https://github.com/nwarila-platform/ansible-framework/commit/a14481b7b73fde824140c15eaeeb0f940bdbf7b3))
+* **deps-dev:** update dependency microsoft.ad to v1.12.1 ([#124](https://github.com/nwarila-platform/ansible-framework/issues/124)) ([685f4c2](https://github.com/nwarila-platform/ansible-framework/commit/685f4c270bbf403eda043dfb56029fc91d086460))
+
 ## [0.3.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
