@@ -286,7 +286,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Miscellaneous
 
-* clean up .gitignore comments and remove Claude-specific entries ([81b7792](https://github.com/nwarila-platform/ansible-framework/commit/81b7792a81cf45a48e21dcc3142638d029d9d5b3))
+* clean up .gitignore comments and remove redundant ignore entries ([81b7792](https://github.com/nwarila-platform/ansible-framework/commit/81b7792a81cf45a48e21dcc3142638d029d9d5b3))
 * **codeowners:** sync CODEOWNERS via terraform ([2a72297](https://github.com/nwarila-platform/ansible-framework/commit/2a722976eed9d561ec6fc1c645436834443998aa))
 * **codeowners:** sync CODEOWNERS via terraform ([051a85f](https://github.com/nwarila-platform/ansible-framework/commit/051a85f1e427889b56d8ba8cbce2dd07c5f15d69))
 * **codeowners:** sync CODEOWNERS via terraform ([68c0095](https://github.com/nwarila-platform/ansible-framework/commit/68c0095234b9e44e6cac1c758db7f7bbe657640e))
