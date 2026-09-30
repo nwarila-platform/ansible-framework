@@ -2,19 +2,25 @@
 # =============================================================================
 # Runtime Collection Dependencies (the Galaxy-published set)
 # =============================================================================
-# Every Galaxy-published collection this framework's roles call, pinned to an
-# exact version. Roles state every module option whose documented default is
-# non-null so a vendor cannot move behaviour inside a version; this file
-# closes the other half of that promise by fixing which version is installed
-# at all. One dependency is not served by Galaxy and is recorded, unpinned,
-# at the end of this file.
+# This file is the single declaration of every Galaxy-published collection any
+# framework role calls, pinned to an exact version. Roles state every module
+# option whose documented default is non-null so a vendor cannot move behaviour
+# inside a version; this file closes the other half of that promise by fixing
+# which version is installed at all. One dependency is not served by Galaxy and
+# is recorded, unpinned, at the end of this file.
 #
-# This matters downstream: consuming repositories pin the framework by full
-# commit SHA, so an unpinned collection set would leave those pins reproducible
-# in name only.
+# Consumers do not maintain a parallel Galaxy requirements list. They pin the
+# framework by its full 40-hex commit SHA, check out that pin, and then install:
+#   ansible-galaxy collection install --force -r <framework>/requirements.yml
+# The set and the roles that need it therefore move together under one SHA. This
+# matters downstream: an unpinned collection set would leave those pins
+# reproducible in name only.
 #
-# Install via: make collections
-# Or directly:  ansible-galaxy collection install -r requirements.yml
+# A collection is listed because a framework role calls it. Whether a consumer
+# executes that role is not a reason to omit it: consumers lint the composed
+# tree, which contains every framework role, so the linting set is the full set.
+#
+# Framework developers install via: make collections
 #
 # Upgrading a pin is a deliberate, tested change -- never a drive-by edit, and
 # a Renovate bump PR is reviewed the same way (.github/renovate.json5 routes
@@ -25,21 +31,14 @@
 
 collections:
 
-  # ---------------------------------------------------------------------------
-  # Matched to the consuming repository's pins
-  # ---------------------------------------------------------------------------
-  # pdq-deploy-inventory lints the composed application against these exact
-  # versions in its requirements-quality.yml. The framework must agree with the
-  # consumer that executes it, so these four are kept in lockstep with that file.
-  # ---------------------------------------------------------------------------
-
   # s3_object and ec2_vol_info.
   - name: 'amazon.aws'
     version: '11.4.0'
 
-  # setup and the win_* modules every Windows path uses: win_copy, win_file,
-  # win_find, win_hostname, win_package, win_powershell, win_reboot, win_regedit,
-  # win_service, win_service_info, win_shell, win_stat, win_uri and win_wait_for.
+  # setup and the win_* modules every Windows path uses: win_command, win_copy,
+  # win_file, win_find, win_hostname, win_package, win_powershell, win_reboot,
+  # win_reg_stat, win_regedit, win_service, win_service_info, win_shell, win_stat,
+  # win_uri and win_wait_for.
   - name: 'ansible.windows'
     version: '3.7.0'
 
@@ -52,10 +51,6 @@ collections:
   - name: 'microsoft.ad'
     version: '1.12.1'
 
-  # ---------------------------------------------------------------------------
-  # Framework-only dependencies
-  # ---------------------------------------------------------------------------
-  # The consumer does not install these because its composition is Windows-only.
   # Both are pinned to the versions the Linux roles were authored and proven
   # against, so this file records the tested state rather than asserting an
   # untested upgrade.
@@ -64,8 +59,6 @@ collections:
   # a new defaulted option (unit_preserve_case) after 7.5.9, which is exactly the
   # silent-default class this file exists to prevent. Moving to it belongs in its
   # own PR that pins the new option in linux_disk_manager's parted task.
-  # ---------------------------------------------------------------------------
-
   # parted and filesystem, used by linux_disk_manager. Also a dependency of the
   # ad_integration system role that domain_member runs on RedHat (see below).
   - name: 'community.general'

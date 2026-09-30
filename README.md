@@ -115,6 +115,19 @@ modified.
 - Python >= 3.12
 - `pre-commit` (for local hook enforcement)
 
+### Collection Dependencies
+
+Consumers check out the framework at their pinned 40-hex SHA, then install the authoritative
+Galaxy-published collection set from that checkout:
+
+```bash
+ansible-galaxy collection install --force -r <path>/requirements.yml
+```
+
+Keep no parallel Galaxy requirements list in the consumer. This does not replace the documented
+non-Galaxy `redhat.rhel_system_roles` controller prerequisite for the RedHat `domain_member` path;
+see [requirements.yml](requirements.yml).
+
 ### Development Setup
 
 ```bash
