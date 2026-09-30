@@ -40,7 +40,7 @@ collections:
   # win_reg_stat, win_regedit, win_service, win_service_info, win_shell, win_stat,
   # win_uri and win_wait_for.
   - name: 'ansible.windows'
-    version: '3.7.0'
+    version: '3.8.0'
 
   # win_file_version (openvpn_client); win_disk_facts, win_initialize_disk,
   # win_partition and win_format (windows_disk_manager).
