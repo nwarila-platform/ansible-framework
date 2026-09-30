@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.4.1](https://github.com/nwarila-platform/ansible-framework/compare/v0.4.0...v0.4.1) (2026-09-30)
+
+
+### Documentation
+
+* **framework:** make the collection declaration authoritative ([#132](https://github.com/nwarila-platform/ansible-framework/issues/132)) ([2e8160f](https://github.com/nwarila-platform/ansible-framework/commit/2e8160f3822eb1d00c53e4cb23f8495eac0e20e5))
+
+
+### Miscellaneous
+
+* **deps-dev:** update dependency ansible-lint to v26.9.0 ([#130](https://github.com/nwarila-platform/ansible-framework/issues/130)) ([d80f298](https://github.com/nwarila-platform/ansible-framework/commit/d80f298e110226ad0dc19f89063726a8c6d7d003))
+* **deps-dev:** update dependency ansible.windows to v3.8.0 ([#131](https://github.com/nwarila-platform/ansible-framework/issues/131)) ([0f7c11d](https://github.com/nwarila-platform/ansible-framework/commit/0f7c11dc405fd21924d2317c6a22778b2d2850a9))
+
 ## [0.4.0](https://github.com/nwarila-platform/ansible-framework/compare/v0.3.0...v0.4.0) (2026-09-29)
 
 
