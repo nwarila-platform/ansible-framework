@@ -67,10 +67,15 @@ letter, so equivalent spellings such as `D`, `d:`, and `D:\` are duplicates.
   NTFS quick-format pipeline. Drive letters are canonicalized to their uppercase first letter,
   and `allocation_unit` defaults to 4096 bytes.
 - Kept disks move to their declared letters first, in two phases, so swapped or rotated letters
-  converge and a move stopped midway completes on the next run. A blank disk's partition is
-  looked up by disk and partition number and, if absent, created only on that disk — never found
-  by letter — so if its letter is taken by anything else Windows refuses the partition and
-  nothing is formatted. The run stops, and the next run completes once the letter is free. A kept
-  disk's contents are never partitioned or formatted; the role may bring it online and writable,
-  and change its drive letter.
+  converge and a move stopped midway completes on the next successful run. Before any letter
+  moves, every kept disk's target letter must be free or held by another kept disk. When anything
+  else holds one — another volume, a CD/DVD drive, or a network or removable drive — the
+  drive-letter task changes no drive letter and fails, naming the holder; it never moves a volume
+  it does not manage. A blank disk's partition is looked up by disk and partition number and, if
+  absent, created only on that disk — never found by letter — so if its letter is taken by
+  anything else Windows refuses the partition and nothing is formatted. The run stops, and the
+  next run completes once the letter is free. A kept disk's contents are never partitioned or
+  formatted; the role may bring it online and writable, and change its drive letter. The move is
+  `scripts/Set-DiskDriveLetter.ps1`, which `scripts/materialize-role-scripts.sh` copies into
+  `files/` before the role runs; the role tracks only its stub.
 - `disks: []` completes successfully after the vendor check.

@@ -28,9 +28,9 @@
 # PowerShell script tracks only files/<Name>.ps1.stub; scripts/materialize-role-scripts.sh copies
 # the reviewed source from scripts/ to files/<Name>.ps1 before the role runs. That copy is a build
 # artifact, so it is deliberately unallowlistable AND must not fail this guard on a checkout where
-# the build step has run. Scoped to the one role that has stubs, so an unreviewed .ps1 dropped into
+# the build step has run. Scoped to the roles that have stubs, so an unreviewed .ps1 dropped into
 # any other role's files/ is still caught -- widen it per-role, never to a wildcard.
-GUARD_EXCLUDE := ^(\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/openvpn_client/files/[^/]+\.ps1$$)
+GUARD_EXCLUDE := ^(\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/(openvpn_client|windows_disk_manager)/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
 	applications/linux_disk_manager/tasks/main.yml \

@@ -51,6 +51,8 @@
 # role's files/ directory is a build artifact and is never allowlisted anywhere.
 !/scripts/
 !/scripts/materialize-role-scripts.sh
+!/scripts/Set-DiskDriveLetter.ps1
+!/scripts/Set-DiskDriveLetter.pester.ps1
 !/scripts/Set-DnsNamespaceForwarder.ps1
 !/scripts/Set-DnsNamespaceForwarder.pester.ps1
 !/scripts/Set-FileAcl.ps1
@@ -167,6 +169,8 @@
 # be committed.
 !/applications/openvpn_client/files/Set-DnsNamespaceForwarder.ps1.stub
 !/applications/openvpn_client/files/Set-FileAcl.ps1.stub
+# windows_disk_manager executes one, materialized the same way.
+!/applications/windows_disk_manager/files/Set-DiskDriveLetter.ps1.stub
 
 # --- [ host_roles: what a host IS, not what it runs ] ---
 !/host_roles/
