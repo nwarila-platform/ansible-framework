@@ -67,7 +67,7 @@ collections:
   # mount, used by linux_disk_manager. Also a dependency of the ad_integration
   # system role that domain_member runs on RedHat (see below).
   - name: 'ansible.posix'
-    version: '1.6.2'
+    version: '2.2.2'
 
   # ---------------------------------------------------------------------------
   # Not pinned here: content Galaxy does not serve
