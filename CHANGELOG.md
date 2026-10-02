@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Release-please will insert new entries above this line -->
 
+## [0.4.2](https://github.com/nwarila-platform/ansible-framework/compare/v0.4.1...v0.4.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* **credential_resolver:** say which rule a rejected credential set breaks ([#136](https://github.com/nwarila-platform/ansible-framework/issues/136)) ([3d6e96c](https://github.com/nwarila-platform/ansible-framework/commit/3d6e96c3d021b9e40713ff29b0b6583b7c0eeb9d))
+* **windows_disk_manager:** refuse, unchanged, when a kept disk's letter is held ([#138](https://github.com/nwarila-platform/ansible-framework/issues/138)) ([21d45a4](https://github.com/nwarila-platform/ansible-framework/commit/21d45a4f3bf71c824629c70b4284ef20e2b5b780))
+
+
+### Miscellaneous
+
+* **framework:** remove obsolete changelog wording and guard exclusion ([#134](https://github.com/nwarila-platform/ansible-framework/issues/134)) [audited b3311ae] ([786e1a7](https://github.com/nwarila-platform/ansible-framework/commit/786e1a74fb262c13352a56d6c6b1bec8a941c4ab))
+
 ## [0.4.1](https://github.com/nwarila-platform/ansible-framework/compare/v0.4.0...v0.4.1) (2026-09-30)
 
 
