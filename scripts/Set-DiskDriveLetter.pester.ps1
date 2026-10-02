@@ -263,7 +263,7 @@ Describe 'Set-DiskDriveLetter' {
 
     $Context.Changed | Should -BeFalse
     $Context.Result.check_mode | Should -BeFalse
-    $Context.Result.msg | Should -Be 'every kept disk is on its declared letter'
+    $Context.Result.msg | Should -BeExactly 'every kept disk is on its declared letter'
     @($global:FakeWrites).Count | Should -Be 0
     @($Context.Result.PSObject.Properties.Name) | Should -Be @(
       'changed', 'check_mode', 'disks', 'held_by', 'msg'
@@ -285,8 +285,8 @@ Describe 'Set-DiskDriveLetter' {
     @($global:FakeWrites.op) | Should -Be @(
       'remove', 'remove', 'remove', 'set', 'set', 'set'
     )
-    @($global:FakeWrites.letter) | Should -Be @('F', 'G', 'E', 'E', 'F', 'G')
-    @($Context.Result.disks.after) | Should -Be @('E', 'F', 'G')
+    @($global:FakeWrites.letter) | Should -BeExactly @('F', 'G', 'E', 'E', 'F', 'G')
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
     @($Context.Result.disks.changed) | Should -Be @($True, $True, $True)
   }
 
@@ -298,7 +298,7 @@ Describe 'Set-DiskDriveLetter' {
 
     $Context.Changed | Should -BeTrue
     @($global:FakeWrites.op) | Should -Be @('set', 'set', 'set')
-    @($Context.Result.disks.after) | Should -Be @('E', 'F', 'G')
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
   }
 
   It 'P4 mixed: moves only the wrong and letterless disks' {
@@ -308,9 +308,9 @@ Describe 'Set-DiskDriveLetter' {
     & $script:ScriptPath -UniqueId $script:Ids -DriveLetter $script:Targets | Out-Null
 
     @($global:FakeWrites.op) | Should -Be @('remove', 'set', 'set')
-    @($global:FakeWrites.letter) | Should -Be @('H', 'F', 'G')
+    @($global:FakeWrites.letter) | Should -BeExactly @('H', 'F', 'G')
     @($Context.Result.disks.changed) | Should -Be @($False, $True, $True)
-    @($Context.Result.disks.after) | Should -Be @('E', 'F', 'G')
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
   }
 
   It 'P5 foreign local-volume holder: refuses with exact failure schema and no writes' {
@@ -328,14 +328,14 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Changed | Should -BeFalse
     $Context.Result.changed | Should -BeFalse
     $Context.Result.check_mode | Should -BeFalse
-    $Context.Result.msg | Should -Be $Expected
+    $Context.Result.msg | Should -BeExactly $Expected
     @($Context.Result.PSObject.Properties.Name) | Should -Be @(
       'changed', 'check_mode', 'disks', 'held_by', 'msg'
     )
     @($Context.Result.held_by.PSObject.Properties.Name) | Should -Be @(
       'letter', 'kind', 'label'
     )
-    $Context.Result.held_by.letter | Should -Be 'E'
+    $Context.Result.held_by.letter | Should -BeExactly 'E'
     $Context.Result.held_by.kind | Should -Be 'local volume'
     $Context.Result.held_by.label | Should -Be 'FOREIGN'
     @($Context.Result.disks.changed) | Should -Be @($True, $True, $True)
@@ -352,7 +352,9 @@ Describe 'Set-DiskDriveLetter' {
       & $script:ScriptPath -UniqueId $script:Ids -DriveLetter $script:Targets
     } | Should -Throw
 
-    $Context.Result.msg | Should -Match 'held by a CD/DVD drive'
+    $Expected = "Declared letter E: is held by a CD/DVD drive labelled 'INSTALL', which this " +
+      'role does not manage. No drive letter was changed. Move it off E: and run again.'
+    $Context.Result.msg | Should -BeExactly $Expected
     $Context.Result.held_by.kind | Should -Be 'CD/DVD drive'
     $Context.Changed | Should -BeFalse
     $Context.Result.changed | Should -BeFalse
@@ -370,7 +372,7 @@ Describe 'Set-DiskDriveLetter' {
     @($global:FakeWrites.op) | Should -Be @(
       'remove', 'remove', 'remove', 'set', 'set', 'set'
     )
-    @($Context.Result.disks.after) | Should -Be @('E', 'F', 'G')
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
   }
 
   It 'P8 check mode rotation: reports moves while leaving every letter unchanged' {
@@ -383,9 +385,20 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Changed | Should -BeTrue
     $Context.Result.check_mode | Should -BeTrue
     @($global:FakeWrites).Count | Should -Be 0
-    @($Context.Result.disks.before) | Should -Be @('F', 'G', 'E')
-    @($Context.Result.disks.after) | Should -Be @('F', 'G', 'E')
+    @($Context.Result.disks.before) | Should -BeExactly @('F', 'G', 'E')
+    @($Context.Result.disks.after) | Should -BeExactly @('F', 'G', 'E')
     @($Context.Result.disks.changed) | Should -Be @($True, $True, $True)
+  }
+
+  It 'P8c check mode without WhatIf: the outer gate prevents every write' {
+    Set-FakeThreeDiskState -Letters @('F', 'G', 'E')
+    $Context = New-AnsibleContext -CheckMode
+
+    & $script:ScriptPath -UniqueId $script:Ids -DriveLetter $script:Targets | Out-Null
+
+    $Context.Changed | Should -BeTrue
+    @($global:FakeWrites).Count | Should -Be 0
+    @($Context.Result.disks.after) | Should -BeExactly @('F', 'G', 'E')
   }
 
   It 'P8b WhatIf with transport check mode false: every guard prevents writes' {
@@ -399,8 +412,8 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Result.check_mode | Should -BeFalse
     $Context.Failed | Should -BeFalse
     @($global:FakeWrites).Count | Should -Be 0
-    @($Context.Result.disks.before) | Should -Be @('F', 'G', 'E')
-    @($Context.Result.disks.after) | Should -Be @('F', 'G', 'E')
+    @($Context.Result.disks.before) | Should -BeExactly @('F', 'G', 'E')
+    @($Context.Result.disks.after) | Should -BeExactly @('F', 'G', 'E')
     @($Context.Result.disks.changed) | Should -Be @($True, $True, $True)
   }
 
@@ -411,6 +424,7 @@ Describe 'Set-DiskDriveLetter' {
       @{ Ids = @('disk-a'); Letters = @('1') }
       @{ Ids = @('disk-a', 'disk-b'); Letters = @('E', 'e') }
       @{ Ids = @(''); Letters = @('E') }
+      @{ Ids = @('disk-a'); Letters = @('') }
       @{ Ids = @('disk-a', 'disk-a'); Letters = @('E', 'F') }
       @{ Ids = @(); Letters = @() }
     )
@@ -461,7 +475,7 @@ Describe 'Set-DiskDriveLetter' {
       & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('E')
     } | Should -Throw
 
-    $Context.Result.msg | Should -Match 'No data partition found on disk disk-a'
+    $Context.Result.msg | Should -BeExactly 'No data partition found on disk disk-a.'
     @($Context.Result.disks).Count | Should -Be 0
     @($global:FakeWrites).Count | Should -Be 0
   }
@@ -479,10 +493,11 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Changed | Should -BeTrue
     $Context.Result.changed | Should -BeTrue
     @($global:FakeWrites.op) | Should -Be @('remove', 'remove', 'remove', 'set')
-    @($global:FakeWrites.letter) | Should -Be @('F', 'G', 'E', 'E')
-    [System.String]$global:FakePartitions[0].DriveLetter | Should -Be 'E'
+    @($global:FakeWrites.letter) | Should -BeExactly @('F', 'G', 'E', 'E')
+    [System.String]$global:FakePartitions[0].DriveLetter | Should -BeExactly 'E'
     [System.Int32][System.Char]$global:FakePartitions[1].DriveLetter | Should -Be 0
     [System.Int32][System.Char]$global:FakePartitions[2].DriveLetter | Should -Be 0
+    @($Context.Result.disks.after) | Should -BeExactly @('E', '', '')
   }
 
   It 'P12b retry after the partial failure: assigns the two letterless partitions' {
@@ -493,23 +508,26 @@ Describe 'Set-DiskDriveLetter' {
 
     $Context.Failed | Should -BeFalse
     @($global:FakeWrites.op) | Should -Be @('set', 'set')
-    @($global:FakeWrites.letter) | Should -Be @('F', 'G')
-    @($Context.Result.disks.after) | Should -Be @('E', 'F', 'G')
+    @($global:FakeWrites.letter) | Should -BeExactly @('F', 'G')
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
   }
 
   It 'P13 ignored assignment: fails read-back and names the disk' {
-    Set-FakeThreeDiskState -Letters @('H', 'F', 'G')
+    Set-FakeThreeDiskState -Letters @('F', 'G', 'E')
     $global:FakeSetIgnored = $True
     $Context = New-AnsibleContext
 
     {
-      & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('E')
+      & $script:ScriptPath -UniqueId $script:Ids -DriveLetter $script:Targets
     } | Should -Throw
 
-    @($global:FakeWrites.op) | Should -Be @('remove', 'set')
-    $Context.Result.msg | Should -Match 'Disk disk-a read back'
+    @($global:FakeWrites.op) | Should -Be @(
+      'remove', 'remove', 'remove', 'set', 'set', 'set'
+    )
+    $Context.Result.msg |
+      Should -BeExactly 'Disk disk-a read back on no letter: after moving to E:'
     $Context.Result.changed | Should -BeTrue
-    $Context.Result.disks[0].after | Should -Be 'E'
+    @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
     $Context.Failed | Should -BeTrue
   }
 
@@ -521,8 +539,53 @@ Describe 'Set-DiskDriveLetter' {
 
     $Context.Changed | Should -BeTrue
     @($global:FakeWrites.op) | Should -Be @('remove', 'set')
-    @($global:FakeWrites.letter) | Should -Be @('H', 'E')
+    @($global:FakeWrites.letter) | Should -BeExactly @('H', 'E')
     @($Context.Result.disks).Count | Should -Be 1
-    $Context.Result.disks[0].after | Should -Be 'E'
+    $Context.Result.disks[0].after | Should -BeExactly 'E'
+  }
+
+  It 'P15 largest eligible partition: publishes and uses the larger partition' {
+    $global:FakePartitions += [PSCustomObject]@{
+      DiskNumber = 1
+      DriveLetter = 'H'
+      PartitionNumber = 99
+      Size = 2GB
+      Type = 'Basic'
+    }
+    $Context = New-AnsibleContext
+
+    & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('E') | Out-Null
+
+    $Context.Result.disks[0].partition | Should -Be 11
+    @($global:FakeWrites).Count | Should -Be 0
+  }
+
+  It 'P16 Reserved exclusion: publishes the converged Basic partition' {
+    $global:FakePartitions += [PSCustomObject]@{
+      DiskNumber = 1
+      DriveLetter = 'H'
+      PartitionNumber = 98
+      Size = 100GB
+      Type = 'Reserved'
+    }
+    $Context = New-AnsibleContext
+
+    & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('E') | Out-Null
+
+    $Context.Result.disks[0].partition | Should -Be 11
+    @($global:FakeWrites).Count | Should -Be 0
+  }
+
+  It 'P17 lower-case target: writes and reports the upper-case letter' {
+    Set-FakeThreeDiskState -Letters @($Null, 'F', 'G')
+    $Context = New-AnsibleContext
+
+    & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('e') | Out-Null
+
+    $Context.Changed | Should -BeTrue
+    @($global:FakeWrites).Count | Should -Be 1
+    @($global:FakeWrites.op) | Should -Be @('set')
+    @($global:FakeWrites.letter) | Should -BeExactly @('E')
+    $Context.Result.disks[0].after | Should -BeExactly 'E'
   }
 }

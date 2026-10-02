@@ -14,7 +14,9 @@
 
         Each assignment is read back. A write that does not take fails the run instead of
         reporting a successful move. Check mode and standalone -WhatIf report the pending moves
-        without writing. The result records each resolved disk's letter before and after the run.
+        without writing. In the result, after starts as before. It becomes empty only after a
+        guarded removal returns, and becomes the target only after a guarded assignment returns.
+        A skipped or throwing call does not advance it.
 
         Org scripts are a single straightforward process stage in the org script template's
         architecture: one [ Script ] region carrying [ Initialization ], [ Main ] and [ Output ].
@@ -314,6 +316,7 @@ Try {
       If ($PSCmdlet.ShouldProcess($AccessPath, 'Remove partition access path')) {
         Remove-PartitionAccessPath -DiskNumber:$Move.Result.disk `
           -PartitionNumber:$Move.Result.partition -AccessPath:$AccessPath
+        $Move.Result.after = [System.String]::Empty
       }
     }
 
@@ -330,10 +333,14 @@ Try {
     ForEach ($Move In $Assigned) {
       $ReadBack = Get-Partition -DiskNumber:$Move.Result.disk `
         -PartitionNumber:$Move.Result.partition
-      $Now = [System.String]$ReadBack.DriveLetter
+      $Now = If ([System.Int32][System.Char]$ReadBack.DriveLetter -ne 0) {
+        [System.String]$ReadBack.DriveLetter
+      } Else {
+        'no letter'
+      }
       If ($Now -ne $Move.Target) {
         Throw (
-          'Disk {0} read back on {1}: after moving to {2}:.' -f
+          'Disk {0} read back on {1}: after moving to {2}:' -f
           $Move.Result.unique_id, $Now, $Move.Target
         )
       }
@@ -354,11 +361,6 @@ Try {
     held_by    = $HeldBy
     msg        = [System.String]$Message
   }
-  $Ansible.Result = $Result
-
-  If ($StandaloneRun) {
-    $Ansible.Result | ConvertTo-Json -Depth:4
-  }
 } Catch {
   $Failure = $PSItem
   $Ansible.Result = [PSCustomObject][Ordered]@{
@@ -376,6 +378,14 @@ Try {
 
 #region ------ [ Output ] -------------------------------------------------------------------- #
 Write-Debug -Message:'Entering Stage: Output'
+
+$Ansible.Changed = $Result.changed
+$Ansible.Result = $Result
+
+If ($StandaloneRun) {
+  $Ansible.Result | ConvertTo-Json -Depth:4
+}
+
 Write-Debug -Message:'Exiting Script'
 #endregion --- [ Output ] -------------------------------------------------------------------- #
 
