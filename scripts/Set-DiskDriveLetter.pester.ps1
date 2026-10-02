@@ -162,6 +162,11 @@ BeforeAll {
       [Parameter(Mandatory)] [System.String]$AccessPath
     )
 
+    $global:FakeRemoveAttempts++
+    If ($global:FakeThrowRemoveCall -eq $global:FakeRemoveAttempts) {
+      Throw ('Synthetic Remove-PartitionAccessPath failure on call {0}.' -f
+        $global:FakeRemoveAttempts)
+    }
     $Partition = @(
       $global:FakePartitions | Where-Object {
         $PSItem.DiskNumber -eq $DiskNumber -and
@@ -227,6 +232,8 @@ Describe 'Set-DiskDriveLetter' {
     $global:FakeWrites = @()
     $global:FakeGetDiskCalls = 0
     $global:FakeGetPartitionCalls = 0
+    $global:FakeRemoveAttempts = 0
+    $global:FakeThrowRemoveCall = 0
     $global:FakeSetAttempts = 0
     $global:FakeThrowSetCall = 0
     $global:FakeSetIgnored = $False
@@ -245,6 +252,8 @@ Describe 'Set-DiskDriveLetter' {
       'FakeWrites'
       'FakeGetDiskCalls'
       'FakeGetPartitionCalls'
+      'FakeRemoveAttempts'
+      'FakeThrowRemoveCall'
       'FakeSetAttempts'
       'FakeThrowSetCall'
       'FakeSetIgnored'
@@ -265,11 +274,11 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Result.check_mode | Should -BeFalse
     $Context.Result.msg | Should -BeExactly 'every kept disk is on its declared letter'
     @($global:FakeWrites).Count | Should -Be 0
-    @($Context.Result.PSObject.Properties.Name) | Should -Be @(
+    @($Context.Result.PSObject.Properties.Name) | Should -BeExactly @(
       'changed', 'check_mode', 'disks', 'held_by', 'msg'
     )
     ForEach ($Disk In $Context.Result.disks) {
-      @($Disk.PSObject.Properties.Name) | Should -Be @(
+      @($Disk.PSObject.Properties.Name) | Should -BeExactly @(
         'unique_id', 'disk', 'partition', 'before', 'after', 'changed'
       )
     }
@@ -329,15 +338,15 @@ Describe 'Set-DiskDriveLetter' {
     $Context.Result.changed | Should -BeFalse
     $Context.Result.check_mode | Should -BeFalse
     $Context.Result.msg | Should -BeExactly $Expected
-    @($Context.Result.PSObject.Properties.Name) | Should -Be @(
+    @($Context.Result.PSObject.Properties.Name) | Should -BeExactly @(
       'changed', 'check_mode', 'disks', 'held_by', 'msg'
     )
-    @($Context.Result.held_by.PSObject.Properties.Name) | Should -Be @(
+    @($Context.Result.held_by.PSObject.Properties.Name) | Should -BeExactly @(
       'letter', 'kind', 'label'
     )
     $Context.Result.held_by.letter | Should -BeExactly 'E'
-    $Context.Result.held_by.kind | Should -Be 'local volume'
-    $Context.Result.held_by.label | Should -Be 'FOREIGN'
+    $Context.Result.held_by.kind | Should -BeExactly 'local volume'
+    $Context.Result.held_by.label | Should -BeExactly 'FOREIGN'
     @($Context.Result.disks.changed) | Should -Be @($True, $True, $True)
     @($global:FakeTransportEvents) | Should -Be @('Result', 'Failed')
     $Context.Failed | Should -BeTrue
@@ -355,7 +364,7 @@ Describe 'Set-DiskDriveLetter' {
     $Expected = "Declared letter E: is held by a CD/DVD drive labelled 'INSTALL', which this " +
       'role does not manage. No drive letter was changed. Move it off E: and run again.'
     $Context.Result.msg | Should -BeExactly $Expected
-    $Context.Result.held_by.kind | Should -Be 'CD/DVD drive'
+    $Context.Result.held_by.kind | Should -BeExactly 'CD/DVD drive'
     $Context.Changed | Should -BeFalse
     $Context.Result.changed | Should -BeFalse
     @($global:FakeWrites).Count | Should -Be 0
@@ -512,6 +521,27 @@ Describe 'Set-DiskDriveLetter' {
     @($Context.Result.disks.after) | Should -BeExactly @('E', 'F', 'G')
   }
 
+  It 'P12c second removal failure: publishes only the completed removal' {
+    Set-FakeThreeDiskState -Letters @('F', 'G', 'E')
+    $global:FakeThrowRemoveCall = 2
+    $Context = New-AnsibleContext
+
+    {
+      & $script:ScriptPath -UniqueId $script:Ids -DriveLetter $script:Targets
+    } | Should -Throw
+
+    @($global:FakeTransportEvents) | Should -Be @('Result', 'Failed')
+    $Context.Changed | Should -BeTrue
+    $Context.Result.changed | Should -BeTrue
+    @($global:FakeWrites).Count | Should -Be 1
+    @($global:FakeWrites.op) | Should -Be @('remove')
+    @($global:FakeWrites.letter) | Should -BeExactly @('F')
+    [System.Int32][System.Char]$global:FakePartitions[0].DriveLetter | Should -Be 0
+    [System.String]$global:FakePartitions[1].DriveLetter | Should -BeExactly 'G'
+    [System.String]$global:FakePartitions[2].DriveLetter | Should -BeExactly 'E'
+    @($Context.Result.disks.after) | Should -BeExactly @('', 'G', 'E')
+  }
+
   It 'P13 ignored assignment: fails read-back and names the disk' {
     Set-FakeThreeDiskState -Letters @('F', 'G', 'E')
     $global:FakeSetIgnored = $True
@@ -545,19 +575,38 @@ Describe 'Set-DiskDriveLetter' {
   }
 
   It 'P15 largest eligible partition: publishes and uses the larger partition' {
-    $global:FakePartitions += [PSCustomObject]@{
-      DiskNumber = 1
-      DriveLetter = 'H'
-      PartitionNumber = 99
-      Size = 2GB
-      Type = 'Basic'
-    }
+    $global:FakePartitions = @(
+      [PSCustomObject]@{
+        DiskNumber = 1
+        DriveLetter = 'H'
+        PartitionNumber = 2
+        Size = 2GB
+        Type = 'Basic'
+      }
+      [PSCustomObject]@{
+        DiskNumber = 1
+        DriveLetter = [System.Char]0
+        PartitionNumber = 10
+        Size = 10GB
+        Type = 'Basic'
+      }
+      [PSCustomObject]@{
+        DiskNumber = 1
+        DriveLetter = 'I'
+        PartitionNumber = 3
+        Size = 3GB
+        Type = 'Basic'
+      }
+    )
     $Context = New-AnsibleContext
 
     & $script:ScriptPath -UniqueId @('disk-a') -DriveLetter @('E') | Out-Null
 
-    $Context.Result.disks[0].partition | Should -Be 11
-    @($global:FakeWrites).Count | Should -Be 0
+    $Context.Result.disks[0].partition | Should -Be 10
+    @($global:FakeWrites).Count | Should -Be 1
+    @($global:FakeWrites.op) | Should -Be @('set')
+    @($global:FakeWrites.partition) | Should -Be @(10)
+    @($global:FakeWrites.letter) | Should -BeExactly @('E')
   }
 
   It 'P16 Reserved exclusion: publishes the converged Basic partition' {
