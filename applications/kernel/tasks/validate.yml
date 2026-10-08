@@ -1,0 +1,365 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The contract over the merged kernel_running, asserted in dependency order: each assert reads
+# only what the asserts above it proved, so a malformed value is refused with its remedy, never
+# an undefined-variable error. Every assert is gated on the present state: absent reads the
+# record and never the mapping (GUARD-01). The directory, name and kind constants are literal
+# here and in the state files on purpose: no variable layer can widen where the role writes as
+# root.
+#
+# ============================================================================================= #
+
+# check: self-gate
+- name: 'VALIDATE | Require The Merged Sections To Be Mappings'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __templates__: "{{ kernel_running.templates | default(none) }}"
+    __sysctl__: "{{ kernel_running.sysctl | default(none) }}"
+    __modules__: "{{ kernel_running.modules | default(none) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: kernel.templates, kernel.sysctl and kernel.modules must each be a
+      mapping; observed {{ __templates__ | type_debug }}, {{ __sysctl__ | type_debug }} and {{
+      __modules__ | type_debug }}. Declare each as a mapping (an empty templates mapping is
+      valid); false, null, a list or a scalar here is the signature of a clobbered override.
+    quiet: true
+    that:
+      - __templates__ is mapping
+      - __sysctl__ is mapping
+      - __modules__ is mapping
+
+# check: self-gate
+- name: 'VALIDATE | Require A Package Manager Entry Naming The Package'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __pm__: "{{ kernel_running.package_manager | default({}, true) }}"
+    __family__: "{{ ansible_facts.os_family | default('') | string }}"
+    __entry__: "{{ __pm__[__family__] | default({}, true) }}"
+    __names__: "{{ __entry__.name | default([], true) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: kernel.package_manager must be a mapping keyed by os_family whose '{{
+      __family__ }}' entry is a mapping naming at least one package in a list of non-empty
+      strings; observed families {{ __pm__ | list }} and name {{ __names__ }}. Restore the
+      defaults' RedHat entry or supply one for this family.
+    quiet: true
+    that:
+      - __pm__ is mapping
+      - __family__ in __pm__
+      - __entry__ is mapping
+      - __names__ is sequence
+      - __names__ is not string
+      - __names__ is not mapping
+      - (__names__ | length) > 0
+      - (__names__ | reject('string') | list | length) == 0
+      - (__names__ | select('string') | map('trim') | select('eq', '') | list | length) == 0
+
+# check: safety-critical
+- name: 'VALIDATE | Refuse A Package State And Require Typed Package Options'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __entry__: "{{ kernel_running.package_manager[ansible_facts.os_family] }}"
+    __bool_fields__:
+      - 'allow_downgrade'
+      - 'allowerasing'
+      - 'autoremove'
+      - 'bugfix'
+      - 'cacheonly'
+      - 'disable_gpg_check'
+      - 'download_only'
+      - 'install_weak_deps'
+      - 'security'
+      - 'skip_broken'
+      - 'sslverify'
+      - 'update_cache'
+      - 'update_only'
+      - 'validate_certs'
+    __list_fields__: ['disable_plugin', 'disablerepo', 'enable_plugin', 'enablerepo', 'exclude']
+    __bools__: "{{ __bool_fields__ | select('in', __entry__) | list }}"
+    __bad_bools__: >-
+      {{ __bools__ | zip(__bools__ | map('extract', __entry__)) | rejectattr('1', 'boolean') |
+      map(attribute='0') | list }}
+    __lists__: "{{ __list_fields__ | select('in', __entry__) | list }}"
+    __list_values__: "{{ __lists__ | map('extract', __entry__) | list }}"
+    __bad_lists__: >-
+      {{ (__lists__ | zip(__list_values__) | rejectattr('1', 'sequence') | map(attribute='0') |
+      list) + (__lists__ | zip(__list_values__) | selectattr('1', 'string') | map(attribute='0')
+      | list) + (__lists__ | zip(__list_values__) | selectattr('1', 'mapping') |
+      map(attribute='0') | list) }}
+    __bad_elements__: >-
+      {{ __list_values__ | reject('string') | reject('mapping') | list | flatten(levels=1) |
+      reject('string') | list }}
+    __lock__: "{{ __entry__.lock_timeout | default(30) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: the kernel package is only ever made present, so a state key is
+      refused ({{ 'present' if 'state' in __entry__ else 'absent' }}); the boolean dnf options
+      must be booleans (offending {{ __bad_bools__ }}), the list options lists of strings
+      (offending {{ __bad_lists__ }} and elements {{ __bad_elements__ }}), installroot a string
+      ({{ __entry__.installroot | default('/') | type_debug }}), lock_timeout a non-negative
+      integer ({{ __lock__ }}) and use_backend one of auto, dnf, dnf4, dnf5, yum, yum4 ({{
+      __entry__.use_backend | default('auto') }}). Drop the state key and fix the typed option.
+    quiet: true
+    that:
+      - "'state' not in __entry__"
+      - (__bad_bools__ | length) == 0
+      - (__bad_lists__ | length) == 0
+      - (__bad_elements__ | length) == 0
+      - __entry__.installroot | default('/') is string
+      - __lock__ is integer
+      - __lock__ is not boolean
+      - __lock__ >= 0
+      - __entry__.use_backend | default('auto') in ['auto', 'dnf', 'dnf4', 'dnf5', 'yum', 'yum4']
+
+# check: safety-critical
+- name: 'VALIDATE | Require A Known Conflict Policy And A Boolean Unload Flag'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __conflicts__: >-
+      {{ kernel_running.sysctl.conflicts | default('') | string | lower | trim }}
+    __unload__: "{{ kernel_running.modules.unload | default(true) }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: kernel.sysctl.conflicts must be none, etc or all and
+      kernel.modules.unload must be a boolean; observed conflicts '{{ __conflicts__ }}' and
+      unload {{ __unload__ | type_debug }}. The conflicts value selects which directories the
+      role edits as root, so an unknown value is refused rather than defaulted.
+    quiet: true
+    that:
+      - __conflicts__ in ['none', 'etc', 'all']
+      - __unload__ is boolean
+
+# check: self-gate
+- name: 'VALIDATE | Require Each Template Entry To Carry Its Three Members'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __entries__: "{{ kernel_running.templates | default({}, true) | dict2items }}"
+    __not_mappings__: >-
+      {{ __entries__ | rejectattr('value', 'mapping') | map(attribute='key') | list }}
+    __incomplete__: >-
+      {{ (__entries__ | selectattr('value', 'mapping') | rejectattr('value.template', 'defined')
+      | map(attribute='key') | list) + (__entries__ | selectattr('value', 'mapping') |
+      rejectattr('value.file', 'defined') | map(attribute='key') | list) + (__entries__ |
+      selectattr('value', 'mapping') | rejectattr('value.settings', 'defined') |
+      map(attribute='key') | list) }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: every kernel.templates entry must be a mapping with template, file
+      and settings; entries that are not mappings: {{ __not_mappings__ }}; entries missing a
+      member: {{ __incomplete__ | unique | list }}. Add the missing member or remove the entry.
+    quiet: true
+    that:
+      - (__not_mappings__ | length) == 0
+      - (__incomplete__ | length) == 0
+
+# check: safety-critical
+- name: 'VALIDATE | Require A Known Template Kind And A String Path'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __entries__: "{{ kernel_running.templates | default({}, true) | dict2items }}"
+    __bad_kinds__: >-
+      {{ __entries__ | rejectattr('value.template', 'in', ['sysctl.conf.j2', 'modprobe.conf.j2'])
+      | map(attribute='key') | list }}
+    __bad_files__: >-
+      {{ (__entries__ | rejectattr('value.file', 'mapping') | map(attribute='key') | list) +
+      (__entries__ | selectattr('value.file', 'mapping') | rejectattr('value.file.path',
+      'string') | map(attribute='key') | list) }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: template must be sysctl.conf.j2 or modprobe.conf.j2 and file must be
+      a mapping whose path is a string; entries with another kind: {{ __bad_kinds__ }}; entries
+      whose file or path has the wrong type: {{ __bad_files__ }}. Only these two kinds exist; a
+      kind the role does not ship cannot be rendered.
+    quiet: true
+    that:
+      - (__bad_kinds__ | length) == 0
+      - (__bad_files__ | length) == 0
+
+# check: cross-field
+- name: 'VALIDATE | Require Each Template Key To Equal Its File Path'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __entries__: "{{ kernel_running.templates | default({}, true) | dict2items }}"
+    __keys__: "{{ __entries__ | map(attribute='key') | list }}"
+    __paths__: "{{ __entries__ | map(attribute='value.file.path') | list }}"
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: each kernel.templates key must equal its entry's file.path; keys {{
+      __keys__ }} against paths {{ __paths__ }}. The key is the destination the role removes when
+      the entry disappears, so the two must not diverge.
+    quiet: true
+    that:
+      - __keys__ == __paths__
+
+# check: safety-critical
+- name: 'VALIDATE | Require Each Destination Under Its Kind Directory'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __entries__: "{{ kernel_running.templates | default({}, true) | dict2items }}"
+    __kind_dirs__:
+      'sysctl.conf.j2': '/etc/sysctl.d'
+      'modprobe.conf.j2': '/etc/modprobe.d'
+    __paths__: "{{ __entries__ | map(attribute='value.file.path') | list }}"
+    __dirs__: "{{ __paths__ | map('dirname') | list }}"
+    __expected_dirs__: >-
+      {{ __entries__ | map(attribute='value.template') | map('extract', __kind_dirs__) | list }}
+    __bad_names__: >-
+      {{ __paths__ | map('basename') | reject('match', '^[^/\x00-\x1f]+[.]conf$') | list }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to write outside the drop-in directories: a sysctl.conf.j2 file lives directly in
+      /etc/sysctl.d and a modprobe.conf.j2 file directly in /etc/modprobe.d, named <name>.conf
+      with no slash or control byte in the name; observed directories {{ __dirs__ }} against {{
+      __expected_dirs__ }} and refused names {{ __bad_names__ }}. Move the file or rename it; the
+      role edits nothing else as root.
+    quiet: true
+    that:
+      - __dirs__ == __expected_dirs__
+      - (__bad_names__ | length) == 0
+
+# check: self-gate
+- name: 'VALIDATE | Require String File Metadata And A Typed SELinux Block'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __files__: >-
+      {{ kernel_running.templates | default({}, true) | dict2items | map(attribute='value.file')
+      | list }}
+    __bad_meta__: >-
+      {{ (__files__ | selectattr('owner', 'defined') | rejectattr('owner', 'string') | list) +
+      (__files__ | selectattr('group', 'defined') | rejectattr('group', 'string') | list) +
+      (__files__ | selectattr('mode', 'defined') | rejectattr('mode', 'string') | list) +
+      (__files__ | selectattr('selinux', 'defined') | rejectattr('selinux', 'mapping') | list) }}
+    __selinux__: >-
+      {{ __files__ | selectattr('selinux', 'defined') | selectattr('selinux', 'mapping') |
+      map(attribute='selinux') | list }}
+    __bad_selinux_keys__: >-
+      {{ __selinux__ | map('list') | list | flatten | reject('in', ['level', 'role', 'type',
+      'user']) | list }}
+    __bad_selinux_values__: >-
+      {{ __selinux__ | map('dict2items') | list | flatten | map(attribute='value') |
+      reject('string') | list }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: file.owner, file.group and file.mode must be strings (mode quoted,
+      '0644') and file.selinux, when given, a mapping with only level, role, type and user, each
+      a string; offending file blocks: {{ __bad_meta__ }}, unknown selinux keys {{
+      __bad_selinux_keys__ }}, non-string selinux values {{ __bad_selinux_values__ }}. An
+      unquoted mode is parsed as a number and sets the wrong permission bits.
+    quiet: true
+    that:
+      - (__bad_meta__ | length) == 0
+      - (__bad_selinux_keys__ | length) == 0
+      - (__bad_selinux_values__ | length) == 0
+
+# check: self-gate
+- name: 'VALIDATE | Require Sysctl Settings To Be Mappings'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __sysctl_entries__: >-
+      {{ kernel_running.templates | default({}, true) | dict2items | selectattr('value.template',
+      'eq', 'sysctl.conf.j2') | list }}
+    __bad_settings__: >-
+      {{ __sysctl_entries__ | rejectattr('value.settings', 'mapping') | map(attribute='key') |
+      list }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: a sysctl.conf.j2 entry's settings must be a mapping of key to value;
+      entries with another shape: {{ __bad_settings__ }}. Write settings as 'net.example.beta:
+      0', one key per line.
+    quiet: true
+    that:
+      - (__bad_settings__ | length) == 0
+
+# check: cross-field
+- name: 'VALIDATE | Require Well-Formed Unique Sysctl Keys And Scalar Values'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __items__: >-
+      {{ kernel_running.templates | default({}, true) | dict2items | selectattr('value.template',
+      'eq', 'sysctl.conf.j2') | map(attribute='value.settings') | map('dict2items') | list |
+      flatten(levels=1) }}
+    __keys__: "{{ __items__ | map(attribute='key') | list }}"
+    __bad_keys__: >-
+      {{ __keys__ | reject('match', '^[a-z0-9_]+([.][a-z0-9_-]+)+$') | list }}
+    __bad_values__: >-
+      {{ (__items__ | selectattr('value', 'boolean') | map(attribute='key') | list) + (__items__
+      | rejectattr('value', 'boolean') | rejectattr('value', 'string') | rejectattr('value',
+      'number') | map(attribute='key') | list) + (__items__ | selectattr('value', 'string') |
+      selectattr('value', 'search', '[\r\n\x00]') | map(attribute='key') | list) }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: a sysctl key is dotted lower-case words such as net.example.beta (no
+      upper case, no wildcard) and its value a string or a number, never a boolean, null, list or
+      mapping, and never a string holding a newline, carriage return or NUL; refused keys {{
+      __bad_keys__ }}, refused values for {{ __bad_values__ }}; keys declared in more than one
+      template are the repeats in {{ __keys__ | sort }}. Write booleans as 1 and 0: YAML true
+      renders as True, which sysctl rejects.
+    quiet: true
+    that:
+      - (__bad_keys__ | length) == 0
+      - (__bad_values__ | length) == 0
+      - (__keys__ | length) == (__keys__ | unique | length)
+
+# check: self-gate
+- name: 'VALIDATE | Require Modprobe Settings To Carry A Disabled List'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __modprobe_entries__: >-
+      {{ kernel_running.templates | default({}, true) | dict2items | selectattr('value.template',
+      'eq', 'modprobe.conf.j2') | list }}
+    __bad_settings__: >-
+      {{ (__modprobe_entries__ | rejectattr('value.settings', 'mapping') | map(attribute='key') |
+      list) + (__modprobe_entries__ | selectattr('value.settings', 'mapping') |
+      rejectattr('value.settings.disabled', 'defined') | map(attribute='key') | list) }}
+    __bad_lists__: >-
+      {{ (__modprobe_entries__ | selectattr('value.settings.disabled', 'defined') |
+      rejectattr('value.settings.disabled', 'sequence') | map(attribute='key') | list) +
+      (__modprobe_entries__ | selectattr('value.settings.disabled', 'defined') |
+      selectattr('value.settings.disabled', 'string') | map(attribute='key') | list) +
+      (__modprobe_entries__ | selectattr('value.settings.disabled', 'defined') |
+      selectattr('value.settings.disabled', 'mapping') | map(attribute='key') | list) }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: a modprobe.conf.j2 entry's settings must be a mapping with a disabled
+      list of module names; entries without one: {{ __bad_settings__ }}; entries whose disabled
+      is not a list: {{ __bad_lists__ }}. Write 'disabled: [example-one, example_two]'.
+    quiet: true
+    that:
+      - (__bad_settings__ | length) == 0
+      - (__bad_lists__ | length) == 0
+
+# check: cross-field
+- name: 'VALIDATE | Require Well-Formed Unique Module Names'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __modules__: >-
+      {{ kernel_running.templates | default({}, true) | dict2items | selectattr('value.template',
+      'eq', 'modprobe.conf.j2') | map(attribute='value.settings.disabled') | list |
+      flatten(levels=1) }}
+    __bad_names__: >-
+      {{ (__modules__ | reject('string') | list) + (__modules__ | select('string') |
+      reject('match', '^[A-Za-z0-9_-]+$') | list) }}
+
+  ansible.builtin.assert:
+    fail_msg: >-
+      Refusing to continue: a module name is letters, digits, underscore or hyphen, such as
+      example-one; refused names {{ __bad_names__ }}; names in more than one template are the
+      repeats in {{ __modules__ | select('string') | sort }}. Fix the name or declare it once.
+    quiet: true
+    that:
+      - (__bad_names__ | length) == 0
+      - (__modules__ | length) == (__modules__ | unique | length)

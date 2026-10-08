@@ -131,6 +131,19 @@
 !/applications/wazuh_agent/tasks/
 !/applications/wazuh_agent/templates/
 !/applications/wazuh_agent/vars/
+!/applications/kernel/
+!/applications/kernel/defaults/
+!/applications/kernel/files/
+!/applications/kernel/handlers/
+!/applications/kernel/library/
+!/applications/kernel/lookup_plugins/
+!/applications/kernel/meta/
+!/applications/kernel/module_utils/
+!/applications/kernel/molecule/
+!/applications/kernel/tasks/
+!/applications/kernel/templates/
+!/applications/kernel/tests/
+!/applications/kernel/vars/
 
 # A helper the PLAY uses, owning no host state of its own.
 !/utilities/

@@ -1,0 +1,111 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/argument_specs.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Entry-time input specification for kernel, validated by ansible-core before the first task. It
+# declares what ansible-core can check at entry: ENV, state and the kernel override mapping.
+# tasks/validate.yml validates the merged kernel_running and is the authority over every value
+# the role consumes.
+#
+# ============================================================================================= #
+
+argument_specs:
+
+  main:
+    short_description: 'Configures the kernel from caller-supplied sysctl and modprobe values'
+    description:
+      - 'Makes the kernel package present, renders sysctl and modprobe drop-in files,'
+      - 'comments out other definitions of the managed sysctl keys and records them, reloads'
+      - 'sysctl, unloads disabled modules and reads every value back. The role carries no'
+      - 'value of its own. Execution path is determined by the state variable.'
+    options:
+
+      ENV:
+        type: 'str'
+        required: true
+        description:
+          - 'Selects environment-specific overlay variable files.'
+          - 'Must match ^[a-zA-Z0-9_-]+$. Path-traversal sequences are rejected.'
+
+      state:
+        type: 'str'
+        required: false
+        default: 'present'
+        choices:
+          - 'present'
+          - 'absent'
+        description:
+          - >-
+            present makes the package present, renders every declared drop-in file, removes the
+            role's files that are no longer declared, comments out other definitions of the
+            managed keys and verifies the kernel reports the declared values. absent removes
+            every file the role wrote and restores every line it commented out, from the record
+            it keeps; the package is never removed, because the running kernel cannot be.
+
+      kernel:
+        type: 'dict'
+        required: false
+        description:
+          - >-
+            Overrides merged on top of kernel_defaults and the family overlay with
+            combine(recursive=True); only the keys given change. tasks/validate.yml validates the
+            merged result (kernel_running) and is the authority over its contract.
+        options:
+
+          package_manager:
+            type: 'dict'
+            required: false
+            description: >-
+              Per-family dnf options for the kernel package, keyed by os_family. A state key is
+              refused: the role only makes the package present.
+
+          sysctl:
+            type: 'dict'
+            required: false
+            description: 'Sysctl behaviour.'
+            options:
+              conflicts:
+                type: 'str'
+                required: false
+                default: 'etc'
+                choices:
+                  - 'none'
+                  - 'etc'
+                  - 'all'
+                description: >-
+                  Where other definitions of the managed sysctl keys are commented out. none:
+                  nowhere. etc: /etc/sysctl.conf and /etc/sysctl.d. all: etc plus /run/sysctl.d,
+                  /usr/local/lib/sysctl.d, /usr/lib/sysctl.d and /lib/sysctl.d.
+
+          modules:
+            type: 'dict'
+            required: false
+            description: 'Module behaviour.'
+            options:
+              unload:
+                type: 'bool'
+                required: false
+                default: true
+                description: 'Unload a disabled module that is loaded.'
+
+          templates:
+            type: 'dict'
+            required: false
+            description: >-
+              Drop-in files keyed by destination path. Each value: template (sysctl.conf.j2 or
+              modprobe.conf.j2), file (path, owner, group, mode, optional selinux mapping of
+              level, role, type and user) and settings (a sysctl key-to-value mapping, or a
+              disabled list of module names).
+
+          temp_dir:
+            type: 'bool'
+            required: false
+            default: true
+            description: 'Set to false to skip the loader temp directory creation and cleanup.'
+
+          temp_dir_path:
+            type: 'str'
+            required: false
+            description: >-
+              Parent directory the loader temp directory is created under. Unset or null, the
+              system default temp location is used.

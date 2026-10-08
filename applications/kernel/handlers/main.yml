@@ -1,0 +1,13 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/handlers/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# No handler. The sysctl reload is a task in each state, gated on what is owed and decided before
+# anything changes: a recorded sysctl file no longer declared, a recorded line no longer wanted,
+# a value the kernel reports differently, a definition to comment out, or a declared sysctl file
+# missing or different from its rendering; modprobe work never reloads. The record is trimmed to
+# the declared set only after a successful reload, and HAND-01 places a flush last in its stage,
+# so a notified reload could not precede that write [INV-09]. The file exists so handlers_from:
+# 'main' resolves.
+#
+# ============================================================================================= #

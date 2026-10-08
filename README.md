@@ -76,6 +76,7 @@ modified.
 
 | Role                   | Description                                                                                                                              |
 |------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `kernel`               | Generic kernel configuration: sysctl and modprobe drop-ins rendered from caller-supplied values, other definitions commented out and recorded, values read back    |
 | `linux_disk_manager`   | Step-0 storage initializer: selects disks by stable by-id identity, then partitions, formats, and mounts by UUID (VMware, Proxmox, AWS)   |
 | `openvpn_client`       | OpenVPN community client for Windows, installed at a pinned version from S3 through the controller and verified against a pinned digest  |
 | `python3_pip`          | Installs, upgrades, and configures Python3 pip with a security-hardened `pip.conf`                                                       |

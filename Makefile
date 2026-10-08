@@ -33,6 +33,7 @@
 GUARD_EXCLUDE := ^(\.ansible/|\.cache/|\.env$$|([^/]+/)*(__pycache__|\.cache)/|([^/]+/)*[^/]+\.(py[co]|retry)$$|applications/(openvpn_client|windows_disk_manager)/files/[^/]+\.ps1$$)
 
 LOADER_PATHS := \
+	applications/kernel/tasks/main.yml \
 	applications/linux_disk_manager/tasks/main.yml \
 	applications/openvpn_client/tasks/main.yml \
 	applications/python3_pip/tasks/main.yml \

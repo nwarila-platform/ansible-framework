@@ -1,0 +1,4 @@
+# ansible-framework kernel role: managed file; manual edits are overwritten on the next run
+{% for __key__, __value__ in __template__.settings | dictsort %}
+{{ __key__ }} = {{ __value__ }}
+{% endfor %}

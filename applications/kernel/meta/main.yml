@@ -1,0 +1,33 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Role metadata for kernel: Galaxy info, supported platforms and dependencies. Inputs are
+# declared in meta/argument_specs.yml and validated by tasks/validate.yml.
+#
+# ============================================================================================= #
+
+galaxy_info:
+  role_name: 'kernel'
+  namespace: 'ansible_framework'
+  author: 'HellBomb'
+  description: >-
+    Generic kernel configuration: sysctl and modprobe drop-ins rendered from caller-supplied
+    values, other definitions commented out and recorded, values read back from the kernel.
+  license: 'MIT'
+  min_ansible_version: '2.21'
+  platforms:
+    - name: 'EL'
+      versions:
+        - '8'
+        - '9'
+  galaxy_tags:
+    - 'kernel'
+    - 'sysctl'
+    - 'modprobe'
+    - 'redhat'
+    - 'rocky'
+
+allow_duplicates: false
+
+dependencies: []

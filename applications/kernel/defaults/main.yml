@@ -1,0 +1,73 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The namespaced defaults the loader merges. The role carries no policy value: templates is
+# empty, so a caller supplies every sysctl key and every disabled module through the kernel
+# mapping.
+#
+# ============================================================================================= #
+
+kernel_defaults:
+
+#region ------ [ Package Manager ] ------------------------------------------------------------ #
+
+  # The dnf options the present state passes for the kernel package, keyed by os_family. Every
+  # option with a documented non-null default is stated so a collection bump cannot move it. The
+  # package state is not an input: the role only ever makes the package present.
+  package_manager:
+
+    'RedHat':
+      allow_downgrade: false
+      allowerasing: false
+      autoremove: false
+      bugfix: false
+      cacheonly: false
+      disable_gpg_check: false
+      disable_plugin: []
+      disablerepo: []
+      download_only: false
+      enable_plugin: []
+      enablerepo: []
+      exclude: []
+      install_weak_deps: true
+      installroot: '/'
+      lock_timeout: 30
+      name: ['kernel']
+      security: false
+      skip_broken: false
+      sslverify: true
+      update_cache: false
+      update_only: false
+      use_backend: 'auto'
+      validate_certs: true
+
+#endregion --- [ Package Manager ] ------------------------------------------------------------ #
+
+#region ------ [ Sysctl ] --------------------------------------------------------------------- #
+
+  # Where other definitions of the managed sysctl keys are commented out: 'none' leaves every
+  # other file alone, 'etc' covers /etc/sysctl.conf and /etc/sysctl.d, 'all' adds /run/sysctl.d,
+  # /usr/local/lib/sysctl.d, /usr/lib/sysctl.d and /lib/sysctl.d. README.md, Configuration.
+  sysctl:
+    conflicts: 'etc'
+
+#endregion --- [ Sysctl ] --------------------------------------------------------------------- #
+
+#region ------ [ Modules ] -------------------------------------------------------------------- #
+
+  # A module a modprobe template disables is also unloaded when it is loaded. Unloading fails
+  # while the module is in use, which the run reports rather than hides.
+  modules:
+    unload: true
+
+#endregion --- [ Modules ] -------------------------------------------------------------------- #
+
+#region ------ [ Templates ] ------------------------------------------------------------------ #
+
+  # Drop-in files keyed by destination path, empty by default. Each entry carries template
+  # (sysctl.conf.j2 or modprobe.conf.j2), file (path, owner, group, mode, optional selinux) and
+  # settings: a key-to-value mapping, or a disabled list of modules. README.md, Configuration.
+  templates: {}
+
+#endregion --- [ Templates ] ------------------------------------------------------------------ #

@@ -1,0 +1,3211 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tests/test.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# Localhost tests of the contract, the templates, the guard expressions and the END comparison,
+# without root: one conforming configuration is accepted, four absent-state configurations whose
+# unread sections are malformed are accepted, twenty-six malformed present-state ones are refused
+# with their cause, both templates render to the expected bytes and the reload gate's rendering
+# expression matches them, find lists a symlink only under the link type, hidden files included,
+# the hit pairs are built from per-file grep results over a space-named, a colon-named and a
+# hidden file, the legacy sysctl directory is listed only as a distinct real directory, the guard
+# expressions name exactly a symlinked parent, both record phases render identical bytes, the
+# duplicate and marked-line refusals are exact for names and values holding any byte the contract
+# admits, commenting and restoration preserve backslash sequences, the legacy file is a read-only
+# candidate only as a live symlink, and the mismatch expression names exactly the keys that
+# differ. Run from the repository root: ansible-playbook -i applications/kernel/tests/inventory
+# applications/kernel/tests/test.yml.
+#
+# ============================================================================================= #
+
+- name: 'PLAY | Accept A Conforming Configuration'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Validate The Conforming Configuration'
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: 'kernel'
+        public: false
+        rescuable: true
+        rolespec_validate: false
+        tasks_from: 'validate.yml'
+
+- name: 'PLAY | Accept False Sections In The Absent State'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'absent'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: false
+      modules: false
+      templates: false
+  tasks:
+
+    - name: 'PROCESS | Validate An Absent Configuration Whose Sections The State Will Not Read'
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: 'kernel'
+        public: false
+        rescuable: true
+        rolespec_validate: false
+        tasks_from: 'validate.yml'
+
+- name: 'PLAY | Accept Null Sections In The Absent State'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'absent'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: null
+      modules: null
+      templates: null
+  tasks:
+
+    - name: 'PROCESS | Validate An Absent Configuration Whose Sections The State Will Not Read'
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: 'kernel'
+        public: false
+        rescuable: true
+        rolespec_validate: false
+        tasks_from: 'validate.yml'
+
+- name: 'PLAY | Accept Empty-List Sections In The Absent State'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'absent'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: []
+      modules: []
+      templates: []
+  tasks:
+
+    - name: 'PROCESS | Validate An Absent Configuration Whose Sections The State Will Not Read'
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: 'kernel'
+        public: false
+        rescuable: true
+        rolespec_validate: false
+        tasks_from: 'validate.yml'
+
+- name: 'PLAY | Accept Malformed-Mapping Sections In The Absent State'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'absent'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: {'not-a-destination': false}
+      modules: {'not-a-destination': false}
+      templates: {'not-a-destination': false}
+  tasks:
+
+    - name: 'PROCESS | Validate An Absent Configuration Whose Sections The State Will Not Read'
+
+      ansible.builtin.include_role:
+        allow_duplicates: true
+        defaults_from: 'main'
+        handlers_from: 'main'
+        name: 'kernel'
+        public: false
+        rescuable: true
+        rolespec_validate: false
+        tasks_from: 'validate.yml'
+
+- name: 'PLAY | Refuse A Template Key That Differs From Its Path'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/91-other.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Template Key That Differs
+              From Its Path.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must equal its entry' in (ansible_failed_result.msg | default('kernel operation
+                failed', true))
+
+- name: 'PLAY | Refuse A Destination Outside The Drop-In Directories'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/profile.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/profile.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Destination Outside The
+              Drop-In Directories.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'Refusing to write outside' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Sysctl Key Declared Twice'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+        '/etc/sysctl.d/95-twice.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/95-twice.conf'
+          settings:
+            kernel.example_alpha: 8
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Sysctl Key Declared Twice.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'more than one template' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Boolean Sysctl Value'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: true
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Boolean Sysctl Value.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'Write booleans as 1 and 0' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Null Sysctl Value'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: null
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Null Sysctl Value.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'never a boolean, null, list or mapping' in (ansible_failed_result.msg |
+                default('kernel operation failed', true))
+
+- name: 'PLAY | Refuse A Module Name With A Space'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Module Name With A Space.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'a module name is letters' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse An Unknown Conflict Policy'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'everywhere'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Unknown Conflict Policy.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must be none, etc or all' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Package State'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+          state: 'absent'
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Package State.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'a state key is refused' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse False As The Sysctl Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: false
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: False As The Sysctl Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse Null As The Sysctl Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: null
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: Null As The Sysctl Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse An Empty List As The Sysctl Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl: []
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Empty List As The Sysctl
+              Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse False As The Modules Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules: false
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: False As The Modules Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse Null As The Modules Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules: null
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: Null As The Modules Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse An Empty List As The Modules Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules: []
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Empty List As The Modules
+              Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse False As The Templates Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates: false
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: False As The Templates
+              Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse Null As The Templates Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates: null
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: Null As The Templates
+              Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse An Empty List As The Templates Section'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates: []
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Empty List As The
+              Templates Section.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'must each be a mapping' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Value Holding A Newline'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: "sam\nple"
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Value Holding A Newline.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'never a string holding a newline' in (ansible_failed_result.msg |
+                default('kernel operation failed', true))
+
+- name: 'PLAY | Refuse A Value Holding A Carriage Return'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: "sam\rple"
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Value Holding A Carriage
+              Return.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'never a string holding a newline' in (ansible_failed_result.msg |
+                default('kernel operation failed', true))
+
+- name: 'PLAY | Refuse A Value Holding A NUL'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: "sam\0ple"
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Value Holding A NUL.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'never a string holding a newline' in (ansible_failed_result.msg |
+                default('kernel operation failed', true))
+
+- name: 'PLAY | Refuse A Boolean Beside A Numeric One'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 1
+            kernel.example_alpha: true
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Boolean Beside A Numeric
+              One.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'Write booleans as 1 and 0' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse An Upper-Case Sysctl Key'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.Example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Upper-Case Sysctl Key.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'no upper case, no wildcard' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Wildcard Sysctl Key'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example.*.alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Wildcard Sysctl Key.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'no upper case, no wildcard' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Nested Module List'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', ['example-one']]
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Nested Module List.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'a module name is letters' in (ansible_failed_result.msg | default('kernel
+                operation failed', true))
+
+- name: 'PLAY | Refuse A Nested Package Option List'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+          exclude: [['kernel-debug']]
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: A Nested Package Option List.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'the list options lists of strings' in (ansible_failed_result.msg |
+                default('kernel operation failed', true))
+
+- name: 'PLAY | Refuse An Unknown SELinux Key'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    state: 'present'
+    ansible_become: false
+    ansible_facts:
+      os_family: 'RedHat'
+    kernel_running:
+      package_manager:
+        'RedHat':
+          name: ['kernel']
+      sysctl:
+        conflicts: 'etc'
+      modules:
+        unload: true
+      templates:
+        '/etc/sysctl.d/90-example.conf':
+          template: 'sysctl.conf.j2'
+          file:
+            path: '/etc/sysctl.d/90-example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+            selinux:
+              type: 'etc_t'
+              colour: 'blue'
+          settings:
+            net.example.beta: 'sample'
+            kernel.example_alpha: 7
+        '/etc/modprobe.d/example.conf':
+          template: 'modprobe.conf.j2'
+          file:
+            path: '/etc/modprobe.d/example.conf'
+            owner: 'root'
+            group: 'root'
+            mode: '0644'
+          settings:
+            disabled: ['example_two', 'example-one']
+  tasks:
+
+    - name: 'PROCESS | Run The Contract Against A Configuration That Must Be Refused'
+      block:
+
+        - name: 'PROCESS | Validate The Configuration'
+
+          ansible.builtin.include_role:
+            allow_duplicates: true
+            defaults_from: 'main'
+            handlers_from: 'main'
+            name: 'kernel'
+            public: false
+            rescuable: true
+            rolespec_validate: false
+            tasks_from: 'validate.yml'
+
+        - name: 'END | Fail Because The Contract Accepted The Configuration'
+
+          ansible.builtin.fail:
+            msg: >-
+              The contract accepted a configuration it must refuse: An Unknown SELinux Key.
+
+      rescue:
+
+        - name: 'END | Assert The Refusal Names Its Cause'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The refusal did not name its cause; observed {{ ansible_failed_result.msg |
+              default('kernel operation failed', true) }}.
+            quiet: true
+            that:
+              - >-
+                'unknown selinux keys' in (ansible_failed_result.msg | default('kernel operation
+                failed', true))
+
+- name: 'PLAY | Render Both Templates To The Expected Bytes'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    __sysctl_expected__: |
+      # ansible-framework kernel role: managed file; manual edits are overwritten on the next run
+      kernel.example_alpha = 7
+      net.example.beta = sample
+    __modprobe_expected__: |
+      # ansible-framework kernel role: managed file; manual edits are overwritten on the next run
+      install example-one /bin/false
+      blacklist example-one
+      install example_two /bin/false
+      blacklist example_two
+  tasks:
+
+    - name: 'PROCESS | Render And Compare The Templates'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_test_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_test_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Render The Sysctl Template'
+          changed_when: false
+          vars:
+            __template__:
+              settings:
+                net.example.beta: 'sample'
+                kernel.example_alpha: 7
+
+          ansible.builtin.template:
+            backup: false
+            dest: "{{ __kernel_test_dir__.path }}/sysctl.conf"
+            follow: false
+            force: true
+            lstrip_blocks: false
+            mode: '0600'
+            newline_sequence: '\n'
+            output_encoding: 'utf-8'
+            src: "{{ playbook_dir | dirname }}/templates/sysctl.conf.j2"
+            trim_blocks: true
+            unsafe_writes: false
+
+        - name: 'PROCESS | Render The Modprobe Template'
+          changed_when: false
+          vars:
+            __template__:
+              settings:
+                disabled: ['example_two', 'example-one']
+
+          ansible.builtin.template:
+            backup: false
+            dest: "{{ __kernel_test_dir__.path }}/modprobe.conf"
+            follow: false
+            force: true
+            lstrip_blocks: false
+            mode: '0600'
+            newline_sequence: '\n'
+            output_encoding: 'utf-8'
+            src: "{{ playbook_dir | dirname }}/templates/modprobe.conf.j2"
+            trim_blocks: true
+            unsafe_writes: false
+
+        - name: 'END | Read The Rendered Files'
+          check_mode: false
+          loop: ['sysctl.conf', 'modprobe.conf']
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_rendered__'
+
+          ansible.builtin.slurp:
+            armor: true
+            src: "{{ __kernel_test_dir__.path }}/{{ item }}"
+
+        # The expressions are the reload gate's, byte for byte: what they render for a settings
+        # mapping must be what the template writes for it, or the gate would reload every run.
+        - name: 'END | Assert The Rendered Bytes And The Gate Rendering Equal The Expected Bytes'
+          vars:
+            __settings__:
+              - net.example.beta: 'sample'
+                kernel.example_alpha: 7
+              - {}
+            __nl__: "\n"
+            __header__: >-
+              # ansible-framework kernel role: managed file; manual edits are overwritten on the
+              next run
+            __pairs__: >-
+              {{ __settings__ | map('dictsort') | map('map', 'join', ' = ') | map('list') | list
+              }}
+            __rendered__: >-
+              {{ ([__header__] * (__settings__ | length)) | zip(__pairs__) | map('flatten') |
+              map('join', __nl__) | map('regex_replace', '$', __nl__) | list }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              A template rendered unexpected bytes; sysctl.conf {{
+              __kernel_rendered__.results[0].content | b64decode }} and modprobe.conf {{
+              __kernel_rendered__.results[1].content | b64decode }}; the gate expression rendered
+              {{ __rendered__ }}.
+            quiet: true
+            that:
+              - >-
+                (__kernel_rendered__.results[0].content | b64decode) == __sysctl_expected__
+              - >-
+                (__kernel_rendered__.results[1].content | b64decode) == __modprobe_expected__
+              - __rendered__[0] == __sysctl_expected__
+              - __rendered__[1] == __header__ ~ __nl__
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Directory'
+          changed_when: false
+          when: (__kernel_test_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_test_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | List Symlinks Only Under The Link File Type'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+
+    - name: 'PROCESS | Create A Scratch Tree With A File And A Symlink'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_find_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_find_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Write A Regular File And A Hidden One'
+          changed_when: false
+          loop: ['real.conf', '.hidden.conf']
+          loop_control: { label: "{{ item }}" }
+
+          ansible.builtin.copy:
+            backup: false
+            content: "net.example.beta = 1\n"
+            decrypt: true
+            dest: "{{ __kernel_find_dir__.path }}/{{ item }}"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        - name: 'PROCESS | Link To The Regular File, Once Hidden'
+          changed_when: false
+          loop: ['link.conf', '.hidden-link.conf']
+          loop_control: { label: "{{ item }}" }
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            dest: "{{ __kernel_find_dir__.path }}/{{ item }}"
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            recurse: false
+            src: 'real.conf'
+            state: 'link'
+            unsafe_writes: false
+
+        - name: 'BEGIN | Find Files And Then Links'
+          check_mode: false
+          loop: ['file', 'link']
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_found__'
+
+          ansible.builtin.find:
+            age_stamp: 'mtime'
+            checksum_algorithm: 'sha1'
+            exact_mode: true
+            file_type: "{{ item }}"
+            follow: true
+            get_checksum: false
+            hidden: true
+            paths: ["{{ __kernel_find_dir__.path }}"]
+            patterns: ['*.conf']
+            read_whole_file: false
+            recurse: false
+            use_regex: false
+
+        - name: 'END | Assert The Links, Hidden Or Not, Appear Only Under The Link File Type'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              find listed {{ __kernel_found__.results | map(attribute='files') | map('map',
+              attribute='path') | map('map', 'basename') | list }} for file and link; the role
+              relies on the link type to see symlinks.
+            quiet: true
+            that:
+              - >-
+                __kernel_found__.results[0].files | map(attribute='path') | map('basename') |
+                sort == ['.hidden.conf', 'real.conf']
+              - >-
+                __kernel_found__.results[1].files | map(attribute='path') | map('basename') |
+                sort == ['.hidden-link.conf', 'link.conf']
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Tree'
+          changed_when: false
+          when: (__kernel_find_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_find_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | Build The Hit Pairs From Per-File Grep Results'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+
+    - name: 'PROCESS | Grep Two Scratch Files With The Role Flags'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_grep_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_grep_'
+            state: 'directory'
+            suffix: ''
+
+        # A space, a colon and a leading dot in the names: a multi-file grep prefix could not be
+        # parsed back into these paths, the per-file loop needs none, and hidden files count.
+        - name: 'PROCESS | Write One Definition Into Each File'
+          changed_when: false
+          loop: >-
+            {{ [__kernel_grep_dir__.path ~ '/zz policy.conf', __kernel_grep_dir__.path ~
+            '/zz:policy.conf', __kernel_grep_dir__.path ~ '/.hidden.conf'] }}
+          loop_control: { label: "{{ item | basename }}" }
+
+          ansible.builtin.copy:
+            backup: false
+            content: "net.example.beta = 1\n"
+            decrypt: true
+            dest: "{{ item }}"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        # The loop, the register and the two expressions below are the role's, byte for byte.
+        - name: 'BEGIN | Read The Other Definitions Of The Managed Keys'
+          changed_when: false
+          check_mode: false
+          failed_when: __kernel_conflicting__.rc not in [0, 1]
+          loop: >-
+            {{ [__kernel_grep_dir__.path ~ '/zz policy.conf', __kernel_grep_dir__.path ~
+            '/zz:policy.conf', __kernel_grep_dir__.path ~ '/.hidden.conf'] }}
+          loop_control: { label: "{{ item | basename }}" }
+          register: '__kernel_conflicting__'
+
+          ansible.builtin.command:
+            argv: >-
+              {{ ['grep', '-nE', '^[[:space:]]*(' ~ 'net[.]example[.]beta' ~ ')[[:space:]]*='] +
+              [item] }}
+            expand_argument_vars: true
+            stdin_add_newline: true
+            strip_empty_ends: true
+
+        - name: 'END | Assert Each Pair Carries The Loop Path And The Bare Line'
+          vars:
+            __pairs__: >-
+              {{ query('ansible.builtin.subelements', __kernel_conflicting__.results |
+              default([], true), 'stdout_lines', skip_missing=true) }}
+            __hits__: >-
+              {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+              map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The hit pairs read {{ __hits__ }}; the role records [path, original line] for each
+              definition it comments out.
+            quiet: true
+            that:
+              - >-
+                (__hits__ | sort) == ([[__kernel_grep_dir__.path ~ '/zz policy.conf',
+                'net.example.beta = 1'], [__kernel_grep_dir__.path ~ '/zz:policy.conf',
+                'net.example.beta = 1'], [__kernel_grep_dir__.path ~ '/.hidden.conf',
+                'net.example.beta = 1']] | sort)
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Tree'
+          changed_when: false
+          when: (__kernel_grep_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_grep_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | List The Legacy Sysctl Directory Only As A Distinct Real Directory'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+
+    - name: 'PROCESS | Run The Alias Predicate Against Three Scratch Trees'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_alias_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_alias_'
+            state: 'directory'
+            suffix: ''
+
+        # merged: lib is a symlink to usr/lib, the EL 8 and 9 layout; split: lib/sysctl.d is
+        # its own directory; linked: lib is real but lib/sysctl.d links to the vendor directory.
+        - name: 'PROCESS | Create The Directories Of The Three Trees'
+          changed_when: false
+          loop: >-
+            {{ ['merged/usr/lib/sysctl.d', 'split/usr/lib/sysctl.d', 'split/lib/sysctl.d',
+            'linked/usr/lib/sysctl.d', 'linked/lib'] | map('regex_replace', '^',
+            __kernel_alias_dir__.path ~ '/') | list }}
+          loop_control: { label: "{{ item }}" }
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            mode: '0700'
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ item }}"
+            recurse: false
+            state: 'directory'
+            unsafe_writes: false
+
+        - name: 'PROCESS | Write A Vendor File Into Each Tree'
+          changed_when: false
+          loop: >-
+            {{ ['merged', 'split', 'linked'] | map('regex_replace', '^',
+            __kernel_alias_dir__.path ~ '/') | map('regex_replace', '$',
+            '/usr/lib/sysctl.d/50-vendor.conf') | list }}
+          loop_control: { label: "{{ item }}" }
+
+          ansible.builtin.copy:
+            backup: false
+            content: "net.example.beta = 1\n"
+            decrypt: true
+            dest: "{{ item }}"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        - name: 'PROCESS | Link The Merged Tree At lib And The Linked Tree At lib/sysctl.d'
+          changed_when: false
+          loop:
+            - ["{{ __kernel_alias_dir__.path }}/merged/lib", 'usr/lib']
+            - ["{{ __kernel_alias_dir__.path }}/linked/lib/sysctl.d", '../usr/lib/sysctl.d']
+          loop_control: { label: "{{ item.0 }}" }
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            dest: "{{ item.0 }}"
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            recurse: false
+            src: "{{ item.1 }}"
+            state: 'link'
+            unsafe_writes: false
+
+        - name: 'BEGIN | Stat lib, lib/sysctl.d And usr/lib/sysctl.d In Each Tree'
+          check_mode: false
+          loop: >-
+            {{ ['merged', 'split', 'linked'] | product(['lib', 'lib/sysctl.d',
+            'usr/lib/sysctl.d']) | map('join', '/') | map('regex_replace', '^',
+            __kernel_alias_dir__.path ~ '/') | list }}
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_lib_stats__'
+
+          ansible.builtin.stat:
+            checksum_algorithm: 'sha1'
+            follow: false
+            get_attributes: false
+            get_checksum: false
+            get_mime: false
+            get_selinux_context: false
+            path: "{{ item }}"
+
+        # The three registers and the expression are the role's, byte for byte, fed by each tree.
+        - name: 'END | Assert The Alias Is Listed Only For The Split Tree'
+          loop: [['merged', false], ['split', true], ['linked', false]]
+          loop_control: { label: "{{ item.0 }}" }
+          vars:
+            __tree__: "{{ __kernel_alias_dir__.path ~ '/' ~ item.0 }}"
+            __kernel_lib__: >-
+              {{ __kernel_lib_stats__.results | selectattr('item', 'eq', __tree__ ~ '/lib') |
+              first }}
+            __kernel_lib_dir__: >-
+              {{ __kernel_lib_stats__.results | selectattr('item', 'eq', __tree__ ~
+              '/lib/sysctl.d') | first }}
+            __kernel_usr_lib_dir__: >-
+              {{ __kernel_lib_stats__.results | selectattr('item', 'eq', __tree__ ~
+              '/usr/lib/sysctl.d') | first }}
+            __all_dirs__: >-
+              {{ ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d',
+              '/usr/lib/sysctl.d'] + (['/lib/sysctl.d'] if (__kernel_lib__.stat.exists and
+              __kernel_lib__.stat.isdir and not __kernel_lib__.stat.islnk and
+              __kernel_lib_dir__.stat.exists and __kernel_lib_dir__.stat.isdir and not
+              __kernel_lib_dir__.stat.islnk and [__kernel_lib_dir__.stat.dev,
+              __kernel_lib_dir__.stat.inode] != [__kernel_usr_lib_dir__.stat.dev | default(none),
+              __kernel_usr_lib_dir__.stat.inode | default(none)]) else []) }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The alias predicate listed {{ __all_dirs__ }} for the {{ item.0 }} tree;
+              /lib/sysctl.d belongs there only when it is a distinct real directory under a real
+              /lib.
+            quiet: true
+            that:
+              - ('/lib/sysctl.d' in __all_dirs__) == item.1
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Tree'
+          changed_when: false
+          when: (__kernel_alias_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_alias_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | Refuse Only The Exact Marked Line And Count Duplicates Exactly'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    # Two distinct pairs whose joined forms would collide on the old '@@SEP@@' sentinel, and one
+    # true duplicate pair: the duplicate check must count two and one.
+    __crafted__:
+      - ['/etc/sysctl.d/a.conf', 'net.example.beta = z.conf@@SEP@@net.example.beta = 1']
+      - ['/etc/sysctl.d/a.conf@@SEP@@net.example.beta = z.conf', 'net.example.beta = 1']
+    __repeated__:
+      - ['/etc/sysctl.d/b.conf', 'net.example.beta = 1']
+      - ['/etc/sysctl.d/b.conf', 'net.example.beta = 1']
+    # accept.conf holds the sentinel in an active value and a different marked line; refuse.conf
+    # holds the exact marked form of its active line.
+    __accept_text__: |
+      net.example.beta = @@SEP@@wanted
+      # kernel-role-disabled: net.example.beta = different
+    __refuse_text__: |
+      net.example.beta = 1
+      # kernel-role-disabled: net.example.beta = 1
+  tasks:
+
+    - name: 'END | Assert The Duplicate Check Counts Distinct Pairs As Distinct'
+      vars:
+        __distinct__: "{{ __crafted__ | map('to_json') | list }}"
+        __same__: "{{ __repeated__ | map('to_json') | list }}"
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The duplicate check miscounts: {{ __distinct__ | unique(case_sensitive=true) | length
+          }} of {{ __distinct__ | length }} distinct pairs and {{ __same__ |
+          unique(case_sensitive=true) | length }} of {{ __same__ | length }} repeated pairs.
+        quiet: true
+        that:
+          - (__distinct__ | unique(case_sensitive=true) | length) == (__distinct__ | length)
+          - (__same__ | unique(case_sensitive=true) | length) == 1
+
+    - name: 'PROCESS | Run The Marked-Line Refusal Over An Accepted And A Refused File'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_marker_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_marker_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Write The Accepted And The Refused File'
+          changed_when: false
+          loop:
+            - ['accept.conf', "{{ __accept_text__ }}"]
+            - ['refuse.conf', "{{ __refuse_text__ }}"]
+          loop_control: { label: "{{ item.0 }}" }
+
+          ansible.builtin.copy:
+            backup: false
+            content: "{{ item.1 }}"
+            decrypt: true
+            dest: "{{ __kernel_marker_dir__.path }}/{{ item.0 }}"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        # The grep loop, the slurp loop and the refusal below are the role's, byte for byte.
+        - name: 'BEGIN | Read The Other Definitions Of The Managed Keys'
+          changed_when: false
+          check_mode: false
+          failed_when: __kernel_conflicting__.rc not in [0, 1]
+          loop: >-
+            {{ [__kernel_marker_dir__.path ~ '/accept.conf', __kernel_marker_dir__.path ~
+            '/refuse.conf'] }}
+          loop_control: { label: "{{ item | basename }}" }
+          register: '__kernel_conflicting__'
+
+          ansible.builtin.command:
+            argv: >-
+              {{ ['grep', '-nE', '^[[:space:]]*(' ~ 'net[.]example[.]beta' ~ ')[[:space:]]*='] +
+              [item] }}
+            expand_argument_vars: true
+            stdin_add_newline: true
+            strip_empty_ends: true
+
+        - name: 'BEGIN | Read Each File The Run Would Edit'
+          check_mode: false
+          loop: >-
+            {{ __kernel_conflicting__.results | default([], true) | selectattr('stdout',
+            'defined') | rejectattr('stdout', 'eq', '') | map(attribute='item') | unique | sort
+            }}
+          loop_control: { label: "{{ __kernel_edit_path__ }}", loop_var: '__kernel_edit_path__' }
+          register: '__kernel_edit_targets__'
+
+          ansible.builtin.slurp:
+            armor: true
+            src: "{{ __kernel_edit_path__ }}"
+
+        - name: 'BEGIN | Refuse An Edit Whose Marked Line Already Exists'
+          loop: "{{ __hits__ }}"
+          loop_control: { label: "{{ __kernel_hit__.0 }}", loop_var: '__kernel_hit__' }
+          vars:
+            __nl__: "\n"
+            __paths__: >-
+              {{ __kernel_edit_targets__.results | default([], true) |
+              map(attribute='__kernel_edit_path__') | list }}
+            __texts__: >-
+              {{ __kernel_edit_targets__.results | default([], true) | map(attribute='content') |
+              map('b64decode') | map('regex_replace', '\A', '\n') | list }}
+            __text_of__: >-
+              {{ __paths__ | zip(__texts__) | list | items2dict(key_name=0, value_name=1) }}
+            __pairs__: >-
+              {{ query('ansible.builtin.subelements', __kernel_conflicting__.results |
+              default([], true), 'stdout_lines', skip_missing=true) }}
+            __hits__: >-
+              {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+              map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+            __marked__: "{{ __nl__ ~ '# kernel-role-disabled: ' ~ __kernel_hit__.1 ~ __nl__ }}"
+            __haystack__: "{{ __text_of__[__kernel_hit__.0] }}"
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              Refusing to comment out a definition whose marked form already exists in the file:
+              {{ __kernel_hit__.0 }} holds '# kernel-role-disabled: {{ __kernel_hit__.1 }}'.
+              Remove the pre-existing marked line by hand; the role cannot tell it from its own.
+            quiet: true
+            that:
+              - __marked__ not in __haystack__
+
+        - name: 'END | Fail Because The Refusal Accepted The Exact Marked Line'
+
+          ansible.builtin.fail:
+            msg: >-
+              The marked-line refusal accepted refuse.conf, whose active line already has its
+              exact marked form.
+
+      rescue:
+
+        - name: 'END | Assert Only The Refused File Was Refused, With Its Cause'
+          vars:
+            __results__: "{{ ansible_failed_result.results | default([], true) }}"
+            __refused__: >-
+              {{ __results__ | selectattr('failed', 'defined') | selectattr('failed') |
+              map(attribute='__kernel_hit__.0') | map('basename') | list }}
+            __accepted__: >-
+              {{ __results__ | rejectattr('failed', 'defined') |
+              map(attribute='__kernel_hit__.0') | map('basename') | list + (__results__ |
+              selectattr('failed', 'defined') | rejectattr('failed') |
+              map(attribute='__kernel_hit__.0') | map('basename') | list) }}
+            __cause__: >-
+              {{ __results__ | selectattr('failed', 'defined') | selectattr('failed') |
+              map(attribute='msg') | join(' ') }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The marked-line refusal refused {{ __refused__ }} and accepted {{ __accepted__ }}
+              with {{ __cause__ }}; it must refuse exactly refuse.conf, naming its marked line.
+            quiet: true
+            that:
+              - __refused__ == ['refuse.conf']
+              - __accepted__ == ['accept.conf']
+              - "'marked form already exists' in __cause__"
+              - "'net.example.beta = 1' in __cause__"
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Directory'
+          changed_when: false
+          when: (__kernel_marker_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_marker_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | Comment And Restore Lines Holding Backslash Sequences'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    __nl__: "\n"
+    # Each is replacement syntax to a backreference expansion; each must survive as text.
+    __lines__: ['net.example.beta = \1', 'net.example.beta = \t', 'net.example.beta = \g<0>']
+  tasks:
+
+    - name: 'PROCESS | Comment Out Three Lines And Restore Them'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_backslash_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_backslash_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Write The Three Lines'
+          changed_when: false
+
+          ansible.builtin.copy:
+            backup: false
+            content: "{{ __lines__ | join(__nl__) ~ __nl__ }}"
+            decrypt: true
+            dest: "{{ __kernel_backslash_dir__.path }}/scratch.conf"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        # The module arguments are the role's commenting task's, byte for byte.
+        - name: 'PROCESS | Comment Out Each Line As The Role Does'
+          changed_when: false
+          loop: >-
+            {{ [__kernel_backslash_dir__.path ~ '/scratch.conf'] | product(__lines__) |
+            map('list') | list }}
+          loop_control: { label: "{{ item.1 }}" }
+
+          ansible.builtin.lineinfile:
+            backrefs: true
+            backup: false
+            create: false
+            encoding: 'utf-8'
+            firstmatch: false
+            line: '# kernel-role-disabled: \g<0>'
+            path: "{{ item.0 }}"
+            regexp: "^{{ item.1 | regex_escape }}$"
+            state: 'present'
+            unsafe_writes: false
+
+        - name: 'END | Read The Commented File'
+          check_mode: false
+          register: '__kernel_backslash_commented__'
+
+          ansible.builtin.slurp:
+            armor: true
+            src: "{{ __kernel_backslash_dir__.path }}/scratch.conf"
+
+        - name: 'END | Assert Each Line Is Marked And Otherwise Byte-Identical'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              Commenting changed the text: {{ __kernel_backslash_commented__.content | b64decode
+              }}
+            quiet: true
+            that:
+              - >-
+                (__kernel_backslash_commented__.content | b64decode) == (__lines__ |
+                map('regex_replace', '^', '# kernel-role-disabled: ') | join(__nl__) ~ __nl__)
+
+        # The module arguments are the role's restoration tasks', byte for byte.
+        - name: 'PROCESS | Restore Each Line As The Role Does'
+          changed_when: false
+          loop: >-
+            {{ [__kernel_backslash_dir__.path ~ '/scratch.conf'] | product(__lines__) |
+            map('list') | list }}
+          loop_control: { label: "{{ item.1 }}" }
+
+          ansible.builtin.lineinfile:
+            backrefs: true
+            backup: false
+            create: false
+            encoding: 'utf-8'
+            firstmatch: false
+            line: '\g<1>'
+            path: "{{ item.0 }}"
+            regexp: "^# kernel-role-disabled: ({{ item.1 | regex_escape }})$"
+            state: 'present'
+            unsafe_writes: false
+
+        - name: 'END | Read The Restored File'
+          check_mode: false
+          register: '__kernel_backslash_restored__'
+
+          ansible.builtin.slurp:
+            armor: true
+            src: "{{ __kernel_backslash_dir__.path }}/scratch.conf"
+
+        - name: 'END | Assert The Restored Bytes Equal The Original'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              Restoration changed the text: {{ __kernel_backslash_restored__.content | b64decode
+              }}
+            quiet: true
+            that:
+              - >-
+                (__kernel_backslash_restored__.content | b64decode) == (__lines__ | join(__nl__)
+                ~ __nl__)
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Directory'
+          changed_when: false
+          when: (__kernel_backslash_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_backslash_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | List The Legacy File As A Read-Only Candidate When It Is A Live Symlink'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+
+    - name: 'PROCESS | Run The Candidate Expressions Over A Live And A Dangling Legacy Link'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_legacy_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_legacy_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Write A Regular File'
+          changed_when: false
+
+          ansible.builtin.copy:
+            backup: false
+            content: "net.example.beta = 1\n"
+            decrypt: true
+            dest: "{{ __kernel_legacy_dir__.path }}/real.conf"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        - name: 'PROCESS | Link A Live And A Dangling Legacy Path'
+          changed_when: false
+          loop: [['live.conf', 'real.conf'], ['dangling.conf', 'missing.conf']]
+          loop_control: { label: "{{ item.0 }}" }
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            dest: "{{ __kernel_legacy_dir__.path }}/{{ item.0 }}"
+            follow: false
+            force: true
+            modification_time_format: '%Y%m%d%H%M.%S'
+            recurse: false
+            src: "{{ item.1 }}"
+            state: 'link'
+            unsafe_writes: false
+
+        - name: 'BEGIN | Stat Each Link Itself'
+          check_mode: false
+          loop: ['live.conf', 'dangling.conf']
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_legacy_links__'
+
+          ansible.builtin.stat:
+            checksum_algorithm: 'sha1'
+            follow: false
+            get_attributes: false
+            get_checksum: false
+            get_mime: false
+            get_selinux_context: false
+            path: "{{ __kernel_legacy_dir__.path }}/{{ item }}"
+
+        - name: 'BEGIN | Stat Each Link Through To Its Target'
+          check_mode: false
+          loop: ['live.conf', 'dangling.conf']
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_legacy_targets__'
+
+          ansible.builtin.stat:
+            checksum_algorithm: 'sha1'
+            follow: true
+            get_attributes: false
+            get_checksum: false
+            get_mime: false
+            get_selinux_context: false
+            path: "{{ __kernel_legacy_dir__.path }}/{{ item }}"
+
+        # The candidate expressions are the role's, byte for byte, with an empty directory scan;
+        # the legacy path is a candidate only for the live link, and never editable.
+        - name: 'END | Assert The Live Link Is A Read-Only Candidate And The Dangling One Is Not'
+          loop: [['live.conf', true], ['dangling.conf', false]]
+          loop_control: { label: "{{ item.0 }}" }
+          vars:
+            __kernel_sysctl_conf__: >-
+              {{ __kernel_legacy_links__.results | selectattr('item', 'eq', item.0) | first }}
+            __kernel_sysctl_conf_target__: >-
+              {{ __kernel_legacy_targets__.results | selectattr('item', 'eq', item.0) | first }}
+            __kernel_sysctl_files__: {files: []}
+            __kernel_link_stats__: {results: []}
+            __inside_re__: '^/etc/sysctl[.]d/[^/]+$'
+            __own__: []
+            __conflicts__: 'etc'
+            __regular__: >-
+              {{ __kernel_sysctl_files__.files | map(attribute='path') | select('match',
+              __inside_re__) | list }}
+            __editable__: >-
+              {{ (__regular__ + (['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.exists and
+              __kernel_sysctl_conf__.stat.isreg and not __kernel_sysctl_conf__.stat.islnk) else
+              [])) | reject('in', __own__) | unique | sort }}
+            __links__: >-
+              {{ __kernel_link_stats__.results | default([], true) | selectattr('stat.exists') |
+              selectattr('stat.isreg') | map(attribute='item') | select('match', __inside_re__) |
+              reject('in', __own__) | list }}
+            __legacy__: >-
+              {{ ['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.islnk | default(false) and
+              __kernel_sysctl_conf_target__.stat.exists and
+              __kernel_sysctl_conf_target__.stat.isreg and __conflicts__ != 'none') else [] }}
+            __candidates__: "{{ (__editable__ + __links__ + __legacy__) | unique | sort }}"
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              For {{ item.0 }} the candidates read {{ __candidates__ }} and the editable set {{
+              __editable__ }}; a live legacy link is a read-only candidate, a dangling one
+              nothing.
+            quiet: true
+            that:
+              - (__candidates__ == ['/etc/sysctl.conf']) == item.1
+              - __editable__ == []
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Directory'
+          changed_when: false
+          when: (__kernel_legacy_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_legacy_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | Name A Symlinked Parent With The Guard Expressions'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+  tasks:
+
+    - name: 'PROCESS | Run The Guard Expressions Against A Scratch Tree'
+      block:
+
+        - name: 'BEGIN | Create A Scratch Directory'
+          changed_when: false
+          check_mode: false
+          register: '__kernel_guard_dir__'
+
+          ansible.builtin.tempfile:
+            prefix: 'ansible_kernel_guard_'
+            state: 'directory'
+            suffix: ''
+
+        - name: 'PROCESS | Create A Real Directory'
+          changed_when: false
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            mode: '0700'
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_guard_dir__.path }}/real"
+            recurse: false
+            state: 'directory'
+            unsafe_writes: false
+
+        - name: 'PROCESS | Write A Regular File In It'
+          changed_when: false
+
+          ansible.builtin.copy:
+            backup: false
+            content: "net.example.beta = 1\n"
+            decrypt: true
+            dest: "{{ __kernel_guard_dir__.path }}/real/x.conf"
+            follow: false
+            force: true
+            mode: '0600'
+            remote_src: false
+            unsafe_writes: false
+
+        - name: 'PROCESS | Link A Second Parent To The Real Directory'
+          changed_when: false
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            dest: "{{ __kernel_guard_dir__.path }}/link"
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            recurse: false
+            src: 'real'
+            state: 'link'
+            unsafe_writes: false
+
+        # The loop and the three expressions below are the role's guard, byte for byte, over two
+        # targets: one reached through the symlinked parent, one through the real directory.
+        - name: 'BEGIN | Stat The Parents And Targets Of Both Paths'
+          check_mode: false
+          loop: >-
+            {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+            map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') |
+            map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') |
+            map('dirname') | map('dirname') | list) + __targets__) | reject('eq', '/') | unique |
+            sort }}
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_guard_stats__'
+          vars:
+            __targets__: >-
+              {{ [__kernel_guard_dir__.path ~ '/link/x.conf', __kernel_guard_dir__.path ~
+              '/real/x.conf'] }}
+
+          ansible.builtin.stat:
+            checksum_algorithm: 'sha1'
+            follow: false
+            get_attributes: false
+            get_checksum: false
+            get_mime: false
+            get_selinux_context: false
+            path: "{{ item }}"
+
+        - name: 'END | Assert The Expressions Name Exactly The Symlinked Parent'
+          vars:
+            __targets__: >-
+              {{ [__kernel_guard_dir__.path ~ '/link/x.conf', __kernel_guard_dir__.path ~
+              '/real/x.conf'] }}
+            __found__: >-
+              {{ __kernel_guard_stats__.results | default([], true) | selectattr('stat.exists') |
+              list }}
+            __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+            __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+            __bad_parents__: >-
+              {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+              (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) +
+              (__parents__ | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') |
+              list) }}
+            __bad_targets__: >-
+              {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) +
+              (__files__ | selectattr('stat.islnk') | map(attribute='item') | list) }}
+            __link__: "{{ __kernel_guard_dir__.path ~ '/link' }}"
+            __real__: "{{ __kernel_guard_dir__.path ~ '/real' }}"
+
+          # The expressions list a parent once per reason. The symlinked parent must carry
+          # exactly two reasons (not a directory, a symlink) beyond the real one, whose only
+          # possible reason is an owner other than root, as when the tests run unprivileged.
+          ansible.builtin.assert:
+            fail_msg: >-
+              The guard expressions named {{ __bad_parents__ }} as unsafe parents and {{
+              __bad_targets__ | unique | list }} as unsafe targets over a tree whose only defect
+              is the symlinked parent {{ __link__ }}.
+            quiet: true
+            that:
+              - >-
+                (__bad_parents__ | select('eq', __link__) | list | length) == (__bad_parents__ |
+                select('eq', __real__) | list | length) + 2
+              - (__bad_parents__ | select('eq', __real__) | list | length) <= 1
+              - __bad_targets__ == []
+
+      always:
+
+        - name: 'PROCESS | Remove The Scratch Tree'
+          changed_when: false
+          when: (__kernel_guard_dir__.path | default('') | length) > 0
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_guard_dir__.path }}"
+            recurse: false
+            state: 'absent'
+            unsafe_writes: false
+
+- name: 'PLAY | Render The Same Record Bytes From Both Phases'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    __pending__:
+      version: 1
+      destinations: ['/etc/modprobe.d/example.conf', '/etc/sysctl.d/90-example.conf']
+      lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+    __record__:
+      version: 1
+      destinations: ['/etc/modprobe.d/example.conf', '/etc/sysctl.d/90-example.conf']
+      lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+    __pending_bytes__: "{{ __pending__ | to_nice_json(indent=2) }}\n"
+    __record_bytes__: "{{ __record__ | to_nice_json(indent=2) }}\n"
+  tasks:
+
+    - name: 'END | Assert The Two Record Expressions Render Identical Bytes'
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The pending and final record expressions differ: {{ __pending_bytes__ | length }}
+          against {{ __record_bytes__ | length }} bytes; a converged host would rewrite its
+          record on every run.
+        quiet: true
+        that:
+          - __pending_bytes__ == __record_bytes__
+          - __pending_bytes__[-1:] == "\n"
+          - __pending_bytes__[-2:] != " \n"
+
+- name: 'PLAY | Name Exactly The Keys Whose Observed Value Differs'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    __keys__: ['a.one', 'b.two', 'c.three', 'd.four', 'e.five']
+    __observed__: ['0', '1', '2', 'x', 'X']
+    __expected__: ['0', '2', '1', 'x', 'x']
+    __differs__: >-
+      {{ __observed__ | zip(__expected__) | map('unique', case_sensitive=true) | map('length') |
+      list }}
+    __mismatched__: >-
+      {{ __keys__ | zip(__differs__) | selectattr('1', 'eq', 2) | map(attribute='0') | list }}
+    __report__: >-
+      {{ __keys__ | zip(__observed__, __expected__) | selectattr('0', 'in', __mismatched__) |
+      map('join', ' ') | list }}
+  tasks:
+
+    - name: 'END | Assert The Mismatch Expression Names The Three Differing Keys'
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The END comparison expression is wrong: mismatched {{ __mismatched__ }}, report {{
+          __report__ }}.
+        quiet: true
+        that:
+          - __mismatched__ == ['b.two', 'c.three', 'e.five']
+          - __report__ == ['b.two 1 2', 'c.three 2 1', 'e.five X x']

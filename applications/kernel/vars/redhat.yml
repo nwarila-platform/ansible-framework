@@ -1,0 +1,10 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/vars/redhat.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The RedHat family overlay. An empty map is the honest declaration: the role has no family-
+# specific value, and a copy of the defaults here would drift from them.
+#
+# ============================================================================================= #
+
+{}

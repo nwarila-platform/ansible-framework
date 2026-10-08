@@ -1,0 +1,1602 @@
+# ============================================================================================= #
+# File: '{{ role_path }}/tasks/present_redhat.yml'
+# --- [ Description ] ------------------------------------------------------------------------- #
+#
+# The present state for the RedHat family. BEGIN reads the package bindings, the role's record
+# (the manifest), the declared destinations, every sysctl file and symlink in the six locations,
+# the other definitions of the managed keys and the loaded modules. PROCESS makes the package
+# present, removes recorded files no longer declared, restores recorded lines no longer wanted,
+# renders the drop-ins, comments out the remaining definitions inside the selected locations,
+# reloads what is owed, unloads disabled modules and then trims the record to the declared set.
+# END reads every value back from the kernel, from the static locations and from kmod. The
+# marker, record path and directory constants are literal here and in absent_redhat.yml on
+# purpose.
+#
+# ============================================================================================= #
+
+#region ------ [ Begin: Read The Kernel Configuration State ] --------------------------------- #
+
+- name: 'BEGIN | Read The Kernel Configuration State'
+  vars:
+    __kernel_lib__: "{{ __kernel_lib_paths__.results[0] }}"
+    __kernel_lib_dir__: "{{ __kernel_lib_paths__.results[1] }}"
+    __kernel_usr_lib_dir__: "{{ __kernel_lib_paths__.results[2] }}"
+    __entries__: "{{ kernel_running.templates | dict2items }}"
+    __declared__: "{{ __entries__ | map(attribute='key') | list }}"
+    __keys__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'sysctl.conf.j2') |
+      map(attribute='value.settings') | map('list') | list | flatten(levels=1) | sort }}
+    __alt__: "{{ __keys__ | map('regex_escape') | join('|') }}"
+    __manifest__: >-
+      {{ (__kernel_manifest_raw__.content | b64decode | from_json) if
+      (__kernel_manifest_raw__.content | default('') | length) > 0 else {'version': 1,
+      'destinations': [], 'lines': []} }}
+    __own__: "{{ (__declared__ + __manifest__.destinations) | unique | list }}"
+    __conflicts__: "{{ kernel_running.sysctl.conflicts | string | lower | trim }}"
+    __policy_dirs__:
+      'none': []
+      'etc': ['/etc/sysctl.d']
+      'all':
+        - '/etc/sysctl.d'
+        - '/run/sysctl.d'
+        - '/usr/local/lib/sysctl.d'
+        - '/usr/lib/sysctl.d'
+        - '/lib/sysctl.d'
+    __inside_re__: >-
+      ^({{ __policy_dirs__[__conflicts__] | map('regex_escape') | join('|')
+      }})/[^/\x00-\x1f]+[.]conf${{ '|^/etc/sysctl[.]conf$' if __conflicts__ != 'none' else '' }}
+  block:
+
+    # ansible.builtin.dnf requires the python3-dnf bindings even to report an installed package
+    # (ansible-doc ansible.builtin.dnf, requirements, read 2026-10-08); ansible_facts.packages is
+    # populated by the shared loader before this file is included.
+    - name: 'BEGIN | Require The Package Manager Bindings'
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to continue: python3-dnf is not installed, and ansible.builtin.dnf cannot run
+          without it. Install it first: dnf install -y python3-dnf.
+        quiet: true
+        that:
+          - "'python3-dnf' in ansible_facts.packages"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Stat The Record Of Earlier Runs'
+      check_mode: false
+      register: '__kernel_manifest_stat__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/var/lib/ansible-kernel/manifest.json'
+
+    # ----------------------------------------------------------------------------------------- #
+    - name: 'BEGIN | Stat The Record Directory'
+      check_mode: false
+      register: '__kernel_manifest_dir__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/var/lib/ansible-kernel'
+
+    # ----------------------------------------------------------------------------------------- #
+    # The record drives deletions and restorations as root, so it is trusted only as a regular,
+    # root-owned, 0600 file inside a real root-owned 0700 directory; a symlink or a foreign owner
+    # at either path is refused, not followed.
+    - name: 'BEGIN | Refuse A Record That Is Not A Private Root-Owned File'
+      when: __kernel_manifest_dir__.stat.exists | default(false)
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to read the record under /var/lib/ansible-kernel: the directory must be a real
+          root-owned 0700 directory and the record a regular root-owned 0600 file; observed
+          directory islnk={{ __kernel_manifest_dir__.stat.islnk }} isdir={{
+          __kernel_manifest_dir__.stat.isdir }} owner={{ __kernel_manifest_dir__.stat.pw_name }}
+          mode={{ __kernel_manifest_dir__.stat.mode }}, record exists={{
+          __kernel_manifest_stat__.stat.exists }} islnk={{ __kernel_manifest_stat__.stat.islnk |
+          default('') }} isreg={{ __kernel_manifest_stat__.stat.isreg | default('') }} owner={{
+          __kernel_manifest_stat__.stat.pw_name | default('') }} mode={{
+          __kernel_manifest_stat__.stat.mode | default('') }}. Remove or repair them by hand.
+        quiet: true
+        that:
+          - not __kernel_manifest_dir__.stat.islnk
+          - __kernel_manifest_dir__.stat.isdir
+          - __kernel_manifest_dir__.stat.pw_name == 'root'
+          - __kernel_manifest_dir__.stat.mode == '0700'
+          - >-
+            not __kernel_manifest_stat__.stat.exists or (not __kernel_manifest_stat__.stat.islnk
+            and __kernel_manifest_stat__.stat.isreg and __kernel_manifest_stat__.stat.pw_name ==
+            'root' and __kernel_manifest_stat__.stat.mode == '0600')
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read The Record Of Earlier Runs'
+      check_mode: false
+      register: '__kernel_manifest_raw__'
+      when: __kernel_manifest_stat__.stat.exists | default(false)
+
+      ansible.builtin.slurp:
+        armor: true
+        src: '/var/lib/ansible-kernel/manifest.json'
+
+    # ----------------------------------------------------------------------------------------- #
+    # The raw object is asserted before any value is used: exactly three members, version the
+    # integer 1, destinations direct *.conf children of the two drop-in directories, lines as
+    # [path, text] pairs with an in-scope path and a single-line text without control bytes.
+    - name: 'BEGIN | Validate The Record Before Any Value Is Used'
+      when: __kernel_manifest_stat__.stat.exists | default(false)
+      block:
+
+        - name: 'BEGIN | Assert The Record Schema'
+          vars:
+            __record__: "{{ __kernel_manifest_raw__.content | b64decode | from_json }}"
+            __dests__: "{{ __record__.destinations if __record__ is mapping else [] }}"
+            __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
+            __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
+            __conf_re__: '^/etc/sysctl[.]conf$'
+            __d_re__: '^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$'
+            __bad_dests__: >-
+              {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
+              reject('match', __dest_re__) | list) }}
+            __bad_lines__: >-
+              {{ (__lines__ | reject('sequence') | list) + (__lines__ | select('string') | list)
+              + (__lines__ | select('mapping') | list) + (__lines__ | select('sequence') |
+              reject('string') | reject('mapping') | rejectattr('0', 'string') | list) +
+              (__lines__ | select('sequence') | reject('string') | reject('mapping') |
+              selectattr('0', 'string') | rejectattr('1', 'string') | list) + (__lines__ |
+              select('sequence') | reject('string') | reject('mapping') | selectattr('0',
+              'string') | selectattr('1', 'string') | rejectattr('0', 'match', __conf_re__) |
+              rejectattr('0', 'match', __d_re__) | list) + (__lines__ | select('sequence') |
+              reject('string') | reject('mapping') | selectattr('0', 'string') | selectattr('1',
+              'string') | selectattr('1', 'search', '[\r\n\x00]') | list) }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              Refusing to use /var/lib/ansible-kernel/manifest.json: the record must hold exactly
+              version, destinations and lines (observed members {{ __record__ | list if
+              __record__ is mapping else __record__ | type_debug }}), version must be the integer
+              1 (observed {{ __record__.version | default('absent') }}), destinations must be
+              direct .conf children of /etc/sysctl.d or /etc/modprobe.d (refused {{ __bad_dests__
+              }}) and lines must be [path, text] pairs with an in-scope path and a single-line
+              text without control bytes (refused {{ __bad_lines__ }}). Repair or remove the
+              record by hand.
+            quiet: true
+            that:
+              - __record__ is mapping
+              - (__record__ | list | sort) == ['destinations', 'lines', 'version']
+              - __record__.version is integer
+              - __record__.version is not boolean
+              - __record__.version == 1
+              - __dests__ is sequence
+              - __dests__ is not string
+              - __dests__ is not mapping
+              - __lines__ is sequence
+              - __lines__ is not string
+              - __lines__ is not mapping
+              - (__bad_dests__ | length) == 0
+              - (__bad_lines__ | length) == 0
+              - (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                 | map('length') | reject('eq', 2) | list | length) == 0
+
+      rescue:
+
+        - name: 'BEGIN | Refuse An Unreadable Record'
+
+          ansible.builtin.fail:
+            msg: >-
+              Refusing to continue: /var/lib/ansible-kernel/manifest.json could not be validated:
+              {{ ansible_failed_result.msg | default('kernel operation failed', true) }}. Repair
+              or remove the record by hand.
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Stat Each Declared Destination'
+      check_mode: false
+      loop: "{{ __declared__ }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_destinations__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+    # A file at a declared destination that the record does not list belongs to someone else;
+    # overwriting it would silently take over a vendor or operator file.
+    - name: 'BEGIN | Refuse A Foreign File At A Declared Destination'
+      vars:
+        __foreign__: >-
+          {{ __kernel_destinations__.results | selectattr('stat.exists') | map(attribute='item')
+          | reject('in', __manifest__.destinations) | list }}
+        __links__: >-
+          {{ __kernel_destinations__.results | selectattr('stat.exists') |
+          selectattr('stat.islnk') | map(attribute='item') | list }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to overwrite a file the role did not write ({{ __foreign__ }}) or a symlink at
+          a declared destination ({{ __links__ }}). Choose another destination, or remove the
+          file if it is yours; the role's record of its own files is
+          /var/lib/ansible-kernel/manifest.json.
+        quiet: true
+        that:
+          - (__foreign__ | length) == 0
+          - (__links__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+    # On a merged-/usr system /lib itself is the symlink, so /lib/sysctl.d is the vendor
+    # directory seen through it; it is listed only as a distinct real directory under a real
+    # /lib, or every vendor file would be named twice [INV-02].
+    - name: 'BEGIN | Stat The Legacy Library Path, Its Sysctl Directory And The Vendor Directory'
+      check_mode: false
+      loop: ['/lib', '/lib/sysctl.d', '/usr/lib/sysctl.d']
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_lib_paths__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Find Every Sysctl File And Symlink In The Six Locations'
+      check_mode: false
+      register: '__kernel_sysctl_files__'
+      vars:
+        __all_dirs__: >-
+          {{ ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d', '/usr/lib/sysctl.d'] +
+          (['/lib/sysctl.d'] if (__kernel_lib__.stat.exists and __kernel_lib__.stat.isdir and not
+          __kernel_lib__.stat.islnk and __kernel_lib_dir__.stat.exists and
+          __kernel_lib_dir__.stat.isdir and not __kernel_lib_dir__.stat.islnk and
+          [__kernel_lib_dir__.stat.dev, __kernel_lib_dir__.stat.inode] !=
+          [__kernel_usr_lib_dir__.stat.dev | default(none), __kernel_usr_lib_dir__.stat.inode |
+          default(none)]) else []) }}
+
+      ansible.builtin.find:
+        age_stamp: 'mtime'
+        checksum_algorithm: 'sha1'
+        exact_mode: true
+        file_type: 'file'
+        follow: true
+        get_checksum: false
+        hidden: true
+        paths: "{{ __all_dirs__ }}"
+        patterns: ['*.conf']
+        read_whole_file: false
+        recurse: false
+        use_regex: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # find lists symlinks only under file_type link, never under file (measured 2026-10-08,
+    # ansible-core 2.21.2); a stat that follows tells a live link from a dangling one.
+    - name: 'BEGIN | Find Every Sysctl Symlink In The Six Locations'
+      check_mode: false
+      register: '__kernel_sysctl_links__'
+      vars:
+        __all_dirs__: >-
+          {{ ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d', '/usr/lib/sysctl.d'] +
+          (['/lib/sysctl.d'] if (__kernel_lib__.stat.exists and __kernel_lib__.stat.isdir and not
+          __kernel_lib__.stat.islnk and __kernel_lib_dir__.stat.exists and
+          __kernel_lib_dir__.stat.isdir and not __kernel_lib_dir__.stat.islnk and
+          [__kernel_lib_dir__.stat.dev, __kernel_lib_dir__.stat.inode] !=
+          [__kernel_usr_lib_dir__.stat.dev | default(none), __kernel_usr_lib_dir__.stat.inode |
+          default(none)]) else []) }}
+
+      ansible.builtin.find:
+        age_stamp: 'mtime'
+        checksum_algorithm: 'sha1'
+        exact_mode: true
+        file_type: 'link'
+        follow: true
+        get_checksum: false
+        hidden: true
+        paths: "{{ __all_dirs__ }}"
+        patterns: ['*.conf']
+        read_whole_file: false
+        recurse: false
+        use_regex: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Stat Each Symlink Target'
+      check_mode: false
+      loop: "{{ __kernel_sysctl_links__.files | map(attribute='path') | sort }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_link_stats__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: true
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Stat The Legacy Sysctl File'
+      check_mode: false
+      register: '__kernel_sysctl_conf__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/etc/sysctl.conf'
+
+    # ----------------------------------------------------------------------------------------- #
+    # A live symlink at the legacy path is read through it and never edited; the followed stat
+    # says whether the target is a live regular file.
+    - name: 'BEGIN | Stat The Legacy Sysctl File Through Its Link'
+      check_mode: false
+      register: '__kernel_sysctl_conf_target__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: true
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/etc/sysctl.conf'
+
+    # ----------------------------------------------------------------------------------------- #
+    # rc-contract: grep(1): exit 1 means no line selected. One file per call, so the only
+    # prefix in the output is the line number and the path comes from the loop item, whatever
+    # bytes it holds.
+    - name: 'BEGIN | Read The Other Definitions Of The Managed Keys'
+      changed_when: false
+      check_mode: false
+      failed_when: __kernel_conflicting__.rc not in [0, 1]
+      loop: "{{ __candidates__ }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_conflicting__'
+      vars:
+        __regular__: >-
+          {{ __kernel_sysctl_files__.files | map(attribute='path') | select('match',
+          __inside_re__) | list }}
+        __editable__: >-
+          {{ (__regular__ + (['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.exists and
+          __kernel_sysctl_conf__.stat.isreg and not __kernel_sysctl_conf__.stat.islnk) else []))
+          | reject('in', __own__) | unique | sort }}
+        __links__: >-
+          {{ __kernel_link_stats__.results | default([], true) | selectattr('stat.exists') |
+          selectattr('stat.isreg') | map(attribute='item') | select('match', __inside_re__) |
+          reject('in', __own__) | list }}
+        __legacy__: >-
+          {{ ['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.islnk | default(false) and
+          __kernel_sysctl_conf_target__.stat.exists and __kernel_sysctl_conf_target__.stat.isreg
+          and __conflicts__ != 'none') else [] }}
+        __candidates__: "{{ (__editable__ + __links__ + __legacy__) | unique | sort }}"
+      when:
+        - __conflicts__ != 'none'
+        - (__keys__ | length) > 0
+        - (__candidates__ | length) > 0
+
+      ansible.builtin.command:
+        argv: >-
+          {{ ['grep', '-nE', '^[[:space:]]*(' ~ __alt__ ~ ')[[:space:]]*='] + [item] }}
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read Each File The Run Would Edit'
+      check_mode: false
+      loop: >-
+        {{ __kernel_conflicting__.results | default([], true) | selectattr('stdout', 'defined') |
+        rejectattr('stdout', 'eq', '') | map(attribute='item') | unique | sort }}
+      loop_control: { label: "{{ __kernel_edit_path__ }}", loop_var: '__kernel_edit_path__' }
+      register: '__kernel_edit_targets__'
+
+      ansible.builtin.slurp:
+        armor: true
+        src: "{{ __kernel_edit_path__ }}"
+
+    # ----------------------------------------------------------------------------------------- #
+    # lineinfile rewrites the edited line with a plain newline, so a file with carriage returns
+    # or without a final newline could not be restored byte for byte; both are refused up front.
+    - name: 'BEGIN | Refuse A File The Role Could Not Restore Byte For Byte'
+      vars:
+        __paths__: >-
+          {{ __kernel_edit_targets__.results | default([], true) |
+          map(attribute='__kernel_edit_path__') | list }}
+        __texts__: >-
+          {{ __kernel_edit_targets__.results | default([], true) | map(attribute='content') |
+          map('b64decode') | list }}
+        __crlf__: >-
+          {{ __paths__ | zip(__texts__) | selectattr('1', 'search', '\r') | map(attribute='0') |
+          list }}
+        __no_eol__: >-
+          {{ __paths__ | zip(__texts__) | rejectattr('1', 'search', '\n$') | map(attribute='0') |
+          list }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to edit a file the role could not restore byte for byte: files with carriage
+          returns {{ __crlf__ }}, files without a final newline {{ __no_eol__ }}. Convert the
+          file to LF with a final newline, or exclude it with a narrower conflicts policy.
+        quiet: true
+        that:
+          - (__crlf__ | length) == 0
+          - (__no_eol__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+    # Two identical active definitions in one file could not both be restored by their recorded
+    # text, so the second is refused rather than collapsed.
+    - name: 'BEGIN | Refuse A Definition That Appears Twice In One File'
+      vars:
+        __pairs__: >-
+          {{ query('ansible.builtin.subelements', __kernel_conflicting__.results | default([],
+          true), 'stdout_lines', skip_missing=true) }}
+        __pair_texts__: >-
+          {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+          map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+        __hits__: "{{ __pair_texts__ | map('to_json') | list }}"
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to comment out a definition that appears more than once in the same file: {{
+          __hits__ | sort }}. Remove the duplicate line by hand; the role records one original
+          text per line.
+        quiet: true
+        that:
+          - (__hits__ | length) == (__hits__ | unique(case_sensitive=true) | length)
+
+    # ----------------------------------------------------------------------------------------- #
+    # A pre-existing line that already reads exactly as the role would write it cannot be told
+    # from the role's own later on, so the role refuses to add a second one.
+    - name: 'BEGIN | Refuse An Edit Whose Marked Line Already Exists'
+      loop: "{{ __hits__ }}"
+      loop_control: { label: "{{ __kernel_hit__.0 }}", loop_var: '__kernel_hit__' }
+      vars:
+        __nl__: "\n"
+        __paths__: >-
+          {{ __kernel_edit_targets__.results | default([], true) |
+          map(attribute='__kernel_edit_path__') | list }}
+        __texts__: >-
+          {{ __kernel_edit_targets__.results | default([], true) | map(attribute='content') |
+          map('b64decode') | map('regex_replace', '\A', '\n') | list }}
+        __text_of__: >-
+          {{ __paths__ | zip(__texts__) | list | items2dict(key_name=0, value_name=1) }}
+        __pairs__: >-
+          {{ query('ansible.builtin.subelements', __kernel_conflicting__.results | default([],
+          true), 'stdout_lines', skip_missing=true) }}
+        __hits__: >-
+          {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+          map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+        __marked__: "{{ __nl__ ~ '# kernel-role-disabled: ' ~ __kernel_hit__.1 ~ __nl__ }}"
+        __haystack__: "{{ __text_of__[__kernel_hit__.0] }}"
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to comment out a definition whose marked form already exists in the file: {{
+          __kernel_hit__.0 }} holds '# kernel-role-disabled: {{ __kernel_hit__.1 }}'. Remove the
+          pre-existing marked line by hand; the role cannot tell it from its own.
+        quiet: true
+        that:
+          - __marked__ not in __haystack__
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # The reload gate compares each declared sysctl file with its rendering before anything
+    # changes, so the decision never reads a task result's change flag [INV-09].
+    - name: 'BEGIN | Read Each Declared Sysctl File That Exists'
+      check_mode: false
+      loop: >-
+        {{ __entries__ | map(attribute='value') | selectattr('template', 'eq', 'sysctl.conf.j2')
+        | selectattr('file.path', 'in', __kernel_destinations__.results | default([], true) |
+        selectattr('stat.exists') | map(attribute='item') | list) | list }}
+      loop_control: { label: "{{ __kernel_sysctl__.file.path }}", loop_var: '__kernel_sysctl__' }
+      register: '__kernel_sysctl_current__'
+
+      ansible.builtin.slurp:
+        armor: true
+        src: "{{ __kernel_sysctl__.file.path }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read Each Declared Parameter From The Kernel'
+      changed_when: false
+      check_mode: false
+      loop: >-
+        {{ __entries__ | selectattr('value.template', 'eq', 'sysctl.conf.j2') |
+        map(attribute='value.settings') | map('dict2items') | list | flatten(levels=1) |
+        sort(attribute='key') }}
+      loop_control: { label: "{{ item.key }}" }
+      register: '__kernel_runtime__'
+      when: (__keys__ | length) > 0
+
+      ansible.builtin.command:
+        argv: ['sysctl', '-n', "{{ item.key }}"]
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'BEGIN | Read The Loaded Modules'
+      changed_when: false
+      check_mode: false
+      register: '__kernel_lsmod__'
+
+      ansible.builtin.command:
+        argv: ['lsmod']
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+#endregion --- [ Begin: Read The Kernel Configuration State ] --------------------------------- #
+
+
+#region ------ [ Process: Apply The Kernel Configuration ] ------------------------------------ #
+
+- name: 'PROCESS | Apply The Kernel Configuration'
+  become: true
+  vars:
+    __kernel_lib__: "{{ __kernel_lib_paths__.results[0] }}"
+    __kernel_lib_dir__: "{{ __kernel_lib_paths__.results[1] }}"
+    __kernel_usr_lib_dir__: "{{ __kernel_lib_paths__.results[2] }}"
+    __entries__: "{{ kernel_running.templates | dict2items }}"
+    __declared__: "{{ __entries__ | map(attribute='key') | list }}"
+    __keys__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'sysctl.conf.j2') |
+      map(attribute='value.settings') | map('list') | list | flatten(levels=1) | sort }}
+    __alt__: "{{ __keys__ | map('regex_escape') | join('|') }}"
+    __manifest__: >-
+      {{ (__kernel_manifest_raw__.content | b64decode | from_json) if
+      (__kernel_manifest_raw__.content | default('') | length) > 0 else {'version': 1,
+      'destinations': [], 'lines': []} }}
+    __own__: "{{ (__declared__ + __manifest__.destinations) | unique | list }}"
+    __conflicts__: "{{ kernel_running.sysctl.conflicts | string | lower | trim }}"
+    __policy_dirs__:
+      'none': []
+      'etc': ['/etc/sysctl.d']
+      'all':
+        - '/etc/sysctl.d'
+        - '/run/sysctl.d'
+        - '/usr/local/lib/sysctl.d'
+        - '/usr/lib/sysctl.d'
+        - '/lib/sysctl.d'
+    __inside_re__: >-
+      ^({{ __policy_dirs__[__conflicts__] | map('regex_escape') | join('|')
+      }})/[^/\x00-\x1f]+[.]conf${{ '|^/etc/sysctl[.]conf$' if __conflicts__ != 'none' else '' }}
+    __disabled__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'modprobe.conf.j2') |
+      map(attribute='value.settings.disabled') | list | flatten(levels=1) | sort }}
+    __package__: "{{ kernel_running.package_manager[ansible_facts.os_family] }}"
+    __recorded__: "{{ __manifest__.lines }}"
+    __recorded_keys__: >-
+      {{ __recorded__ | map(attribute='1') | map('regex_replace', '[\t ]*=.*$', '') | map('trim')
+      | list }}
+    __kept__: >-
+      {{ __recorded__ | zip(__recorded_keys__) | selectattr('1', 'in', __keys__) |
+      map(attribute='0') | selectattr('0', 'match', __inside_re__) | list }}
+    __unwanted__: >-
+      {{ (__recorded__ | zip(__recorded_keys__) | rejectattr('1', 'in', __keys__) |
+      map(attribute='0') | list) + (__recorded__ | zip(__recorded_keys__) | selectattr('1', 'in',
+      __keys__) | map(attribute='0') | rejectattr('0', 'match', __inside_re__) | list) }}
+    __pairs__: >-
+      {{ query('ansible.builtin.subelements', __kernel_conflicting__.results | default([], true),
+      'stdout_lines', skip_missing=true) }}
+    __hits__: >-
+      {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+      map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+    __regular__: >-
+      {{ __kernel_sysctl_files__.files | map(attribute='path') | select('match', __inside_re__) |
+      list }}
+    __editable__: >-
+      {{ (__regular__ + (['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.exists and
+      __kernel_sysctl_conf__.stat.isreg and not __kernel_sysctl_conf__.stat.islnk) else [])) |
+      reject('in', __own__) | unique | sort }}
+    __new_lines__: "{{ __hits__ | selectattr('0', 'in', __editable__) | list }}"
+  block:
+
+    - name: 'PROCESS | Install The Kernel Package'
+      when: ansible_facts.os_family in kernel_running.package_manager
+
+      ansible.builtin.dnf:
+        allow_downgrade: "{{ __package__.allow_downgrade | default(false) }}"
+        allowerasing: "{{ __package__.allowerasing | default(false) }}"
+        autoremove: "{{ __package__.autoremove | default(false) }}"
+        bugfix: "{{ __package__.bugfix | default(false) }}"
+        cacheonly: "{{ __package__.cacheonly | default(false) }}"
+        disable_gpg_check: "{{ __package__.disable_gpg_check | default(false) }}"
+        disable_plugin: "{{ __package__.disable_plugin | default([]) }}"
+        disablerepo: "{{ __package__.disablerepo | default([]) }}"
+        download_only: "{{ __package__.download_only | default(false) }}"
+        enable_plugin: "{{ __package__.enable_plugin | default([]) }}"
+        enablerepo: "{{ __package__.enablerepo | default([]) }}"
+        exclude: "{{ __package__.exclude | default([]) }}"
+        install_weak_deps: "{{ __package__.install_weak_deps | default(true) }}"
+        installroot: "{{ __package__.installroot | default('/') }}"
+        lock_timeout: "{{ __package__.lock_timeout | default(30) }}"
+        name: "{{ __package__.name }}"
+        security: "{{ __package__.security | default(false) }}"
+        skip_broken: "{{ __package__.skip_broken | default(false) }}"
+        sslverify: "{{ __package__.sslverify | default(true) }}"
+        state: 'present'
+        update_cache: "{{ __package__.update_cache | default(false) }}"
+        update_only: "{{ __package__.update_only | default(false) }}"
+        use_backend: "{{ __package__.use_backend | default('auto') }}"
+        validate_certs: "{{ __package__.validate_certs | default(true) }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path itself a real root-owned directory or absent, checked here, just before the
+    # mutation, so a symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Creating'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_create__'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel'] }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Creating'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel'] }}"
+        __found__: >-
+          {{ __kernel_guard_create__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isdir') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) + (__files__ |
+          rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink, not a
+          directory or not root-owned ({{ __bad_targets__ | unique | list }}). Repair the path by
+          hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Create The Record Directory'
+
+      ansible.builtin.file:
+        access_time_format: '%Y%m%d%H%M.%S'
+        follow: true
+        force: false
+        group: 'root'
+        mode: '0700'
+        modification_time_format: '%Y%m%d%H%M.%S'
+        owner: 'root'
+        path: '/var/lib/ansible-kernel'
+        recurse: false
+        state: 'directory'
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Recording'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_record__'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Recording'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
+        __found__: >-
+          {{ __kernel_guard_record__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Phase one: before the first drop-in or line mutation, the record names every file this run
+    # may write and every line it may comment out, plus what earlier runs recorded, so a run that
+    # stops part-way leaves nothing unrecorded. The package and this directory precede it.
+    - name: 'PROCESS | Record Every File And Line This Run May Touch'
+      vars:
+        __pending__:
+          version: 1
+          destinations: "{{ (__manifest__.destinations + __declared__) | unique | sort }}"
+          lines: "{{ (__recorded__ + __new_lines__) | unique | sort(attribute='0,1') }}"
+
+      ansible.builtin.copy:
+        backup: false
+        content: "{{ __pending__ | to_nice_json(indent=2) }}\n"
+        decrypt: true
+        dest: '/var/lib/ansible-kernel/manifest.json'
+        follow: false
+        force: true
+        group: 'root'
+        mode: '0600'
+        owner: 'root'
+        remote_src: false
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Removing'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_remove__'
+      vars:
+        __targets__: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Removing'
+      vars:
+        __targets__: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
+        __found__: >-
+          {{ __kernel_guard_remove__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Remove The Recorded Files No Longer Declared'
+      loop: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
+      loop_control: { label: "{{ item }}" }
+
+      ansible.builtin.file:
+        access_time_format: '%Y%m%d%H%M.%S'
+        follow: true
+        force: false
+        modification_time_format: '%Y%m%d%H%M.%S'
+        path: "{{ item }}"
+        recurse: false
+        state: 'absent'
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Restoring'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_restore__'
+      vars:
+        __targets__: "{{ __unwanted__ | map(attribute='0') | list }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Restoring'
+      vars:
+        __targets__: "{{ __unwanted__ | map(attribute='0') | list }}"
+        __found__: >-
+          {{ __kernel_guard_restore__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # A recorded line whose key is no longer managed, or whose file is outside the selected
+    # locations, goes back exactly as recorded: the captured original, \g<1>, is the replacement,
+    # never the text itself, which backrefs would expand; backrefs also never appends [INV-10].
+    - name: 'PROCESS | Restore The Recorded Lines No Longer Wanted'
+      loop: "{{ __unwanted__ }}"
+      loop_control: { label: "{{ item.0 }}: {{ item.1 }}" }
+
+      ansible.builtin.lineinfile:
+        backrefs: true
+        backup: false
+        create: false
+        encoding: 'utf-8'
+        firstmatch: false
+        line: '\g<1>'
+        path: "{{ item.0 }}"
+        regexp: "^# kernel-role-disabled: ({{ item.1 | regex_escape }})$"
+        state: 'present'
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Rendering'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_render__'
+      vars:
+        __targets__: "{{ __declared__ }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Rendering'
+      vars:
+        __targets__: "{{ __declared__ }}"
+        __found__: >-
+          {{ __kernel_guard_render__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Deploy The Drop-In Files'
+      loop: "{{ __entries__ | map(attribute='value') | list }}"
+      loop_control: { label: "{{ item.file.path }}" }
+      vars:
+        __template__: "{{ item }}"
+
+      ansible.builtin.template:
+        backup: false
+        dest: "{{ item.file.path }}"
+        follow: false
+        force: true
+        group: "{{ item.file.group | default('root') }}"
+        lstrip_blocks: false
+        mode: "{{ item.file.mode | default('0644') }}"
+        newline_sequence: '\n'
+        output_encoding: 'utf-8'
+        owner: "{{ item.file.owner | default('root') }}"
+        selevel: "{{ item.file.selinux.level | default(omit) }}"
+        serole: "{{ item.file.selinux.role | default(omit) }}"
+        setype: "{{ item.file.selinux.type | default(omit) }}"
+        seuser: "{{ item.file.selinux.user | default(omit) }}"
+        src: "{{ item.template }}"
+        trim_blocks: true
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Commenting'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_comment__'
+      vars:
+        __targets__: "{{ __new_lines__ | map(attribute='0') | list }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Commenting'
+      vars:
+        __targets__: "{{ __new_lines__ | map(attribute='0') | list }}"
+        __found__: >-
+          {{ __kernel_guard_comment__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # The commented line keeps its text after the marker and the record keeps the original, so
+    # absent and a later narrowing restore it byte for byte; the replacement is the marker and
+    # \g<0>, never the text itself, which backrefs would expand [INV-10].
+    - name: 'PROCESS | Comment Out The Other Definitions Inside The Selected Locations'
+      loop: "{{ __new_lines__ }}"
+      loop_control: { label: "{{ item.0 }}: {{ item.1 }}" }
+
+      ansible.builtin.lineinfile:
+        backrefs: true
+        backup: false
+        create: false
+        encoding: 'utf-8'
+        firstmatch: false
+        line: '# kernel-role-disabled: \g<0>'
+        path: "{{ item.0 }}"
+        regexp: "^{{ item.1 | regex_escape }}$"
+        state: 'present'
+        unsafe_writes: false
+
+    # ----------------------------------------------------------------------------------------- #
+    # Decided before anything changed, from the record, the kernel and the files BEGIN read,
+    # never from a task result's change flag; the record is trimmed only after this reload, so
+    # a retry still sees what it owes; modprobe work never reloads sysctl [INV-09].
+    - name: 'PROCESS | Reload The Parameters That Drifted Or That The Record Still Owes'
+      changed_when: true
+      vars:
+        __observed__: >-
+          {{ __kernel_runtime__.results | default([], true) | map(attribute='stdout') |
+          map('trim') | list }}
+        __expected__: >-
+          {{ __kernel_runtime__.results | default([], true) | map(attribute='item.value') |
+          map('string') | map('trim') | list }}
+        __differs__: >-
+          {{ __observed__ | zip(__expected__) | map('unique', case_sensitive=true) |
+          map('length') | list }}
+        __sysctl_entries__: >-
+          {{ __entries__ | map(attribute='value') | selectattr('template', 'eq',
+          'sysctl.conf.j2') | list }}
+        __settings__: >-
+          {{ __kernel_sysctl_current__.results | default([], true) |
+          map(attribute='__kernel_sysctl__.settings') | list }}
+        __current__: >-
+          {{ __kernel_sysctl_current__.results | default([], true) | map(attribute='content') |
+          map('b64decode') | list }}
+        __nl__: "\n"
+        __header__: >-
+          # ansible-framework kernel role: managed file; manual edits are overwritten on the next
+          run
+        __pairs__: >-
+          {{ __settings__ | map('dictsort') | map('map', 'join', ' = ') | map('list') | list }}
+        __rendered__: >-
+          {{ ([__header__] * (__settings__ | length)) | zip(__pairs__) | map('flatten') |
+          map('join', __nl__) | map('regex_replace', '$', __nl__) | list }}
+        __stale__: >-
+          {{ __current__ | zip(__rendered__) | map('unique', case_sensitive=true) | map('length')
+          | list }}
+      when: >-
+        (__manifest__.destinations | reject('in', __declared__) | select('match',
+        '^/etc/sysctl[.]d/') | list | length) > 0 or (__unwanted__ | length) > 0 or (__differs__
+        | select('eq', 2) | list | length) > 0 or (__new_lines__ | length) > 0 or
+        (__sysctl_entries__ | length) != (__current__ | length) or (__stale__ | select('eq', 2) |
+        list | length) > 0
+
+      ansible.builtin.command:
+        argv: ['sysctl', '--system']
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+    # kmod reports and matches module names with underscores, so example-one is unloaded as
+    # example_one [INV-04]. A module in use cannot be unloaded; the failure is reported, not
+    # hidden.
+    - name: 'PROCESS | Unload The Disabled Modules That Are Loaded'
+      loop: >-
+        {{ __disabled__ | map('replace', '-', '_') | select('in',
+        __kernel_lsmod__.stdout_lines[1:] | map('split') | map('first') | list) | list }}
+      loop_control: { label: "{{ item }}" }
+      when: kernel_running.modules.unload | bool
+
+      community.general.modprobe:
+        name: "{{ item }}"
+        params: ''
+        persistent: 'disabled'
+        state: 'absent'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Every parent on the way to a path about to change must be a real root-owned directory and
+    # the path a regular file or absent, checked here, immediately before the mutation, so a
+    # symlinked directory cannot carry the change outside the declared scope.
+    - name: 'PROCESS | Stat The Parents And Targets Before Finalizing'
+      check_mode: false
+      loop: >-
+        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
+        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
+        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_guard_final__'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Finalizing'
+      vars:
+        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
+        __found__: >-
+          {{ __kernel_guard_final__.results | default([], true) | selectattr('stat.exists') |
+          list }}
+        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+        __bad_parents__: >-
+          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
+          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
+        __bad_targets__: >-
+          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
+          selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Refusing to change anything through a parent that is a symlink, not a directory or not
+          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
+          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
+        quiet: true
+        that:
+          - (__bad_parents__ | length) == 0
+          - (__bad_targets__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # Phase two: after a successful reload, the record is exactly the declared set and the lines
+    # still commented out; until then it keeps naming what the run may still owe, so a retry can
+    # finish the reload [INV-09].
+    - name: 'PROCESS | Write The Record Of This Run'
+      vars:
+        __record__:
+          version: 1
+          destinations: "{{ __declared__ | sort }}"
+          lines: "{{ (__kept__ + __new_lines__) | unique | sort(attribute='0,1') }}"
+
+      ansible.builtin.copy:
+        backup: false
+        content: "{{ __record__ | to_nice_json(indent=2) }}\n"
+        decrypt: true
+        dest: '/var/lib/ansible-kernel/manifest.json'
+        follow: false
+        force: true
+        group: 'root'
+        mode: '0600'
+        owner: 'root'
+        remote_src: false
+        unsafe_writes: false
+
+#endregion --- [ Process: Apply The Kernel Configuration ] ------------------------------------ #
+
+
+#region ------ [ End: Verify The Kernel Reports The Declared Configuration ] ------------------ #
+
+- name: 'END | Verify The Kernel Reports The Declared Configuration'
+  vars:
+    __kernel_lib__: "{{ __kernel_lib_paths__.results[0] }}"
+    __kernel_lib_dir__: "{{ __kernel_lib_paths__.results[1] }}"
+    __kernel_usr_lib_dir__: "{{ __kernel_lib_paths__.results[2] }}"
+    __entries__: "{{ kernel_running.templates | dict2items }}"
+    __declared__: "{{ __entries__ | map(attribute='key') | list }}"
+    __keys__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'sysctl.conf.j2') |
+      map(attribute='value.settings') | map('list') | list | flatten(levels=1) | sort }}
+    __alt__: "{{ __keys__ | map('regex_escape') | join('|') }}"
+    __manifest__: >-
+      {{ (__kernel_manifest_raw__.content | b64decode | from_json) if
+      (__kernel_manifest_raw__.content | default('') | length) > 0 else {'version': 1,
+      'destinations': [], 'lines': []} }}
+    __own__: "{{ (__declared__ + __manifest__.destinations) | unique | list }}"
+    __conflicts__: "{{ kernel_running.sysctl.conflicts | string | lower | trim }}"
+    __policy_dirs__:
+      'none': []
+      'etc': ['/etc/sysctl.d']
+      'all':
+        - '/etc/sysctl.d'
+        - '/run/sysctl.d'
+        - '/usr/local/lib/sysctl.d'
+        - '/usr/lib/sysctl.d'
+        - '/lib/sysctl.d'
+    __inside_re__: >-
+      ^({{ __policy_dirs__[__conflicts__] | map('regex_escape') | join('|')
+      }})/[^/\x00-\x1f]+[.]conf${{ '|^/etc/sysctl[.]conf$' if __conflicts__ != 'none' else '' }}
+    __items__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'sysctl.conf.j2') |
+      map(attribute='value.settings') | map('dict2items') | list | flatten(levels=1) |
+      sort(attribute='key') }}
+    __disabled__: >-
+      {{ __entries__ | selectattr('value.template', 'eq', 'modprobe.conf.j2') |
+      map(attribute='value.settings.disabled') | list | flatten(levels=1) | map('replace', '-',
+      '_') | sort }}
+  when: (kernel_running.templates | default({}, true) | length) > 0
+  block:
+
+    - name: 'END | Find Every Sysctl File And Symlink After The Run'
+      check_mode: false
+      register: '__kernel_after_files__'
+      vars:
+        __all_dirs__: >-
+          {{ ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d', '/usr/lib/sysctl.d'] +
+          (['/lib/sysctl.d'] if (__kernel_lib__.stat.exists and __kernel_lib__.stat.isdir and not
+          __kernel_lib__.stat.islnk and __kernel_lib_dir__.stat.exists and
+          __kernel_lib_dir__.stat.isdir and not __kernel_lib_dir__.stat.islnk and
+          [__kernel_lib_dir__.stat.dev, __kernel_lib_dir__.stat.inode] !=
+          [__kernel_usr_lib_dir__.stat.dev | default(none), __kernel_usr_lib_dir__.stat.inode |
+          default(none)]) else []) }}
+
+      ansible.builtin.find:
+        age_stamp: 'mtime'
+        checksum_algorithm: 'sha1'
+        exact_mode: true
+        file_type: 'file'
+        follow: true
+        get_checksum: false
+        hidden: true
+        paths: "{{ __all_dirs__ }}"
+        patterns: ['*.conf']
+        read_whole_file: false
+        recurse: false
+        use_regex: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Find Every Sysctl Symlink After The Run'
+      check_mode: false
+      register: '__kernel_after_links__'
+      vars:
+        __all_dirs__: >-
+          {{ ['/etc/sysctl.d', '/run/sysctl.d', '/usr/local/lib/sysctl.d', '/usr/lib/sysctl.d'] +
+          (['/lib/sysctl.d'] if (__kernel_lib__.stat.exists and __kernel_lib__.stat.isdir and not
+          __kernel_lib__.stat.islnk and __kernel_lib_dir__.stat.exists and
+          __kernel_lib_dir__.stat.isdir and not __kernel_lib_dir__.stat.islnk and
+          [__kernel_lib_dir__.stat.dev, __kernel_lib_dir__.stat.inode] !=
+          [__kernel_usr_lib_dir__.stat.dev | default(none), __kernel_usr_lib_dir__.stat.inode |
+          default(none)]) else []) }}
+
+      ansible.builtin.find:
+        age_stamp: 'mtime'
+        checksum_algorithm: 'sha1'
+        exact_mode: true
+        file_type: 'link'
+        follow: true
+        get_checksum: false
+        hidden: true
+        paths: "{{ __all_dirs__ }}"
+        patterns: ['*.conf']
+        read_whole_file: false
+        recurse: false
+        use_regex: false
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Stat Each Symlink Target After The Run'
+      check_mode: false
+      loop: "{{ __kernel_after_links__.files | map(attribute='path') | sort }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_after_link_stats__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: true
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: "{{ item }}"
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Stat The Legacy Sysctl File After The Run'
+      check_mode: false
+      register: '__kernel_sysctl_conf_after__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: false
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/etc/sysctl.conf'
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Stat The Legacy Sysctl File Through Its Link After The Run'
+      check_mode: false
+      register: '__kernel_sysctl_conf_target_after__'
+
+      ansible.builtin.stat:
+        checksum_algorithm: 'sha1'
+        follow: true
+        get_attributes: false
+        get_checksum: false
+        get_mime: false
+        get_selinux_context: false
+        path: '/etc/sysctl.conf'
+
+    # ----------------------------------------------------------------------------------------- #
+    # rc-contract: grep(1): exit 1 means no line selected
+    - name: 'END | Read The Other Definitions Of The Managed Keys After The Run'
+      changed_when: false
+      check_mode: false
+      failed_when: __kernel_conflicting_after__.rc not in [0, 1]
+      register: '__kernel_conflicting_after__'
+      vars:
+        __regular__: >-
+          {{ __kernel_after_files__.files | map(attribute='path') | select('match',
+          __inside_re__) | list }}
+        __editable__: >-
+          {{ (__regular__ + (['/etc/sysctl.conf'] if (__kernel_sysctl_conf_after__.stat.exists
+          and __kernel_sysctl_conf_after__.stat.isreg and not
+          __kernel_sysctl_conf_after__.stat.islnk) else [])) | reject('in', __own__) | unique |
+          sort }}
+        __links__: >-
+          {{ __kernel_after_link_stats__.results | default([], true) | selectattr('stat.exists')
+          | selectattr('stat.isreg') | map(attribute='item') | select('match', __inside_re__) |
+          reject('in', __own__) | list }}
+        __legacy__: >-
+          {{ ['/etc/sysctl.conf'] if (__kernel_sysctl_conf_after__.stat.islnk | default(false)
+          and __kernel_sysctl_conf_target_after__.stat.exists and
+          __kernel_sysctl_conf_target_after__.stat.isreg and __conflicts__ != 'none') else [] }}
+        __candidates__: "{{ (__editable__ + __links__ + __legacy__) | unique | sort }}"
+      when:
+        - __conflicts__ != 'none'
+        - (__keys__ | length) > 0
+        - (__candidates__ | length) > 0
+
+      ansible.builtin.command:
+        argv: >-
+          {{ ['grep', '-nHE', '^[[:space:]]*(' ~ __alt__ ~ ')[[:space:]]*='] + __candidates__ }}
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Assert No Other Definition Of A Managed Key Remains'
+      when:
+        - __conflicts__ != 'none'
+        - (__keys__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          A managed key is still defined outside the role's files within the '{{ __conflicts__
+          }}' locations: {{ __kernel_conflicting_after__.stdout_lines | default([], true) }}.
+          Each line is file:line:text; a symlink is reported by its own path and resolves outside
+          the locations the role edits. A check that reads every location reports such a line as
+          a conflict.
+        quiet: true
+        that:
+          - (__kernel_conflicting_after__.stdout | default('', true) | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Read Each Declared Parameter From The Kernel'
+      changed_when: false
+      check_mode: false
+      loop: "{{ __items__ }}"
+      loop_control: { label: "{{ item.key }}" }
+      register: '__kernel_values__'
+      when: (__keys__ | length) > 0
+
+      ansible.builtin.command:
+        argv: ['sysctl', '-n', "{{ item.key }}"]
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Assert Each Parameter Matches Its Declared Value'
+      vars:
+        __observed__: >-
+          {{ __kernel_values__.results | default([], true) | map(attribute='stdout') |
+          map('trim') | list }}
+        __expected__: >-
+          {{ __items__ | map(attribute='value') | map('string') | map('trim') | list }}
+        __differs__: >-
+          {{ __observed__ | zip(__expected__) | map('unique', case_sensitive=true) |
+          map('length') | list }}
+        __mismatched__: >-
+          {{ __keys__ | zip(__differs__) | selectattr('1', 'eq', 2) | map(attribute='0') | list
+          }}
+        __report__: >-
+          {{ __keys__ | zip(__observed__, __expected__) | selectattr('0', 'in', __mismatched__) |
+          map('join', ' ') | list }}
+      when: (__keys__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          The kernel does not report every declared value; each entry is key, observed, expected:
+          {{ __report__ }}. A vendor file that sysctl --system applies later than the role's file
+          overrides it (sysctl.d(5)); a read-only key keeps its boot value.
+        quiet: true
+        that:
+          - (__mismatched__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+    # kmod runs the first install directive it reads, in sorted basename order across its
+    # directories; the dry run prints that command, which an earlier /bin/true file would change
+    # (INV-06).
+    - name: 'END | Resolve Each Disabled Module Through Kmod'
+      changed_when: false
+      check_mode: false
+      loop: "{{ __disabled__ }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_resolution__'
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.command:
+        argv: ['modprobe', '--dry-run', '--verbose', "{{ item }}"]
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Assert Kmod Would Run False For Each Disabled Module'
+      vars:
+        __not_false__: >-
+          {{ __kernel_resolution__.results | default([], true) |
+          zip(__kernel_resolution__.results | default([], true) | map(attribute='stdout_lines') |
+          map('map', 'trim') | map('list')) | rejectattr('1', 'eq', ['install /bin/false']) |
+          map(attribute='0.item') | list }}
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          kmod would not run exactly /bin/false for every disabled module: {{ __not_false__ }}.
+          modprobe --dry-run --verbose prints the command of the first install directive it
+          reads; an earlier-sorting file in any modprobe.d directory takes precedence over the
+          role's line.
+        quiet: true
+        that:
+          - (__not_false__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Read The Module Configuration Kmod Resolves'
+      changed_when: false
+      check_mode: false
+      register: '__kernel_showconfig__'
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.command:
+        argv: ['modprobe', '--showconfig']
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Assert Each Disabled Module Is Blacklisted'
+      vars:
+        __missing__: >-
+          {{ __disabled__ | map('regex_replace', '^', 'blacklist ') | list | reject('in',
+          __kernel_showconfig__.stdout_lines | default([], true)) | list }}
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          kmod does not list a blacklist line for every disabled module: missing {{ __missing__
+          }}. modprobe --showconfig prints each blacklist line it reads from the modprobe.d
+          directories; a line absent there is not in effect.
+        quiet: true
+        that:
+          - (__missing__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Read The Loaded Modules After The Unload'
+      changed_when: false
+      check_mode: false
+      register: '__kernel_lsmod_after__'
+      when:
+        - (__disabled__ | length) > 0
+        - kernel_running.modules.unload | bool
+
+      ansible.builtin.command:
+        argv: ['lsmod']
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    - name: 'END | Assert No Disabled Module Is Loaded'
+      vars:
+        __still_loaded__: >-
+          {{ __disabled__ | select('in', __kernel_lsmod_after__.stdout_lines[1:] | map('split') |
+          map('first') | list) | list }}
+      when:
+        - (__disabled__ | length) > 0
+        - kernel_running.modules.unload | bool
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          Disabled modules are still loaded: {{ __still_loaded__ }}. A module in use cannot be
+          unloaded; stop what uses it or reboot, and the install line keeps it from loading
+          again.
+        quiet: true
+        that:
+          - (__still_loaded__ | length) == 0
+
+#endregion --- [ End: Verify The Kernel Reports The Declared Configuration ] ------------------ #

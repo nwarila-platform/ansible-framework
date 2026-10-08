@@ -1,0 +1,5 @@
+# ansible-framework kernel role: managed file; manual edits are overwritten on the next run
+{% for __module__ in __template__.settings.disabled | sort %}
+install {{ __module__ }} /bin/false
+blacklist {{ __module__ }}
+{% endfor %}
