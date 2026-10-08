@@ -16,8 +16,9 @@ argument_specs:
     description:
       - 'Makes the kernel package present, renders sysctl and modprobe drop-in files,'
       - 'comments out other definitions of the managed sysctl keys and records them, reloads'
-      - 'sysctl, unloads disabled modules and reads every value back. The role carries no'
-      - 'value of its own. Execution path is determined by the state variable.'
+      - 'sysctl, unloads loaded disabled modules when modules.unload is true and reads every'
+      - 'value back. The role carries no value of its own. Execution path is determined by the'
+      - 'state variable.'
     options:
 
       ENV:

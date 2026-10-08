@@ -3,11 +3,11 @@
 Configures the kernel from values its caller supplies: it makes the kernel package present, renders
 sysctl and modprobe drop-in files, comments out every other definition of the sysctl keys it manages
 within a caller-chosen set of directories and records what it changed, reloads sysctl, unloads
-disabled modules that are loaded, and reads every value back from the kernel, from the static
-locations and from kmod. The role carries no value of its own. A system role composes the complete
-set from its policy and passes it in the `kernel` mapping; the role applies exactly that set, so a
-second run changes nothing, a changed set converges to the new set, and `state: absent` restores
-what the record lists.
+loaded disabled modules when `kernel.modules.unload` is true, and reads every value back from the
+kernel, from the static locations and from kmod. The role carries no value of its own. A system
+role composes the complete set from its policy and passes it in the `kernel` mapping; the role
+applies exactly that set, so a second run changes nothing, a changed set converges to the new set,
+and `state: absent` restores what the record lists.
 
 > **Scope:** the RedHat family, EL 8 and 9. The role owns the `/etc/sysctl.d` and `/etc/modprobe.d`
 > drop-ins it writes, the lines it comments out and its record under `/var/lib/ansible-kernel`, and
@@ -21,7 +21,10 @@ what the record lists.
   `absent_redhat.yml`.
 - `python3-dnf` on the host, for `ansible.builtin.dnf`.
 - `community.general` 7.5.9 on the controller, for `modprobe` (pinned in `requirements.yml`).
-- `become` for the PROCESS stage; every read runs unprivileged.
+- Root on the host for the whole run: the caller runs the role under `become: true`. In both
+  states BEGIN reads the record, a root-only file in a root-only directory; in `present`, BEGIN and
+  END also read kernel keys only root may read (some entries under `/proc/sys` are mode `0600`,
+  measured 2026-10-08 on kernel 6.8). PROCESS also sets `become` itself.
 
 ## Inputs
 
@@ -85,8 +88,9 @@ kernel:
 - `sysctl.conflicts` decides where a second definition of a managed key is commented out. `etc`
   covers `/etc/sysctl.conf` and `/etc/sysctl.d`; `all` adds `/run/sysctl.d`,
   `/usr/local/lib/sysctl.d`, `/usr/lib/sysctl.d` and `/lib/sysctl.d`, where vendor packages ship
-  drop-ins [INV-02]. Choose `all` where a compliance check reads every location and reports any
-  second definition; choose `etc` where the check reads the runtime value and separately verifies
+  drop-ins [INV-02]. Choose `all` where a check greps every location and reports conflicting
+  results: `all` comments out every other definition of a managed key, those that agree with the
+  declared value included, so such a check finds only the role's. Choose `etc` where the check reads the runtime value and separately verifies
   vendor files against the rpm database, because those files are not rpm config files and an edit
   shows as a digest mismatch [INV-03]. `none` leaves every other file alone; the runtime value then
   follows precedence [INV-01].
@@ -97,10 +101,7 @@ kernel:
   outside the files the role edits is read through the link, and END reports it when the target
   defines a managed key. `/etc/sysctl.conf` itself, when it is a live symlink to a regular file,
   is read through its own path under the `etc` and `all` policies and never edited; a stat
-  through the link is taken in BEGIN and again in END. Immediately before each removal, restoration, rendering, edit and record
-  write, every parent directory on the way to the target must be a real root-owned directory and
-  the target a regular file or absent; a symlinked directory refuses the run rather than carrying
-  the change outside the declared scope.
+  through the link is taken in BEGIN and again in END.
 - The reload is a task, never a handler, gated on what is owed and decided before anything
   changes, from the record, the kernel and the files BEGIN read: a recorded sysctl file no longer
   declared, a recorded line no longer wanted, a declared value the kernel reports differently, a
@@ -108,12 +109,17 @@ kernel:
   modprobe work never reloads sysctl, and no task result's change flag is consulted. A rerun
   therefore repairs runtime drift and finishes an interrupted transition instead of only reporting
   them [INV-09].
-- Immediately before the record directory is created, before each record write and before the
-  record and its directory are removed, the same parent-and-target guard runs over the record path,
-  so a symlinked `/var/lib` refuses the run rather than carrying the record outside its directory.
+- At the end of BEGIN, before the first change, one guard checks every path the run may change:
+  the record and its directory, every declared file, every recorded file and line the run may remove
+  or restore, and every file a definition will be commented out in. Each parent must be a real
+  root-owned directory, as must the record directory, and every other path a regular file or
+  absent; a symlinked or foreign-owned directory, `/var/lib` included, refuses the run before
+  anything changes. The guard runs once, so a path replaced between it and the change is not
+  checked again.
 - A file the role would edit is refused when it contains a carriage return, lacks a final newline,
-  or already holds the exact marked line the role would write: the role could not restore it byte
-  for byte or tell its own line from the existing one.
+  holds the same definition of a managed key more than once, or already holds the exact marked line
+  the role would write: the role could not restore it byte for byte, keep one original text per
+  line, or tell its own line from the existing one.
 
 A system role composes the mapping from its policy and calls the role once:
 
@@ -121,7 +127,14 @@ A system role composes the mapping from its policy and calls the role once:
 - name: 'PROCESS | Apply The Kernel Policy'
 
   ansible.builtin.include_role:
+    allow_duplicates: true
+    defaults_from: 'main'
+    handlers_from: 'main'
     name: 'kernel'
+    public: false
+    rescuable: true
+    rolespec_validate: true
+    tasks_from: 'main'
   vars:
     ENV: "{{ ENV }}"
     state: 'present'
@@ -132,8 +145,8 @@ A system role composes the mapping from its policy and calls the role once:
 
 | `state` | Behaviour |
 |---|---|
-| `present` | The package is present and the record directory exists; both precede the journal. The record is validated, then written in two phases: before the first drop-in or line mutation it names every file and line this run may touch; after a successful reload it names exactly the declared set. Recorded files no longer declared are removed; recorded lines no longer wanted are restored; every declared file is rendered; other definitions of the managed keys within the `conflicts` locations are commented out; sysctl is reloaded when any file changed, when the record still names a file no longer declared or a line no longer wanted, or when the kernel reports a declared value differently; disabled modules that are loaded are unloaded; every value is read back from the kernel, from the static locations and from kmod. |
-| `absent` | A record directory holding anything but the record is refused before any change. Every recorded file is removed and every recorded line restored to its recorded text, sysctl is reloaded when the record names a sysctl file or a line, and only then are the record and its directory removed, so a failed reload keeps the record for the retry. The package stays: the running kernel cannot be removed. A key with no other definition keeps its runtime value until the host reboots. |
+| `present` | One guard checks every path the run may change before anything changes. The package is present and the record directory exists before the record's first phase. The record is validated, then written in two phases: before the first drop-in or line mutation it names every file and line this run may touch; after a successful reload it names exactly the declared set. Recorded files no longer declared are removed; recorded lines no longer wanted are restored; every declared file is rendered; other definitions of the managed keys within the `conflicts` locations are commented out; sysctl is reloaded when a declared sysctl file is missing or differs from its rendering, a definition is commented out, the record still names a file no longer declared or a line no longer wanted, or the kernel reports a declared value differently, never for modprobe work alone; loaded disabled modules are unloaded when `kernel.modules.unload` is true; every value is read back from the kernel, from the static locations and from kmod. |
+| `absent` | A record directory holding anything but the record is refused, and one guard checks the record, its directory and every recorded path, before any change. Every recorded file is removed and every recorded line restored to its recorded text, sysctl is reloaded when the record names a sysctl file or a line, and only then are the record and its directory removed, so a failed reload keeps the record for the retry. The package stays: the running kernel cannot be removed. A key with no other definition keeps its runtime value until the host reboots. |
 
 There is no `clean` state: the role creates no cache. A declared destination that already holds a
 file the record does not list is refused rather than overwritten. The record is
@@ -144,22 +157,31 @@ refusal, never a deletion. A marked line the record does not list is left alone.
 
 ## Design invariants
 
-1. [INV-01] `sysctl --system` reads `/usr/lib/sysctl.d`, `/run/sysctl.d`, `/etc/sysctl.d` and
-   `/etc/sysctl.conf`; a file in `/etc/sysctl.d` with the same name as a vendor file replaces it,
-   and later-sorting names win (sysctl.d(5); the stock `/etc/sysctl.conf` header, read
-   2026-10-08). The role's files therefore win at reload when they sort last, and the conflict
-   policy exists for checks that read files rather than the kernel.
-2. [INV-02] Vendor packages ship sysctl drop-ins under `/usr/lib/sysctl.d`: four on EL 8 (from
-   `systemd` and `elfutils-default-yama-scope`) and two on EL 9 (from `systemd` and the release
-   package). On the merged-/usr layout of EL 8 and 9 `/lib` itself is the symlink (`/lib ->
+1. [INV-01] `sysctl --system` searches `/etc/sysctl.d`, `/run/sysctl.d`, `/usr/local/lib/sysctl.d`,
+   `/usr/lib/sysctl.d` and `/lib/sysctl.d`, in that order, for `*.conf` files and keeps only the
+   first file of each name, so a file in `/etc/sysctl.d` replaces a vendor file of the same name. It
+   applies the files it kept in name order and then `/etc/sysctl.conf` when that is a regular file
+   or a link to one; the last setting of a key wins (procps-ng `sysctl.c`, `PreloadSystem`: 3.3.17
+   as RHEL 9 ships it, and 3.3.15 with RHEL 8's `procps-ng-3.3.15-sysctl-config-dir-order.patch`,
+   which puts `/etc/sysctl.d` ahead of `/run/sysctl.d`; on both stock AMIs the converge proof's
+   reload of 2026-10-08 applied `20-proof-conflict.conf` only from `/etc/sysctl.d`, though copies
+   sat in `/run/sysctl.d`, `/usr/local/lib/sysctl.d` and `/usr/lib/sysctl.d`, and applied
+   `/etc/sysctl.conf` last). The role's value therefore survives a reload only when no file applied
+   after the role's defines the key; the conflict policy comments such definitions out within the
+   selected locations, and END fails the run when the kernel reports another value.
+2. [INV-02] Vendor packages ship sysctl drop-ins under `/usr/lib/sysctl.d`: five on the stock RHEL
+   8.10 AMI (`10-default-yama-scope.conf`, `50-coredump.conf`, `50-default.conf`,
+   `50-libkcapi-optmem_max.conf`, `50-pid-max.conf`) and six on the stock 9.8 AMI (the same five and
+   `50-redhat.conf`), as the converge proof's inventory recorded them on 2026-10-08. On the merged-/usr layout of EL 8 and 9 `/lib` itself is the symlink (`/lib ->
    usr/lib`), so `/lib/sysctl.d` is the vendor directory reached through it, and `stat` with
    `follow: false` on `/lib/sysctl.d` alone reports a real directory (measured 2026-10-08 in
    `rockylinux:8` and `rockylinux:9`: same device and inode as `/usr/lib/sysctl.d`).
    `/etc/sysctl.conf` is present on EL 8 and owned by `systemd-udev` on EL 9 (the live-check
    record of the stock RHEL 9.8 image, 2026-10-07). The role lists `/lib/sysctl.d` only when `/lib`
    and `/lib/sysctl.d` are both real, non-link directories and the directory's device and inode
-   differ from `/usr/lib/sysctl.d`'s, so no vendor file is seen twice (`tests/test.yml`, the alias
-   play, runs that predicate over a merged, a split and a linked tree).
+   differ from `/usr/lib/sysctl.d`'s, so no vendor file is seen twice (the test play `PLAY | List
+   The Legacy Sysctl Directory Only As A Distinct Real Directory` runs that predicate over a merged,
+   a split and a linked tree).
 3. [INV-03] Those vendor files are not rpm `%config` files (`rpm -qc`, measured 2026-10-08), so an
    edit is a digest mismatch under `rpm -Va --noconfig`. The role never edits them unless the
    caller chooses `all`, and it records every line it edits.
@@ -223,8 +245,7 @@ refusal, never a deletion. A marked line the record does not list is left alone.
    `a.conf`, and a backreference `\1` works; a doubled backslash becomes a literal backslash and
    matches none of those. A double-quoted YAML scalar instead turns `\r` into a real carriage
    return, which Jinja normalises to a newline before the regex sees it (measured 2026-10-08 with
-   ansible-core 2.21.2 against fixture files; the probe and its output are recorded with the piece
-   that added the role). Every authored regex literal that relies on a preserved backslash
+   ansible-core 2.21.2 against fixture files). Every authored regex literal that relies on a preserved backslash
    therefore lives in a folded scalar with single-backslash escapes; regexes built from
    `regex_escape` output and plain single-quoted scalars carry no such escape; and the byte checks
    run on slurped content, never on Jinja literals.
@@ -263,13 +284,20 @@ None. The role has no Windows path.
   find module lists a symlink only under the link type, hidden files included, the hit pairs are
   built from per-file grep results over a space-named, a colon-named and a hidden file, the reload
   gate's rendering expression matches the template's bytes, the legacy sysctl directory is listed only as
-  a distinct real directory, the guard expressions name exactly a symlinked parent, both record
-  phases render identical bytes, a disabled name kmod resolves to another module is refused, the
+  a distinct real directory, the guard names exactly a symlinked parent and a symlinked directory
+  target, both record phases render identical bytes, the record validation accepts a well-formed
+  record and refuses a boolean version, an extra member and text that is not JSON, a disabled name kmod resolves to another module is refused, the
   kmod readback refuses a softdep listing modules for a disabled module, passes an empty one, and accepts a dry run only as insmod lines for other modules followed by exactly install /bin/false,
   the duplicate and marked-line refusals are exact for names and
-  values holding any byte the contract admits, commenting and restoration preserve `\1`, `\t` and
+  values holding any byte the contract admits, commenting and both states' restoration preserve `\1`, `\t` and
   `\g<0>` as text, the legacy file is a read-only candidate only as a live symlink, and the END
   comparison expression names exactly the differing keys. From the repository root:
   `ansible-playbook -i applications/kernel/tests/inventory applications/kernel/tests/test.yml`.
-- A converge-twice and check-diff proof on stock EL 8 and EL 9 hosts, with transition, negative
-  and absent legs, is pending; its record will be cited here when it has run.
+- The twelve plays other than the thirty-one contract plays and the find play exercise copies of
+  the role's tasks or expressions, not the role's files, so a copy can drift from the role while
+  every play still passes. Until the framework tracks such a check, the planner's `copycheck`
+  keeps each copy equal to the role as parsed.
+- Each change to the role is proven on the stock RHEL 8.10 and 9.8 AMIs before it merges, 55 legs
+  per host: converge twice, check-diff, transitions between policies, interrupted runs, drift
+  repair, 31 refusals and absent, with every planted byte restored; the change's pull request
+  carries the run's record.

@@ -2,16 +2,16 @@
 # File: '{{ role_path }}/tasks/present_redhat.yml'
 # --- [ Description ] ------------------------------------------------------------------------- #
 #
-# The present state for the RedHat family. BEGIN reads the package bindings, the role's record
-# (the manifest), the declared destinations, every sysctl file and symlink in the six locations,
-# the other definitions of the managed keys, the loaded modules and what kmod resolves each
-# disabled name to, and refuses a name that resolves to another module. PROCESS makes the package
-# present, removes recorded files no longer declared, restores recorded lines no longer wanted,
-# renders the drop-ins, comments out the remaining definitions inside the selected locations,
-# reloads what is owed, unloads disabled modules and then trims the record to the declared set.
-# END reads every value back from the kernel, from the static locations and from kmod. The
-# marker, record path and directory constants are literal here and in absent_redhat.yml on
-# purpose.
+# The present state for the RedHat family. BEGIN reads the package bindings, the record, the
+# declared destinations, every sysctl file and symlink in the six locations, the other
+# definitions of the managed keys, the loaded modules and what kmod resolves each disabled name
+# to; it refuses a name that resolves to another module and checks every path the run may change.
+# PROCESS makes the package present, removes recorded files no longer declared, restores recorded
+# lines no longer wanted, renders the drop-ins, comments out the remaining definitions inside the
+# selected locations, reloads what is owed, unloads loaded disabled modules when
+# kernel_running.modules.unload is true and then trims the record to the declared set. END reads
+# every value back from the kernel, from the static locations and from kmod. The marker, record
+# path and directory constants are literal here and in absent_redhat.yml on purpose.
 #
 # ============================================================================================= #
 
@@ -131,9 +131,9 @@
         src: '/var/lib/ansible-kernel/manifest.json'
 
     # ----------------------------------------------------------------------------------------- #
-    # The raw object is asserted before any value is used: exactly three members, version the
-    # integer 1, destinations direct *.conf children of the two drop-in directories, lines as
-    # [path, text] pairs with an in-scope path and a single-line text without control bytes.
+    # The raw object is asserted before any value is used: exactly three members, version
+    # the integer 1, destinations direct *.conf children of the two drop-in directories,
+    # lines as [path, text] pairs with an in-scope path and single-line control-free text.
     - name: 'BEGIN | Validate The Record Before Any Value Is Used'
       when: __kernel_manifest_stat__.stat.exists | default(false)
       block:
@@ -145,7 +145,8 @@
             __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
             __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
             __conf_re__: '^/etc/sysctl[.]conf$'
-            __d_re__: '^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$'
+            __d_re__: >-
+              ^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$
             __bad_dests__: >-
               {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
               reject('match', __dest_re__) | list) }}
@@ -598,6 +599,99 @@
         that:
           - (__resolved__ | reject('eq', __kernel_alias__.item) | list | length) == 0
 
+    # ----------------------------------------------------------------------------------------- #
+    # Every path this run may change is checked here, before PROCESS changes anything: each
+    # parent must be a real root-owned directory, as must the record directory, and every other
+    # path a regular file or absent. The vars repeat PROCESS's and must stay equal to them.
+    - name: 'BEGIN | Check Every Path This Run May Change'
+      vars:
+        __recorded__: "{{ __manifest__.lines }}"
+        __recorded_keys__: >-
+          {{ __recorded__ | map(attribute='1') | map('regex_replace', '[\t ]*=.*$', '') |
+          map('trim') | list }}
+        __unwanted__: >-
+          {{ (__recorded__ | zip(__recorded_keys__) | rejectattr('1', 'in', __keys__) |
+          map(attribute='0') | list) + (__recorded__ | zip(__recorded_keys__) | selectattr('1',
+          'in', __keys__) | map(attribute='0') | rejectattr('0', 'match', __inside_re__) | list)
+          }}
+        __pairs__: >-
+          {{ query('ansible.builtin.subelements', __kernel_conflicting__.results | default([],
+          true), 'stdout_lines', skip_missing=true) }}
+        __hits__: >-
+          {{ __pairs__ | map(attribute='0.item') | zip(__pairs__ | map(attribute='1') |
+          map('regex_replace', '^[0-9]+:', '')) | map('list') | list }}
+        __regular__: >-
+          {{ __kernel_sysctl_files__.files | map(attribute='path') | select('match',
+          __inside_re__) | list }}
+        __editable__: >-
+          {{ (__regular__ + (['/etc/sysctl.conf'] if (__kernel_sysctl_conf__.stat.exists and
+          __kernel_sysctl_conf__.stat.isreg and not __kernel_sysctl_conf__.stat.islnk) else []))
+          | reject('in', __own__) | unique | sort }}
+        __new_lines__: "{{ __hits__ | selectattr('0', 'in', __editable__) | list }}"
+        __guard_dirs__: "{{ ['/var/lib/ansible-kernel'] }}"
+        __guard_files__: >-
+          {{ (['/var/lib/ansible-kernel/manifest.json'] + (__manifest__.destinations |
+          reject('in', __declared__) | list) + (__unwanted__ | map(attribute='0') | list) +
+          __declared__ + (__new_lines__ | map(attribute='0') | list)) | unique | sort }}
+      block:
+
+        - name: 'BEGIN | Stat Every Path This Run May Change And Its Parents'
+          check_mode: false
+          loop: >-
+            {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
+            map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') |
+            map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') |
+            map('dirname') | map('dirname') | list) + __targets__) | reject('eq', '/') | unique |
+            sort }}
+          loop_control: { label: "{{ item }}" }
+          register: '__kernel_guard__'
+          vars:
+            __targets__: "{{ __guard_dirs__ + __guard_files__ }}"
+
+          ansible.builtin.stat:
+            checksum_algorithm: 'sha1'
+            follow: false
+            get_attributes: false
+            get_checksum: false
+            get_mime: false
+            get_selinux_context: false
+            path: "{{ item }}"
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'BEGIN | Refuse An Unsafe Parent Or Target Before Any Change'
+          vars:
+            __targets__: "{{ __guard_dirs__ + __guard_files__ }}"
+            __found__: >-
+              {{ __kernel_guard__.results | default([], true) | selectattr('stat.exists') | list
+              }}
+            __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
+            __dirs__: "{{ __found__ | selectattr('item', 'in', __guard_dirs__) | list }}"
+            __files__: "{{ __found__ | selectattr('item', 'in', __guard_files__) | list }}"
+            __bad_parents__: >-
+              {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
+              (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) +
+              (__parents__ | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') |
+              list) }}
+            __bad_targets__: >-
+              {{ (__dirs__ | rejectattr('stat.isdir') | map(attribute='item') | list) + (__dirs__
+              | selectattr('stat.islnk') | map(attribute='item') | list) + (__dirs__ |
+              rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) +
+              (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__
+              | selectattr('stat.islnk') | map(attribute='item') | list) }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              Refusing to change anything: a parent is a symlink, not a directory or not
+              root-owned ({{ __bad_parents__ | unique | list }}), or a path this run would change
+              is a symlink, not the kind it must be or, for the record directory, not root-owned
+              ({{ __bad_targets__ | unique | list }}). Nothing has changed; repair the path by
+              hand.
+            quiet: true
+            that:
+              - (__bad_parents__ | length) == 0
+              - (__bad_targets__ | length) == 0
+
 #endregion --- [ Begin: Read The Kernel Configuration State ] --------------------------------- #
 
 
@@ -641,9 +735,6 @@
     __recorded_keys__: >-
       {{ __recorded__ | map(attribute='1') | map('regex_replace', '[\t ]*=.*$', '') | map('trim')
       | list }}
-    __kept__: >-
-      {{ __recorded__ | zip(__recorded_keys__) | selectattr('1', 'in', __keys__) |
-      map(attribute='0') | selectattr('0', 'match', __inside_re__) | list }}
     __unwanted__: >-
       {{ (__recorded__ | zip(__recorded_keys__) | rejectattr('1', 'in', __keys__) |
       map(attribute='0') | list) + (__recorded__ | zip(__recorded_keys__) | selectattr('1', 'in',
@@ -662,6 +753,9 @@
       __kernel_sysctl_conf__.stat.isreg and not __kernel_sysctl_conf__.stat.islnk) else [])) |
       reject('in', __own__) | unique | sort }}
     __new_lines__: "{{ __hits__ | selectattr('0', 'in', __editable__) | list }}"
+    __kept__: >-
+      {{ __recorded__ | zip(__recorded_keys__) | selectattr('1', 'in', __keys__) |
+      map(attribute='0') | selectattr('0', 'match', __inside_re__) | list }}
   block:
 
     - name: 'PROCESS | Install The Kernel Package'
@@ -695,62 +789,6 @@
 
     # ----------------------------------------------------------------------------------------- #
 
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path itself a real root-owned directory or absent, checked here, just before the
-    # mutation, so a symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Creating'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_create__'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel'] }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Creating'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel'] }}"
-        __found__: >-
-          {{ __kernel_guard_create__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isdir') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) + (__files__ |
-          rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink, not a
-          directory or not root-owned ({{ __bad_targets__ | unique | list }}). Repair the path by
-          hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
-
-    # ----------------------------------------------------------------------------------------- #
-
     - name: 'PROCESS | Create The Record Directory'
 
       ansible.builtin.file:
@@ -765,60 +803,6 @@
         recurse: false
         state: 'directory'
         unsafe_writes: false
-
-    # ----------------------------------------------------------------------------------------- #
-
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Recording'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_record__'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Recording'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
-        __found__: >-
-          {{ __kernel_guard_record__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
 
     # ----------------------------------------------------------------------------------------- #
 
@@ -847,60 +831,6 @@
 
     # ----------------------------------------------------------------------------------------- #
 
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Removing'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_remove__'
-      vars:
-        __targets__: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Removing'
-      vars:
-        __targets__: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
-        __found__: >-
-          {{ __kernel_guard_remove__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
-
-    # ----------------------------------------------------------------------------------------- #
-
     - name: 'PROCESS | Remove The Recorded Files No Longer Declared'
       loop: "{{ __manifest__.destinations | reject('in', __declared__) | list }}"
       loop_control: { label: "{{ item }}" }
@@ -914,59 +844,6 @@
         recurse: false
         state: 'absent'
         unsafe_writes: false
-
-    # ----------------------------------------------------------------------------------------- #
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Restoring'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_restore__'
-      vars:
-        __targets__: "{{ __unwanted__ | map(attribute='0') | list }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Restoring'
-      vars:
-        __targets__: "{{ __unwanted__ | map(attribute='0') | list }}"
-        __found__: >-
-          {{ __kernel_guard_restore__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
 
     # ----------------------------------------------------------------------------------------- #
 
@@ -988,60 +865,6 @@
         regexp: "^# kernel-role-disabled: ({{ item.1 | regex_escape }})$"
         state: 'present'
         unsafe_writes: false
-
-    # ----------------------------------------------------------------------------------------- #
-
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Rendering'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_render__'
-      vars:
-        __targets__: "{{ __declared__ }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Rendering'
-      vars:
-        __targets__: "{{ __declared__ }}"
-        __found__: >-
-          {{ __kernel_guard_render__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
 
     # ----------------------------------------------------------------------------------------- #
 
@@ -1069,59 +892,6 @@
         src: "{{ item.template }}"
         trim_blocks: true
         unsafe_writes: false
-
-    # ----------------------------------------------------------------------------------------- #
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Commenting'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_comment__'
-      vars:
-        __targets__: "{{ __new_lines__ | map(attribute='0') | list }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Commenting'
-      vars:
-        __targets__: "{{ __new_lines__ | map(attribute='0') | list }}"
-        __found__: >-
-          {{ __kernel_guard_comment__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
 
     # ----------------------------------------------------------------------------------------- #
 
@@ -1210,60 +980,6 @@
         params: ''
         persistent: 'disabled'
         state: 'absent'
-
-    # ----------------------------------------------------------------------------------------- #
-
-    # Every parent on the way to a path about to change must be a real root-owned directory and
-    # the path a regular file or absent, checked here, immediately before the mutation, so a
-    # symlinked directory cannot carry the change outside the declared scope.
-    - name: 'PROCESS | Stat The Parents And Targets Before Finalizing'
-      check_mode: false
-      loop: >-
-        {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
-        map('dirname') | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname')
-        | list) + (__targets__ | map('dirname') | map('dirname') | map('dirname') |
-        map('dirname') | list) + __targets__) | reject('eq', '/') | unique | sort }}
-      loop_control: { label: "{{ item }}" }
-      register: '__kernel_guard_final__'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
-
-      ansible.builtin.stat:
-        checksum_algorithm: 'sha1'
-        follow: false
-        get_attributes: false
-        get_checksum: false
-        get_mime: false
-        get_selinux_context: false
-        path: "{{ item }}"
-
-    # ----------------------------------------------------------------------------------------- #
-
-    - name: 'PROCESS | Refuse An Unsafe Parent Or Target Before Finalizing'
-      vars:
-        __targets__: "{{ ['/var/lib/ansible-kernel/manifest.json'] }}"
-        __found__: >-
-          {{ __kernel_guard_final__.results | default([], true) | selectattr('stat.exists') |
-          list }}
-        __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-        __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
-        __bad_parents__: >-
-          {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
-          (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) + (__parents__
-          | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) }}
-        __bad_targets__: >-
-          {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__ |
-          selectattr('stat.islnk') | map(attribute='item') | list) }}
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          Refusing to change anything through a parent that is a symlink, not a directory or not
-          root-owned ({{ __bad_parents__ | unique | list }}) or a target that is a symlink or a
-          special file ({{ __bad_targets__ | unique | list }}). Repair the path by hand.
-        quiet: true
-        that:
-          - (__bad_parents__ | length) == 0
-          - (__bad_targets__ | length) == 0
 
     # ----------------------------------------------------------------------------------------- #
 

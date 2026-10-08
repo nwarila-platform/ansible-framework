@@ -2847,6 +2847,68 @@
                 (__kernel_backslash_restored__.content | b64decode) == (__lines__ | join(__nl__)
                 ~ __nl__)
 
+        # Keep the module arguments equal to the role's commenting task's as parsed; the loop is
+        # this play's.
+        - name: 'PROCESS | Comment Out Each Line Again'
+          changed_when: false
+          loop: >-
+            {{ [__kernel_backslash_dir__.path ~ '/scratch.conf'] | product(__lines__) |
+            map('list') | list }}
+          loop_control: { label: "{{ item.1 }}" }
+
+          ansible.builtin.lineinfile:
+            backrefs: true
+            backup: false
+            create: false
+            encoding: 'utf-8'
+            firstmatch: false
+            line: '# kernel-role-disabled: \g<0>'
+            path: "{{ item.0 }}"
+            regexp: "^{{ item.1 | regex_escape }}$"
+            state: 'present'
+            unsafe_writes: false
+
+        # Keep the module arguments equal to the absent state's restoration task's as parsed; the
+        # loop is this play's.
+        - name: 'PROCESS | Restore Each Line As The Absent State Does'
+          changed_when: false
+          loop: >-
+            {{ [__kernel_backslash_dir__.path ~ '/scratch.conf'] | product(__lines__) |
+            map('list') | list }}
+          loop_control: { label: "{{ item.1 }}" }
+
+          ansible.builtin.lineinfile:
+            backrefs: true
+            backup: false
+            create: false
+            encoding: 'utf-8'
+            firstmatch: false
+            line: '\g<1>'
+            path: "{{ item.0 }}"
+            regexp: "^# kernel-role-disabled: ({{ item.1 | regex_escape }})$"
+            state: 'present'
+            unsafe_writes: false
+
+        - name: 'END | Read The File The Absent Arguments Restored'
+          check_mode: false
+          register: '__kernel_backslash_absent__'
+
+          ansible.builtin.slurp:
+            armor: true
+            src: "{{ __kernel_backslash_dir__.path }}/scratch.conf"
+
+        - name: 'END | Assert The Absent Arguments Restore The Original Bytes'
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The absent state's restoration changed the text: {{
+              __kernel_backslash_absent__.content | b64decode }}
+            quiet: true
+            that:
+              - >-
+                (__kernel_backslash_absent__.content | b64decode) == (__lines__ | join(__nl__) ~
+                __nl__)
+
       always:
 
         - name: 'PROCESS | Remove The Scratch Directory'
@@ -3002,7 +3064,7 @@
             state: 'absent'
             unsafe_writes: false
 
-- name: 'PLAY | Name A Symlinked Parent With The Guard Expressions'
+- name: 'PLAY | Name Exactly The Unsafe Parents And Targets With The Guard'
   hosts: 'localhost'
   connection: 'local'
   gather_facts: false
@@ -3011,6 +3073,13 @@
   tasks:
 
     - name: 'PROCESS | Run The Guard Expressions Against A Scratch Tree'
+      vars:
+        __guard_dirs__: >-
+          {{ [__kernel_guard_dir__.path ~ '/record', __kernel_guard_dir__.path ~ '/record-link']
+          }}
+        __guard_files__: >-
+          {{ [__kernel_guard_dir__.path ~ '/link/x.conf', __kernel_guard_dir__.path ~
+          '/real/x.conf'] }}
       block:
 
         - name: 'BEGIN | Create A Scratch Directory'
@@ -3065,10 +3134,37 @@
             state: 'link'
             unsafe_writes: false
 
-        # Keep the stat loop and the guard expressions equal to the role's as parsed; the
-        # targets are this play's: one through the symlinked parent, one through the real
-        # directory.
-        - name: 'BEGIN | Stat The Parents And Targets Of Both Paths'
+        - name: 'PROCESS | Link A Directory Target To The Real Directory'
+          changed_when: false
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            dest: "{{ __kernel_guard_dir__.path }}/record-link"
+            follow: true
+            force: false
+            modification_time_format: '%Y%m%d%H%M.%S'
+            recurse: false
+            src: 'real'
+            state: 'link'
+            unsafe_writes: false
+
+        - name: 'PROCESS | Create A Real Directory Target'
+          changed_when: false
+
+          ansible.builtin.file:
+            access_time_format: '%Y%m%d%H%M.%S'
+            follow: true
+            force: false
+            mode: '0700'
+            modification_time_format: '%Y%m%d%H%M.%S'
+            path: "{{ __kernel_guard_dir__.path }}/record"
+            recurse: false
+            state: 'directory'
+            unsafe_writes: false
+
+        # Keep the stat task equal to the role's, and the guard's variables equal to its
+        # refusal's, as parsed; the two directory and two file targets are this play's.
+        - name: 'BEGIN | Stat Every Path This Run May Change And Its Parents'
           check_mode: false
           loop: >-
             {{ ((__targets__ | map('dirname') | list) + (__targets__ | map('dirname') |
@@ -3077,11 +3173,9 @@
             map('dirname') | map('dirname') | list) + __targets__) | reject('eq', '/') | unique |
             sort }}
           loop_control: { label: "{{ item }}" }
-          register: '__kernel_guard_stats__'
+          register: '__kernel_guard__'
           vars:
-            __targets__: >-
-              {{ [__kernel_guard_dir__.path ~ '/link/x.conf', __kernel_guard_dir__.path ~
-              '/real/x.conf'] }}
+            __targets__: "{{ __guard_dirs__ + __guard_files__ }}"
 
           ansible.builtin.stat:
             checksum_algorithm: 'sha1'
@@ -3092,42 +3186,51 @@
             get_selinux_context: false
             path: "{{ item }}"
 
-        - name: 'END | Assert The Expressions Name Exactly The Symlinked Parent'
+        - name: 'END | Assert The Expressions Name Exactly The Unsafe Parents And Targets'
           vars:
-            __targets__: >-
-              {{ [__kernel_guard_dir__.path ~ '/link/x.conf', __kernel_guard_dir__.path ~
-              '/real/x.conf'] }}
+            __targets__: "{{ __guard_dirs__ + __guard_files__ }}"
             __found__: >-
-              {{ __kernel_guard_stats__.results | default([], true) | selectattr('stat.exists') |
-              list }}
+              {{ __kernel_guard__.results | default([], true) | selectattr('stat.exists') | list
+              }}
             __parents__: "{{ __found__ | rejectattr('item', 'in', __targets__) | list }}"
-            __files__: "{{ __found__ | selectattr('item', 'in', __targets__) | list }}"
+            __dirs__: "{{ __found__ | selectattr('item', 'in', __guard_dirs__) | list }}"
+            __files__: "{{ __found__ | selectattr('item', 'in', __guard_files__) | list }}"
             __bad_parents__: >-
               {{ (__parents__ | rejectattr('stat.isdir') | map(attribute='item') | list) +
               (__parents__ | selectattr('stat.islnk') | map(attribute='item') | list) +
               (__parents__ | rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') |
               list) }}
             __bad_targets__: >-
-              {{ (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) +
-              (__files__ | selectattr('stat.islnk') | map(attribute='item') | list) }}
+              {{ (__dirs__ | rejectattr('stat.isdir') | map(attribute='item') | list) + (__dirs__
+              | selectattr('stat.islnk') | map(attribute='item') | list) + (__dirs__ |
+              rejectattr('stat.pw_name', 'eq', 'root') | map(attribute='item') | list) +
+              (__files__ | rejectattr('stat.isreg') | map(attribute='item') | list) + (__files__
+              | selectattr('stat.islnk') | map(attribute='item') | list) }}
             __link__: "{{ __kernel_guard_dir__.path ~ '/link' }}"
             __real__: "{{ __kernel_guard_dir__.path ~ '/real' }}"
+            __record__: "{{ __kernel_guard_dir__.path ~ '/record' }}"
+            __record_link__: "{{ __kernel_guard_dir__.path ~ '/record-link' }}"
 
-          # The expressions list a parent once per reason. The symlinked parent must carry
-          # exactly two reasons (not a directory, a symlink) beyond the real one, whose only
-          # possible reason is an owner other than root, as when the tests run unprivileged.
+          # The expressions list a path once per reason. A symlink carries exactly two reasons
+          # (not a directory, a symlink) beyond its real twin, whose only possible reason is an
+          # owner other than root, as when the tests run unprivileged.
           ansible.builtin.assert:
             fail_msg: >-
               The guard expressions named {{ __bad_parents__ }} as unsafe parents and {{
-              __bad_targets__ | unique | list }} as unsafe targets over a tree whose only defect
-              is the symlinked parent {{ __link__ }}.
+              __bad_targets__ }} as unsafe targets over a tree whose only defects are the
+              symlinked parent {{ __link__ }} and the symlinked directory target {{
+              __record_link__ }}.
             quiet: true
             that:
               - >-
                 (__bad_parents__ | select('eq', __link__) | list | length) == (__bad_parents__ |
                 select('eq', __real__) | list | length) + 2
               - (__bad_parents__ | select('eq', __real__) | list | length) <= 1
-              - __bad_targets__ == []
+              - >-
+                (__bad_targets__ | select('eq', __record_link__) | list | length) ==
+                (__bad_targets__ | select('eq', __record__) | list | length) + 2
+              - (__bad_targets__ | select('eq', __record__) | list | length) <= 1
+              - (__bad_targets__ | reject('in', [__record__, __record_link__]) | list) == []
 
       always:
 
@@ -3383,6 +3486,379 @@
             that:
               - __refused__ == ['example_five', 'example_four']
 
+- name: 'PLAY | Accept A Valid Record And Refuse Malformed Ones'
+  hosts: 'localhost'
+  connection: 'local'
+  gather_facts: false
+  vars:
+    ansible_become: false
+    __kernel_manifest_stat__: { stat: { exists: true } }
+  tasks:
+
+    # Keep each validation block equal to the role's as parsed; the records are this play's.
+    - name: 'PROCESS | Validate A Well-Formed Record'
+      vars:
+        __kernel_manifest_raw__: { content: "{{ __fixture__ | to_json | b64encode }}" }
+        __fixture__:
+          version: 1
+          destinations: ['/etc/sysctl.d/99-example.conf']
+          lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+      block:
+
+        # The raw object is asserted before any value is used: exactly three members, version
+        # the integer 1, destinations direct *.conf children of the two drop-in directories,
+        # lines as [path, text] pairs with an in-scope path and single-line control-free text.
+        - name: 'BEGIN | Validate The Record Before Any Value Is Used'
+          when: __kernel_manifest_stat__.stat.exists | default(false)
+          block:
+
+            - name: 'BEGIN | Assert The Record Schema'
+              vars:
+                __record__: "{{ __kernel_manifest_raw__.content | b64decode | from_json }}"
+                __dests__: "{{ __record__.destinations if __record__ is mapping else [] }}"
+                __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
+                __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
+                __conf_re__: '^/etc/sysctl[.]conf$'
+                __d_re__: >-
+                  ^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$
+                __bad_dests__: >-
+                  {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
+                  reject('match', __dest_re__) | list) }}
+                __bad_lines__: >-
+                  {{ (__lines__ | reject('sequence') | list) + (__lines__ | select('string') |
+                  list) + (__lines__ | select('mapping') | list) + (__lines__ |
+                  select('sequence') | reject('string') | reject('mapping') | rejectattr('0',
+                  'string') | list) + (__lines__ | select('sequence') | reject('string') |
+                  reject('mapping') | selectattr('0', 'string') | rejectattr('1', 'string') |
+                  list) + (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                  | selectattr('0', 'string') | selectattr('1', 'string') | rejectattr('0',
+                  'match', __conf_re__) | rejectattr('0', 'match', __d_re__) | list) + (__lines__
+                  | select('sequence') | reject('string') | reject('mapping') | selectattr('0',
+                  'string') | selectattr('1', 'string') | selectattr('1', 'search', '[\r\n\x00]')
+                  | list) }}
+
+              ansible.builtin.assert:
+                fail_msg: >-
+                  Refusing to use /var/lib/ansible-kernel/manifest.json: the record must hold
+                  exactly version, destinations and lines (observed members {{ __record__ | list
+                  if __record__ is mapping else __record__ | type_debug }}), version must be the
+                  integer 1 (observed {{ __record__.version | default('absent') }}), destinations
+                  must be direct .conf children of /etc/sysctl.d or /etc/modprobe.d (refused {{
+                  __bad_dests__ }}) and lines must be [path, text] pairs with an in-scope path
+                  and a single-line text without control bytes (refused {{ __bad_lines__ }}).
+                  Repair or remove the record by hand.
+                quiet: true
+                that:
+                  - __record__ is mapping
+                  - (__record__ | list | sort) == ['destinations', 'lines', 'version']
+                  - __record__.version is integer
+                  - __record__.version is not boolean
+                  - __record__.version == 1
+                  - __dests__ is sequence
+                  - __dests__ is not string
+                  - __dests__ is not mapping
+                  - __lines__ is sequence
+                  - __lines__ is not string
+                  - __lines__ is not mapping
+                  - (__bad_dests__ | length) == 0
+                  - (__bad_lines__ | length) == 0
+                  - (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                     | map('length') | reject('eq', 2) | list | length) == 0
+
+          rescue:
+
+            - name: 'BEGIN | Refuse An Unreadable Record'
+
+              ansible.builtin.fail:
+                msg: >-
+                  Refusing to continue: /var/lib/ansible-kernel/manifest.json could not be
+                  validated: {{ ansible_failed_result.msg | default('kernel operation failed',
+                  true) }}. Repair or remove the record by hand.
+
+    - name: 'PROCESS | Validate A Record With A Boolean Version'
+      vars:
+        __kernel_manifest_raw__: { content: "{{ __fixture__ | to_json | b64encode }}" }
+        __fixture__:
+          version: true
+          destinations: ['/etc/sysctl.d/99-example.conf']
+          lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+      block:
+
+        # The raw object is asserted before any value is used: exactly three members, version
+        # the integer 1, destinations direct *.conf children of the two drop-in directories,
+        # lines as [path, text] pairs with an in-scope path and single-line control-free text.
+        - name: 'BEGIN | Validate The Record Before Any Value Is Used'
+          when: __kernel_manifest_stat__.stat.exists | default(false)
+          block:
+
+            - name: 'BEGIN | Assert The Record Schema'
+              vars:
+                __record__: "{{ __kernel_manifest_raw__.content | b64decode | from_json }}"
+                __dests__: "{{ __record__.destinations if __record__ is mapping else [] }}"
+                __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
+                __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
+                __conf_re__: '^/etc/sysctl[.]conf$'
+                __d_re__: >-
+                  ^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$
+                __bad_dests__: >-
+                  {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
+                  reject('match', __dest_re__) | list) }}
+                __bad_lines__: >-
+                  {{ (__lines__ | reject('sequence') | list) + (__lines__ | select('string') |
+                  list) + (__lines__ | select('mapping') | list) + (__lines__ |
+                  select('sequence') | reject('string') | reject('mapping') | rejectattr('0',
+                  'string') | list) + (__lines__ | select('sequence') | reject('string') |
+                  reject('mapping') | selectattr('0', 'string') | rejectattr('1', 'string') |
+                  list) + (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                  | selectattr('0', 'string') | selectattr('1', 'string') | rejectattr('0',
+                  'match', __conf_re__) | rejectattr('0', 'match', __d_re__) | list) + (__lines__
+                  | select('sequence') | reject('string') | reject('mapping') | selectattr('0',
+                  'string') | selectattr('1', 'string') | selectattr('1', 'search', '[\r\n\x00]')
+                  | list) }}
+
+              ansible.builtin.assert:
+                fail_msg: >-
+                  Refusing to use /var/lib/ansible-kernel/manifest.json: the record must hold
+                  exactly version, destinations and lines (observed members {{ __record__ | list
+                  if __record__ is mapping else __record__ | type_debug }}), version must be the
+                  integer 1 (observed {{ __record__.version | default('absent') }}), destinations
+                  must be direct .conf children of /etc/sysctl.d or /etc/modprobe.d (refused {{
+                  __bad_dests__ }}) and lines must be [path, text] pairs with an in-scope path
+                  and a single-line text without control bytes (refused {{ __bad_lines__ }}).
+                  Repair or remove the record by hand.
+                quiet: true
+                that:
+                  - __record__ is mapping
+                  - (__record__ | list | sort) == ['destinations', 'lines', 'version']
+                  - __record__.version is integer
+                  - __record__.version is not boolean
+                  - __record__.version == 1
+                  - __dests__ is sequence
+                  - __dests__ is not string
+                  - __dests__ is not mapping
+                  - __lines__ is sequence
+                  - __lines__ is not string
+                  - __lines__ is not mapping
+                  - (__bad_dests__ | length) == 0
+                  - (__bad_lines__ | length) == 0
+                  - (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                     | map('length') | reject('eq', 2) | list | length) == 0
+
+          rescue:
+
+            - name: 'BEGIN | Refuse An Unreadable Record'
+
+              ansible.builtin.fail:
+                msg: >-
+                  Refusing to continue: /var/lib/ansible-kernel/manifest.json could not be
+                  validated: {{ ansible_failed_result.msg | default('kernel operation failed',
+                  true) }}. Repair or remove the record by hand.
+
+        - name: 'END | Fail Because The Validation Accepted A Boolean Version'
+
+          ansible.builtin.fail:
+            msg: The record validation accepted a record with a boolean version.
+
+      rescue:
+
+        - name: 'END | Assert The Validation Refused A Boolean Version'
+
+          ansible.builtin.assert:
+            fail_msg: The record validation said {{ ansible_failed_result.msg | default('') }}.
+            quiet: true
+            that:
+              - "'could not be validated' in ansible_failed_result.msg"
+              - >-
+                "(observed True)" in ansible_failed_result.msg
+
+    - name: 'PROCESS | Validate A Record With An Extra Member'
+      vars:
+        __kernel_manifest_raw__: { content: "{{ __fixture__ | to_json | b64encode }}" }
+        __fixture__:
+          version: 1
+          destinations: ['/etc/sysctl.d/99-example.conf']
+          lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+          extra: 1
+      block:
+
+        # The raw object is asserted before any value is used: exactly three members, version
+        # the integer 1, destinations direct *.conf children of the two drop-in directories,
+        # lines as [path, text] pairs with an in-scope path and single-line control-free text.
+        - name: 'BEGIN | Validate The Record Before Any Value Is Used'
+          when: __kernel_manifest_stat__.stat.exists | default(false)
+          block:
+
+            - name: 'BEGIN | Assert The Record Schema'
+              vars:
+                __record__: "{{ __kernel_manifest_raw__.content | b64decode | from_json }}"
+                __dests__: "{{ __record__.destinations if __record__ is mapping else [] }}"
+                __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
+                __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
+                __conf_re__: '^/etc/sysctl[.]conf$'
+                __d_re__: >-
+                  ^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$
+                __bad_dests__: >-
+                  {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
+                  reject('match', __dest_re__) | list) }}
+                __bad_lines__: >-
+                  {{ (__lines__ | reject('sequence') | list) + (__lines__ | select('string') |
+                  list) + (__lines__ | select('mapping') | list) + (__lines__ |
+                  select('sequence') | reject('string') | reject('mapping') | rejectattr('0',
+                  'string') | list) + (__lines__ | select('sequence') | reject('string') |
+                  reject('mapping') | selectattr('0', 'string') | rejectattr('1', 'string') |
+                  list) + (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                  | selectattr('0', 'string') | selectattr('1', 'string') | rejectattr('0',
+                  'match', __conf_re__) | rejectattr('0', 'match', __d_re__) | list) + (__lines__
+                  | select('sequence') | reject('string') | reject('mapping') | selectattr('0',
+                  'string') | selectattr('1', 'string') | selectattr('1', 'search', '[\r\n\x00]')
+                  | list) }}
+
+              ansible.builtin.assert:
+                fail_msg: >-
+                  Refusing to use /var/lib/ansible-kernel/manifest.json: the record must hold
+                  exactly version, destinations and lines (observed members {{ __record__ | list
+                  if __record__ is mapping else __record__ | type_debug }}), version must be the
+                  integer 1 (observed {{ __record__.version | default('absent') }}), destinations
+                  must be direct .conf children of /etc/sysctl.d or /etc/modprobe.d (refused {{
+                  __bad_dests__ }}) and lines must be [path, text] pairs with an in-scope path
+                  and a single-line text without control bytes (refused {{ __bad_lines__ }}).
+                  Repair or remove the record by hand.
+                quiet: true
+                that:
+                  - __record__ is mapping
+                  - (__record__ | list | sort) == ['destinations', 'lines', 'version']
+                  - __record__.version is integer
+                  - __record__.version is not boolean
+                  - __record__.version == 1
+                  - __dests__ is sequence
+                  - __dests__ is not string
+                  - __dests__ is not mapping
+                  - __lines__ is sequence
+                  - __lines__ is not string
+                  - __lines__ is not mapping
+                  - (__bad_dests__ | length) == 0
+                  - (__bad_lines__ | length) == 0
+                  - (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                     | map('length') | reject('eq', 2) | list | length) == 0
+
+          rescue:
+
+            - name: 'BEGIN | Refuse An Unreadable Record'
+
+              ansible.builtin.fail:
+                msg: >-
+                  Refusing to continue: /var/lib/ansible-kernel/manifest.json could not be
+                  validated: {{ ansible_failed_result.msg | default('kernel operation failed',
+                  true) }}. Repair or remove the record by hand.
+
+        - name: 'END | Fail Because The Validation Accepted An Extra Member'
+
+          ansible.builtin.fail:
+            msg: The record validation accepted a record with an extra member.
+
+      rescue:
+
+        - name: 'END | Assert The Validation Refused An Extra Member'
+
+          ansible.builtin.assert:
+            fail_msg: The record validation said {{ ansible_failed_result.msg | default('') }}.
+            quiet: true
+            that:
+              - "'could not be validated' in ansible_failed_result.msg"
+              - >-
+                "observed members ['version', 'destinations', 'lines', 'extra']" in
+                ansible_failed_result.msg
+
+    - name: 'PROCESS | Validate A Record With Text That Is Not JSON'
+      vars:
+        __kernel_manifest_raw__: { content: "{{ '{' | b64encode }}" }
+      block:
+
+        # The raw object is asserted before any value is used: exactly three members, version
+        # the integer 1, destinations direct *.conf children of the two drop-in directories,
+        # lines as [path, text] pairs with an in-scope path and single-line control-free text.
+        - name: 'BEGIN | Validate The Record Before Any Value Is Used'
+          when: __kernel_manifest_stat__.stat.exists | default(false)
+          block:
+
+            - name: 'BEGIN | Assert The Record Schema'
+              vars:
+                __record__: "{{ __kernel_manifest_raw__.content | b64decode | from_json }}"
+                __dests__: "{{ __record__.destinations if __record__ is mapping else [] }}"
+                __lines__: "{{ __record__.lines if __record__ is mapping else [] }}"
+                __dest_re__: '^/etc/(sysctl|modprobe)[.]d/[^/\x00-\x1f]+[.]conf$'
+                __conf_re__: '^/etc/sysctl[.]conf$'
+                __d_re__: >-
+                  ^/(etc|run|usr/local/lib|usr/lib|lib)/sysctl[.]d/[^/\x00-\x1f]+[.]conf$
+                __bad_dests__: >-
+                  {{ (__dests__ | reject('string') | list) + (__dests__ | select('string') |
+                  reject('match', __dest_re__) | list) }}
+                __bad_lines__: >-
+                  {{ (__lines__ | reject('sequence') | list) + (__lines__ | select('string') |
+                  list) + (__lines__ | select('mapping') | list) + (__lines__ |
+                  select('sequence') | reject('string') | reject('mapping') | rejectattr('0',
+                  'string') | list) + (__lines__ | select('sequence') | reject('string') |
+                  reject('mapping') | selectattr('0', 'string') | rejectattr('1', 'string') |
+                  list) + (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                  | selectattr('0', 'string') | selectattr('1', 'string') | rejectattr('0',
+                  'match', __conf_re__) | rejectattr('0', 'match', __d_re__) | list) + (__lines__
+                  | select('sequence') | reject('string') | reject('mapping') | selectattr('0',
+                  'string') | selectattr('1', 'string') | selectattr('1', 'search', '[\r\n\x00]')
+                  | list) }}
+
+              ansible.builtin.assert:
+                fail_msg: >-
+                  Refusing to use /var/lib/ansible-kernel/manifest.json: the record must hold
+                  exactly version, destinations and lines (observed members {{ __record__ | list
+                  if __record__ is mapping else __record__ | type_debug }}), version must be the
+                  integer 1 (observed {{ __record__.version | default('absent') }}), destinations
+                  must be direct .conf children of /etc/sysctl.d or /etc/modprobe.d (refused {{
+                  __bad_dests__ }}) and lines must be [path, text] pairs with an in-scope path
+                  and a single-line text without control bytes (refused {{ __bad_lines__ }}).
+                  Repair or remove the record by hand.
+                quiet: true
+                that:
+                  - __record__ is mapping
+                  - (__record__ | list | sort) == ['destinations', 'lines', 'version']
+                  - __record__.version is integer
+                  - __record__.version is not boolean
+                  - __record__.version == 1
+                  - __dests__ is sequence
+                  - __dests__ is not string
+                  - __dests__ is not mapping
+                  - __lines__ is sequence
+                  - __lines__ is not string
+                  - __lines__ is not mapping
+                  - (__bad_dests__ | length) == 0
+                  - (__bad_lines__ | length) == 0
+                  - (__lines__ | select('sequence') | reject('string') | reject('mapping')
+                     | map('length') | reject('eq', 2) | list | length) == 0
+
+          rescue:
+
+            - name: 'BEGIN | Refuse An Unreadable Record'
+
+              ansible.builtin.fail:
+                msg: >-
+                  Refusing to continue: /var/lib/ansible-kernel/manifest.json could not be
+                  validated: {{ ansible_failed_result.msg | default('kernel operation failed',
+                  true) }}. Repair or remove the record by hand.
+
+        - name: 'END | Fail Because The Validation Accepted Text That Is Not JSON'
+
+          ansible.builtin.fail:
+            msg: The record validation accepted a record with text that is not json.
+
+      rescue:
+
+        - name: 'END | Assert The Validation Refused Text That Is Not JSON'
+
+          ansible.builtin.assert:
+            fail_msg: The record validation said {{ ansible_failed_result.msg | default('') }}.
+            quiet: true
+            that:
+              - "'could not be validated' in ansible_failed_result.msg"
+
 - name: 'PLAY | Render The Same Record Bytes From Both Phases'
   hosts: 'localhost'
   connection: 'local'
@@ -3397,6 +3873,8 @@
       version: 1
       destinations: ['/etc/modprobe.d/example.conf', '/etc/sysctl.d/90-example.conf']
       lines: [['/etc/sysctl.conf', 'net.example.beta = 0']]
+    # Keep both renderings equal to the content of the role's two record writes as parsed; the
+    # records are this play's.
     __pending_bytes__: "{{ __pending__ | to_nice_json(indent=2) }}\n"
     __record_bytes__: "{{ __record__ | to_nice_json(indent=2) }}\n"
   tasks:
@@ -3423,6 +3901,7 @@
     __keys__: ['a.one', 'b.two', 'c.three', 'd.four', 'e.five']
     __observed__: ['0', '1', '2', 'x', 'X']
     __expected__: ['0', '2', '1', 'x', 'x']
+    # Keep these three expressions equal to END's as parsed; the keys and values are this play's.
     __differs__: >-
       {{ __observed__ | zip(__expected__) | map('unique', case_sensitive=true) | map('length') |
       list }}
