@@ -165,19 +165,55 @@ refusal, never a deletion. A marked line the record does not list is left alone.
    caller chooses `all`, and it records every line it edits.
 4. [INV-04] kmod reports and matches module names with underscores: a hyphenated name appears with
    underscores in `lsmod` and in `modprobe --showconfig` (kmod 28-11.el9, measured 2026-10-08 in
-   `rockylinux:9`). The role normalizes names before it unloads or reads them back.
+   `rockylinux:9`). The role normalizes names before it unloads or reads them back. kmod resolves a
+   name through the aliases in its configuration and the modules' own aliases before it reads the
+   name's `install` and `softdep` lines: `alias <a> <m>` makes `modprobe <a>` insert `<m>`, and
+   `alias <m> <n>` makes `modprobe <m>` resolve to `<n>`. `modprobe --resolve-alias
+   <name>` prints what a name resolves to, one module per line, hyphens as underscores, and exits 1
+   with nothing printed when it resolves to no module (kmod 31, and kmod 25-20.el8 and 28-11.el9 in
+   `rockylinux:8` and `rockylinux:9` containers, measured 2026-10-08; kmod 28 also so for a built-in
+   module). BEGIN therefore refuses, before any change, a disabled name that resolves to anything but
+   itself, so every comparison END makes with that name concerns the module kmod would load.
 5. [INV-05] The targeted policy labels `/etc/sysctl.d/*.conf` `etc_t` on EL 8 and `system_conf_t`
    on EL 9, and `/etc/modprobe.d/*.conf` `modules_conf_t` on both (`matchpathcon`, selinux-policy
    3.14.3-139.el8_10.2 and 38.1.75-2.el9_8.1, measured 2026-10-08). The template module applies
    the policy's label when `file.selinux` is omitted.
 6. [INV-06] kmod runs the first `install` directive it reads for a module, reading its
-   configuration directories as one set in sorted basename order, with a file in `/etc/modprobe.d`
-   replacing a same-named file in `/usr/lib/modprobe.d`; `modprobe --dry-run --verbose <name>` prints
-   exactly that command. An earlier-sorting file saying `/bin/true` makes the dry run print
-   `install /bin/true` while `--showconfig` still lists the role's `/bin/false` line (kmod
-   28-11.el9, measured 2026-10-08 in `rockylinux:9` with `00-true.conf` against `zz-false.conf`, the
-   reverse order, both lines in one file, and the two directories). END therefore asserts the dry
-   run's exact output, not the presence of a line, and a caller names its file to sort first.
+   configuration directories as one set in sorted basename order, with a file in
+   `/etc/modprobe.d` replacing a same-named file in `/usr/lib/modprobe.d`; `modprobe --dry-run
+   --verbose <name>` prints exactly that command. An earlier-sorting file saying `/bin/true`
+   makes the dry run print `install /bin/true` while `--showconfig` still lists the role's
+   `/bin/false` line (kmod 28-11.el9, measured 2026-10-08 in `rockylinux:9` with `00-true.conf`
+   against `zz-false.conf`, the reverse order, both lines in one file, and the two directories).
+   A module with dependencies is preceded by their `insmod` lines, because kmod loads them before
+   it runs the install command (five of the converge proof's disabled modules on the stock RHEL
+   8.10 AMI and two on the stock 9.8 AMI, measured 2026-10-08). A `softdep` entry listing modules
+   takes precedence over the module's `install` command: with `softdep <m> post: <n>` and `<n>`
+   disabled too, kmod inserts `<m>` and then runs `<n>`'s `install /bin/false`, so the dry run
+   ends in the role's command while `<m>` loads. kmod obeys only the first `softdep` entry it
+   holds for a module: the twelve entries `ksmbd` declares each list one `pre:` module, and
+   `install ksmbd /bin/false` inserts the first, `crc32`, and then `ksmbd`. A `softdep` name may
+   be a glob: `softdep cpu* post: <n>` inserts `cpuid`. kmod prints a module's options after its
+   file on an `insmod` line and after the command on an `install` line: with `options <m> <o>`
+   the dry run of a disabled `<m>` ends `install /bin/false <o>`, and with `softdep <m>* post:
+   <n>` added, `<n>` disabled too, it inserts `<m>.ko.zst <o>` and ends in `<n>`'s `install
+   /bin/false`. A dependency's own `install` command is printed as an `install` line before the
+   module's and runs in place of inserting that dependency; it can be any command, one that loads
+   the module included: `install <d> /sbin/modprobe -C <empty directory> <m>` beside `install <m>
+   /bin/false` prints that line and then `install /bin/false`. A `softdep` entry keyed by a
+   module whose file is absent inserts only its other modules. Each of these holds for kmod 31 on
+   the planner's host and for kmod 25-20.el8 and 28-11.el9 in `rockylinux:8` and `rockylinux:9`
+   containers, all resolving kernel 6.8's module tree (measured 2026-10-08). The versions differ
+   on one point: the eleven entries `cifs` declares list no modules; kmod 31 keeps them, so they
+   change nothing and hide a later `softdep cifs post: <n>`, while kmod 25 and 28 act on that
+   later entry and insert `cifs`. END therefore accepts a disabled module only when its dry run
+   is `insmod` lines for other modules, options set aside, followed by exactly `install
+   /bin/false`, and when no `softdep` entry keyed by its exact name lists modules; a glob-keyed
+   entry kmod acts on shows in the dry run. The rule states what END accepts, not what kmod does:
+   any other configuration is refused even where kmod keeps the module out, for example options
+   set for the module (they change the `install` line), a dependency with any `install` command,
+   or a `softdep` entry kmod does not act on now (hidden behind an earlier empty entry under kmod
+   31, or keyed by a module whose file is absent). A caller names its file to sort first.
 7. [INV-07] `install <name> /bin/false` prevents loading; it does not unload a loaded module, which
    `modprobe -r` does and which fails while the module is in use (modprobe(8), kmod 28-11.el9,
    read 2026-10-08). kmod reads `/etc/modprobe.d`, `/run/modprobe.d` and `/usr/lib/modprobe.d`.
@@ -216,8 +252,9 @@ None. The role has no Windows path.
 - END reads `sysctl -n` for every declared key and names every key whose observed value differs
   (compared case-sensitively),
   greps the `conflicts` locations (files, and live symlinks by their own path, less the role's own
-  files) for any remaining definition, requires `modprobe --dry-run --verbose` to print exactly
-  `install /bin/false` for every disabled module, lists the blacklist lines from
+  files) for any remaining definition, refuses a `softdep` entry that names a disabled module
+  and lists modules, accepts each disabled module's `modprobe --dry-run --verbose` output only as
+  `insmod` lines for other modules followed by exactly `install /bin/false`, lists the blacklist lines from
   `modprobe --showconfig`, and reads `lsmod` after an unload. A mismatch fails
   the run and names the key, file or module.
 - `tests/test.yml` runs on localhost without root: the contract accepts a conforming
@@ -227,7 +264,9 @@ None. The role has no Windows path.
   built from per-file grep results over a space-named, a colon-named and a hidden file, the reload
   gate's rendering expression matches the template's bytes, the legacy sysctl directory is listed only as
   a distinct real directory, the guard expressions name exactly a symlinked parent, both record
-  phases render identical bytes, the duplicate and marked-line refusals are exact for names and
+  phases render identical bytes, a disabled name kmod resolves to another module is refused, the
+  kmod readback refuses a softdep listing modules for a disabled module, passes an empty one, and accepts a dry run only as insmod lines for other modules followed by exactly install /bin/false,
+  the duplicate and marked-line refusals are exact for names and
   values holding any byte the contract admits, commenting and restoration preserve `\1`, `\t` and
   `\g<0>` as text, the legacy file is a read-only candidate only as a live symlink, and the END
   comparison expression names exactly the differing keys. From the repository root:

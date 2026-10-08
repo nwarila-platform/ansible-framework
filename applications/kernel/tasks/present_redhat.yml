@@ -4,7 +4,8 @@
 #
 # The present state for the RedHat family. BEGIN reads the package bindings, the role's record
 # (the manifest), the declared destinations, every sysctl file and symlink in the six locations,
-# the other definitions of the managed keys and the loaded modules. PROCESS makes the package
+# the other definitions of the managed keys, the loaded modules and what kmod resolves each
+# disabled name to, and refuses a name that resolves to another module. PROCESS makes the package
 # present, removes recorded files no longer declared, restores recorded lines no longer wanted,
 # renders the drop-ins, comments out the remaining definitions inside the selected locations,
 # reloads what is owed, unloads disabled modules and then trims the record to the declared set.
@@ -551,6 +552,51 @@
         expand_argument_vars: true
         stdin_add_newline: true
         strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # rc-contract: modprobe(8) --resolve-alias: exit 1 with nothing printed means the name
+    # resolves to no module. kmod resolves a configured or a module's own alias before it reads
+    # the name's install line, so a declared name must resolve to itself or to nothing [INV-04].
+    - name: 'BEGIN | Resolve Each Disabled Module Name Through Kmod'
+      changed_when: false
+      check_mode: false
+      failed_when: __kernel_aliases__.rc not in [0, 1]
+      loop: "{{ __names__ }}"
+      loop_control: { label: "{{ item }}" }
+      register: '__kernel_aliases__'
+      vars:
+        __names__: >-
+          {{ __entries__ | selectattr('value.template', 'eq', 'modprobe.conf.j2') |
+          map(attribute='value.settings.disabled') | list | flatten(levels=1) | map('replace',
+          '-', '_') | sort }}
+
+      ansible.builtin.command:
+        argv: ['modprobe', '--resolve-alias', "{{ item }}"]
+        expand_argument_vars: true
+        stdin_add_newline: true
+        strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+
+    # A declared name kmod resolves to another module would leave that module governed by
+    # nothing the role writes, so it is refused before any change [INV-04].
+    - name: 'BEGIN | Refuse A Disabled Name That Resolves To Another Module'
+      loop: "{{ __kernel_aliases__.results | default([], true) }}"
+      loop_control: { label: "{{ __kernel_alias__.item }}", loop_var: '__kernel_alias__' }
+      vars:
+        __resolved__: >-
+          {{ __kernel_alias__.stdout_lines | default([], true) | map('trim') | reject('eq', '') |
+          map('replace', '-', '_') | list }}
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          kmod resolves the disabled name {{ __kernel_alias__.item }} to {{ __resolved__ }}, so
+          the role's install and blacklist lines for that name would not govern the module kmod
+          loads. Declare the module name kmod resolves it to instead [INV-04].
+        quiet: true
+        that:
+          - (__resolved__ | reject('eq', __kernel_alias__.item) | list | length) == 0
 
 #endregion --- [ Begin: Read The Kernel Configuration State ] --------------------------------- #
 
@@ -1127,10 +1173,10 @@
         __header__: >-
           # ansible-framework kernel role: managed file; manual edits are overwritten on the next
           run
-        __pairs__: >-
+        __setting_pairs__: >-
           {{ __settings__ | map('dictsort') | map('map', 'join', ' = ') | map('list') | list }}
         __rendered__: >-
-          {{ ([__header__] * (__settings__ | length)) | zip(__pairs__) | map('flatten') |
+          {{ ([__header__] * (__settings__ | length)) | zip(__setting_pairs__) | map('flatten') |
           map('join', __nl__) | map('regex_replace', '$', __nl__) | list }}
         __stale__: >-
           {{ __current__ | zip(__rendered__) | map('unique', case_sensitive=true) | map('length')
@@ -1494,8 +1540,7 @@
 
     # ----------------------------------------------------------------------------------------- #
     # kmod runs the first install directive it reads, in sorted basename order across its
-    # directories; the dry run prints that command, which an earlier /bin/true file would change
-    # (INV-06).
+    # directories, after loading the module's dependencies [INV-06].
     - name: 'END | Resolve Each Disabled Module Through Kmod'
       changed_when: false
       check_mode: false
@@ -1512,27 +1557,6 @@
 
     # ----------------------------------------------------------------------------------------- #
 
-    - name: 'END | Assert Kmod Would Run False For Each Disabled Module'
-      vars:
-        __not_false__: >-
-          {{ __kernel_resolution__.results | default([], true) |
-          zip(__kernel_resolution__.results | default([], true) | map(attribute='stdout_lines') |
-          map('map', 'trim') | map('list')) | rejectattr('1', 'eq', ['install /bin/false']) |
-          map(attribute='0.item') | list }}
-      when: (__disabled__ | length) > 0
-
-      ansible.builtin.assert:
-        fail_msg: >-
-          kmod would not run exactly /bin/false for every disabled module: {{ __not_false__ }}.
-          modprobe --dry-run --verbose prints the command of the first install directive it
-          reads; an earlier-sorting file in any modprobe.d directory takes precedence over the
-          role's line.
-        quiet: true
-        that:
-          - (__not_false__ | length) == 0
-
-    # ----------------------------------------------------------------------------------------- #
-
     - name: 'END | Read The Module Configuration Kmod Resolves'
       changed_when: false
       check_mode: false
@@ -1544,6 +1568,60 @@
         expand_argument_vars: true
         stdin_add_newline: true
         strip_empty_ends: true
+
+    # ----------------------------------------------------------------------------------------- #
+    # A softdep entry listing modules replaces a module's install command whenever kmod
+    # acts on it; END refuses one keyed by a disabled module's exact name whether or not
+    # kmod acts on it now, and leaves a glob-keyed one to the dry run below [INV-06].
+    - name: 'END | Refuse A Soft Dependency On A Disabled Module'
+      vars:
+        __softdeps__: >-
+          {{ __kernel_showconfig__.stdout_lines | default([], true) | select('match',
+          '^softdep[\x20\t]+[^\x20\t]+[\x20\t]+(pre|post):') | map('regex_replace',
+          '^softdep[\x20\t]+([^\x20\t]+).*$', '\1') | map('replace', '-', '_') | unique | sort }}
+        __overridden__: "{{ __softdeps__ | select('in', __disabled__) | list }}"
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          END refuses the softdep entries listing modules for {{ __overridden__ }}: such an entry
+          replaces a module's install command whenever kmod acts on it, whether or not it does on
+          this host now. Remove the entry, or stop disabling the module [INV-06].
+        quiet: true
+        that:
+          - (__overridden__ | length) == 0
+
+    # ----------------------------------------------------------------------------------------- #
+    # END accepts a disabled module's dry run only as insmod lines for other modules, options
+    # aside, then exactly install /bin/false; anything else is refused, whether or not kmod
+    # would load the module [INV-06].
+    - name: 'END | Assert Kmod Would Run False For Each Disabled Module'
+      loop: "{{ __kernel_resolution__.results | default([], true) }}"
+      loop_control: { label: "{{ __kernel_module__.item }}", loop_var: '__kernel_module__' }
+      vars:
+        __lines__: >-
+          {{ __kernel_module__.stdout_lines | default([], true) | map('trim') | reject('eq', '')
+          | list }}
+        __last__: "{{ __lines__ | last | default('') }}"
+        __other_actions__: "{{ __lines__[:-1] | reject('match', '^insmod[\x20\t]') | list }}"
+        __inserted__: >-
+          {{ __lines__ | select('match', '^insmod[\x20\t]') | map('regex_replace',
+          '^insmod[\x20\t]+[^\x20\t]*/', '') | map('regex_replace', '[\x20\t].*$', '') |
+          map('regex_replace', '[.]ko([.][a-z]+)?$', '') | map('replace', '-', '_') | list }}
+      when: (__disabled__ | length) > 0
+
+      ansible.builtin.assert:
+        fail_msg: >-
+          kmod's dry run of {{ __kernel_module__.item }} ends in '{{ __last__ }}', inserts {{
+          __inserted__ }} and runs {{ __other_actions__ }} before its last line. END accepts only
+          insmod lines for other modules, options aside, followed by exactly install /bin/false;
+          an earlier-sorting install directive, a softdep entry, a dependency's install command
+          or options set for the module produce anything else [INV-06].
+        quiet: true
+        that:
+          - __last__ == 'install /bin/false'
+          - (__other_actions__ | length) == 0
+          - __kernel_module__.item not in __inserted__
 
     # ----------------------------------------------------------------------------------------- #
 
