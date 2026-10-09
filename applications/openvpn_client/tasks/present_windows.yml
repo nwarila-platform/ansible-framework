@@ -542,9 +542,10 @@
     #region ------ [ Process: Hold The Automatic Service On ] --------------------------------- #
     # The MSI registers the automatic service DISABLED and never started -- read from the
     # installer's own source, msi.wxs, ServiceInstall Start="disabled" -- so without this the
-    # profile sits in config-auto and nothing ever opens it. Auto, not delayed: the tunnel is
-    # what the domain join and everything behind the domain controllers depends on, and delayed
-    # start holds it back by minutes after every boot. The logon account is HELD, not inherited:
+    # profile sits in config-auto and nothing ever opens it. Delayed, not auto: on AWS,
+    # automatic start was associated with EC2Launch metadata-fetch failures; on one
+    # converge-loaded node-boot, delayed start put the service 119.3 s after EC2Launch
+    # finished (measured 2026-09-23). The logon account is HELD, not inherited:
     # it is the identity the profile's permissions admit, and a service moved to any other
     # account would look healthy and open nothing. A virtual account carries no password, so none
     # is given, and update_password is pinned to the module's documented current default because
@@ -556,6 +557,7 @@
 
     - name: 'PROCESS | Hold The Automatic Service On'
       notify: 'openvpn-client-restart-required'
+      register: '__openvpn_client_service_held__'
       when: not (__dry_run_with_install_pending__ | bool)
 
       ansible.windows.win_service:
@@ -563,7 +565,7 @@
         desktop_interact: false
         force_dependent_services: false
         name: "{{ openvpn_client_running.service_name }}"
-        start_mode: 'auto'
+        start_mode: 'delayed'
         state: 'started'
         update_password: 'on_create'
         username: "{{ openvpn_client_running.service_account }}"
@@ -900,14 +902,38 @@
           '{{ openvpn_client_running.service_name }}' is
           '{{ __openvpn_client_service__.services[0].state }}' with start mode
           '{{ __openvpn_client_service__.services[0].start_mode }}' as
-          '{{ __openvpn_client_service__.services[0].username }}'; expected started, auto and
+          '{{ __openvpn_client_service__.services[0].username }}'; expected started, delayed and
           '{{ openvpn_client_running.service_account }}'. A service that is not running opens no
           tunnel, one that is not automatic opens none after the next reboot, and one running as
           any other account cannot read the profile.
-        quiet: true
+        quiet: >-
+          {{ not (
+            ansible_check_mode
+            and (__openvpn_client_service_held__.changed | default(false) | bool)
+            and (__openvpn_client_service_held__.start_mode | default('', true) == 'delayed')
+            and (__openvpn_client_service__.services[0].start_mode == 'auto')
+          ) }}
+        success_msg: >-
+          {% if ansible_check_mode
+                and (__openvpn_client_service_held__.changed | default(false) | bool)
+                and (__openvpn_client_service_held__.start_mode | default('', true) == 'delayed')
+                and (__openvpn_client_service__.services[0].start_mode == 'auto') %}
+          Check mode predicts '{{ openvpn_client_running.service_name }}' changing from
+          start mode 'auto' to 'delayed'; its live start mode remains 'auto' until a real converge.
+          {% else %}
+          The automatic service is running at boot as its own account.
+          {% endif %}
         that:
           - __openvpn_client_service__.services[0].state == 'started'
-          - __openvpn_client_service__.services[0].start_mode == 'auto'
+          - >-
+            (__openvpn_client_service__.services[0].start_mode == 'delayed')
+            or
+            (
+              ansible_check_mode
+              and (__openvpn_client_service_held__.changed | default(false) | bool)
+              and (__openvpn_client_service_held__.start_mode | default('', true) == 'delayed')
+              and (__openvpn_client_service__.services[0].start_mode == 'auto')
+            )
           - __openvpn_client_service__.services[0].username | lower
             == openvpn_client_running.service_account | lower
 

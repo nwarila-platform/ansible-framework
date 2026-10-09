@@ -167,6 +167,18 @@ delays 60 seconds and then permits attempts to start during a 600-second window;
 attempt and following sleep are not clamped, so no hard wall-clock ceiling is claimed. The first
 transport-matched set owns this wait; a later one cannot rescue it.
 
+When Active Directory is reached through the OpenVPN tunnel, the `openvpn_client` role declares
+delayed start for that tunnel's Windows service, so these paths can proceed before it is usable:
+
+- **Forced rejoin:** local reconnect after leaving, then the join.
+- **Empty `post_restart_credentials`:** the direct reboot, then directory checks.
+- **`restart_wait: false`:** the caller owns tunnel readiness before its next action.
+- **`host_readiness` under a local identity:** local readiness can pass before the tunnel.
+
+A waited reconnect with `post_restart_credentials` naming a domain account over SSH or NTLM WinRM
+waits implicitly, because its logon needs the host to reach a domain controller. A Kerberos WinRM
+set is not shown to wait.
+
 With `restart_wait: false`, the role records `__domain_member_boot_time__`, schedules the restart,
 and ends the role exactly as before, leaving proof to a later invocation.
 
