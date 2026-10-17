@@ -24,17 +24,36 @@
   register: '__host_readiness_ec2launch_status__'
   vars:
     __host_readiness_ec2launch_status_script__: |
-      & 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b
-      exit $LASTEXITCODE
+      $wrapperExitCode = 255
+      $ErrorActionPreference = 'Stop'
+      try {
+          & 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b
+          if ($null -eq $LASTEXITCODE) {
+              [Console]::Error.WriteLine(
+                  'EC2Launch status invocation failed: no native exit code was supplied.'
+              )
+          }
+          else {
+              $wrapperExitCode = $LASTEXITCODE
+          }
+      }
+      catch {
+          [Console]::Error.WriteLine(
+              ('EC2Launch status invocation failed: {0}' -f $_.Exception.Message)
+          )
+      }
+      exit $wrapperExitCode
 
   ansible.builtin.raw: >-
     powershell -NoProfile -NonInteractive -EncodedCommand
     {{ __host_readiness_ec2launch_status_script__
        | ansible.builtin.b64encode(encoding='utf-16-le') }}
 
-# Measured after an unplanned restart: EC2Launch can fail only because user data could not reach
-# metadata while every other stage completes. Acceptance is caller-controlled because .run-once
-# speaks only for tasks configured to run once.
+# Measured with EC2Launch 2.5.1 on Server 2025, 2026-10-17: a later boot can fail only because user
+# data could not reach metadata while every other stage completes. The latest exact start record
+# correlates state and a pre-existing .run-once because the agent can run more than once per boot.
+# Acceptance is caller-controlled and needs PowerShell as the outer shell; cmd cannot carry the
+# encoded probe.
 - name: 'PROCESS | Inspect A Failed EC2Launch Run'
   become: false
   changed_when: false
@@ -88,6 +107,12 @@
           if ($stateFile.LastWriteTimeUtc -lt $lastStartTime) {
               throw 'previous-state.json predates the latest agent.log run'
           }
+          $runOncePath = Join-Path -Path $stateDirectory -ChildPath '.run-once'
+          $runOncePredatesRun = (
+              (Test-Path -LiteralPath $runOncePath -PathType Leaf) -and
+              (Get-Item -LiteralPath $runOncePath -Force -ErrorAction Stop).LastWriteTimeUtc -lt
+                  $lastStartTime
+          )
 
           $document = Get-Content -LiteralPath $statePath -Raw -ErrorAction Stop |
               ConvertFrom-Json -ErrorAction Stop
@@ -130,8 +155,8 @@
               'postReady'
           )
           foreach ($requiredStage in $requiredStages) {
-              $matches = @($stages | Where-Object { $_.stage -ceq $requiredStage })
-              if ($matches.Count -ne 1 -or $matches[0].status -cne 'success') {
+              $stageMatches = @($stages | Where-Object { $_.stage -ceq $requiredStage })
+              if ($stageMatches.Count -ne 1 -or $stageMatches[0].status -cne 'success') {
                   throw ('previous-state.json does not have one successful {0} stage' -f
                       $requiredStage)
               }
@@ -162,7 +187,7 @@
 
           $currentRunLines = @($logLines | Select-Object -Skip ($lastStart + 1))
           $userDataFailureMessage =
-              'Failing user data stage and running remaining stages'
+              'Failing user data stage and running remaining stages: Failed to get user data'
           $userDataFailures = [System.Collections.Generic.List[string]]::new()
           $otherErrors = [System.Collections.Generic.List[string]]::new()
           foreach ($line in $currentRunLines) {
@@ -191,14 +216,8 @@
           }
 
           [ordered]@{
-              run_once = Test-Path -LiteralPath (
-                  Join-Path -Path $stateDirectory -ChildPath '.run-once'
-              ) -PathType Leaf
-              state_fresh = $true
-              current_run_correlated = $true
-              required_stages_success = $true
+              run_once = $runOncePredatesRun
               userdata_status = $userDataStatus
-              userdata_failure_in_current_run = $true
               other_non_success = [string[]]$otherNonSuccess
           } | ConvertTo-Json -Compress
       }
@@ -208,14 +227,16 @@
           )
           exit 1
       }
-  when: (__host_readiness_ec2launch_status__.rc | default(-1)) == 1
+  when:
+    - (__host_readiness_ec2launch_status__.rc | default(-1)) == 1
+    - host_readiness_ec2launch_accept_once_userdata_failure | bool
 
   ansible.builtin.raw: >-
     powershell -NoProfile -NonInteractive -EncodedCommand
     {{ __host_readiness_ec2launch_probe__
        | ansible.builtin.b64encode(encoding='utf-16-le') }}
 
-- name: 'END | Require That EC2Launch Provisioned The Host'
+- name: 'PROCESS | Require That EC2Launch Provisioned The Host'
   vars:
     __ec2launch_rc__: "{{ __host_readiness_ec2launch_status__.rc | default(-1) }}"
     __ec2launch_probe_rc__: >-
@@ -229,33 +250,24 @@
          else {} }}
   ansible.builtin.assert:
     fail_msg: >-
-      '{{ inventory_hostname }}' is not ready to be configured: EC2Launch {% if
-      (__ec2launch_rc__ | int) not in [0, 1] %}status returned exit code {{
-      __ec2launch_rc__ }}.{% elif not
+      '{{ inventory_hostname }}' is not ready to be configured: EC2Launch {% if not
       (host_readiness_ec2launch_accept_once_userdata_failure | bool) %}reported failure and
       host_readiness_ec2launch_accept_once_userdata_failure is false.{% elif
       (__ec2launch_probe_rc__ | int) != 0 %}reported failure and its current-run state probe
       failed: {{ __host_readiness_ec2launch_probe_result__.stderr | default('no probe error')
       | trim }}.{% elif not (__ec2launch_state__.run_once | default(false) | bool) %}reported
-      failure before .run-once proved an earlier once-frequency run completed.{% else %}returned
-      evidence outside the accepted state.{% endif %} Inspect
+      failure and .run-once was absent or was not written before the current run began.{% endif %}
+      Inspect
       C:\ProgramData\Amazon\EC2Launch\log\agent.log.
     quiet: true
-    success_msg: 'EC2Launch completed or had only the opted-in later-run user-data error.'
+    success_msg: 'EC2Launch completed or had only the opted-in later-run user-data read error.'
     that:
       - >-
         (__ec2launch_rc__ | int) == 0
         or ((__ec2launch_rc__ | int) == 1
             and (host_readiness_ec2launch_accept_once_userdata_failure | bool)
             and (__ec2launch_probe_rc__ | int) == 0
-            and (__ec2launch_state__.run_once | default(false) | bool)
-            and (__ec2launch_state__.state_fresh | default(false) | bool)
-            and (__ec2launch_state__.current_run_correlated | default(false) | bool)
-            and (__ec2launch_state__.required_stages_success | default(false) | bool)
-            and (__ec2launch_state__.userdata_failure_in_current_run | default(false) | bool)
-            and (__ec2launch_state__.userdata_status | default('invalid')) != 'success'
-            and (__ec2launch_state__.other_non_success
-                 | default(['invalid probe output']) | length) == 0)
+            and (__ec2launch_state__.run_once | default(false) | bool))
 
 # EC2Launch reporting 'complete' is not the same as the machine having finished starting.
 # Measured on a Server 2025 image, 2026-09-11: the blocking status call returned in one second
