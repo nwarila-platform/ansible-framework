@@ -20,10 +20,254 @@
   become: false
   changed_when: false
   check_mode: false
+  failed_when: (__host_readiness_ec2launch_status__.rc | default(-1)) not in [0, 1]
+  register: '__host_readiness_ec2launch_status__'
+  vars:
+    __host_readiness_ec2launch_status_script__: |
+      $wrapperExitCode = 255
+      $ErrorActionPreference = 'Stop'
+      try {
+          & 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b
+          if ($null -eq $LASTEXITCODE) {
+              [Console]::Error.WriteLine(
+                  'EC2Launch status invocation failed: no native exit code was supplied.'
+              )
+          }
+          else {
+              $wrapperExitCode = $LASTEXITCODE
+          }
+      }
+      catch {
+          [Console]::Error.WriteLine(
+              ('EC2Launch status invocation failed: {0}' -f $_.Exception.Message)
+          )
+      }
+      exit $wrapperExitCode
 
   ansible.builtin.raw: >-
-    powershell -NoProfile -Command
-    "& 'C:\Program Files\Amazon\EC2Launch\EC2Launch.exe' status -b"
+    powershell -NoProfile -NonInteractive -EncodedCommand
+    {{ __host_readiness_ec2launch_status_script__
+       | ansible.builtin.b64encode(encoding='utf-16-le') }}
+
+# Measured with EC2Launch 2.5.1 on Server 2025, 2026-10-17: a later boot can fail only because user
+# data could not reach metadata while every other stage completes. The latest exact start record
+# correlates state and a pre-existing .run-once because the agent can run more than once per boot.
+# Acceptance is caller-controlled and needs PowerShell as the outer shell; cmd cannot carry the
+# encoded probe.
+- name: 'PROCESS | Inspect A Failed EC2Launch Run'
+  become: false
+  changed_when: false
+  check_mode: false
+  failed_when: false
+  register: '__host_readiness_ec2launch_probe_result__'
+  vars:
+    __host_readiness_ec2launch_probe__: |
+      Set-StrictMode -Version Latest
+      $ErrorActionPreference = 'Stop'
+      $stateDirectory = 'C:\ProgramData\Amazon\EC2Launch\state'
+      $agentLogPath = 'C:\ProgramData\Amazon\EC2Launch\log\agent.log'
+
+      try {
+          $statePath = Join-Path -Path $stateDirectory -ChildPath 'previous-state.json'
+          $stateFile = Get-Item -LiteralPath $statePath -ErrorAction Stop
+          $lastBootUpTime = (
+              Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+          ).LastBootUpTime.ToUniversalTime()
+
+          $timestampPattern =
+              '(?<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z)'
+          $recordPattern = '\A' + $timestampPattern +
+              ' (?<severity>Info|Warning|Error|Console): (?<message>.*)\z'
+          $startPattern = '\A' + $timestampPattern +
+              ' Info: EC2Launch Service starting\z'
+          $logLines = @(Get-Content -LiteralPath $agentLogPath -ErrorAction Stop)
+          $lastStart = -1
+          $lastStartTimestamp = $null
+          for ($index = 0; $index -lt $logLines.Count; $index++) {
+              $startMatch = [regex]::Match([string]$logLines[$index], $startPattern)
+              if ($startMatch.Success) {
+                  $lastStart = $index
+                  $lastStartTimestamp = $startMatch.Groups['timestamp'].Value
+              }
+          }
+          if ($lastStart -lt 0) {
+              throw 'agent.log has no EC2Launch service start marker'
+          }
+
+          $lastStartTime = [DateTime]::ParseExact(
+              $lastStartTimestamp,
+              "yyyy-MM-dd HH:mm:ss.fff'Z'",
+              [System.Globalization.CultureInfo]::InvariantCulture,
+              [System.Globalization.DateTimeStyles]::AssumeUniversal -bor
+                  [System.Globalization.DateTimeStyles]::AdjustToUniversal
+          )
+          if ($lastStartTime -lt $lastBootUpTime) {
+              throw 'the latest agent.log run predates the current boot'
+          }
+          if ($stateFile.LastWriteTimeUtc -lt $lastStartTime) {
+              throw 'previous-state.json predates the latest agent.log run'
+          }
+          $runOncePath = Join-Path -Path $stateDirectory -ChildPath '.run-once'
+          $runOncePredatesRun = (
+              (Test-Path -LiteralPath $runOncePath -PathType Leaf) -and
+              (Get-Item -LiteralPath $runOncePath -Force -ErrorAction Stop).LastWriteTimeUtc -lt
+                  $lastStartTime
+          )
+
+          $document = Get-Content -LiteralPath $statePath -Raw -ErrorAction Stop |
+              ConvertFrom-Json -ErrorAction Stop
+          $stateProperty = $document.PSObject.Properties['state']
+          if ($null -eq $stateProperty -or $null -eq $stateProperty.Value -or
+              $stateProperty.Value -isnot [System.Array]) {
+              throw 'previous-state.json state is not an array'
+          }
+
+          $stages = @($stateProperty.Value)
+          $stageNames = [System.Collections.Generic.HashSet[string]]::new(
+              [System.StringComparer]::Ordinal
+          )
+          foreach ($stageRecord in $stages) {
+              if ($null -eq $stageRecord -or $stageRecord -isnot [PSCustomObject]) {
+                  throw 'previous-state.json contains a non-object stage record'
+              }
+              $stageProperty = $stageRecord.PSObject.Properties['stage']
+              $statusProperty = $stageRecord.PSObject.Properties['status']
+              if ($null -eq $stageProperty -or $stageProperty.Value -isnot [string] -or
+                  [string]::IsNullOrWhiteSpace($stageProperty.Value)) {
+                  throw 'previous-state.json contains a stage without a string name'
+              }
+              if ($null -eq $statusProperty -or $statusProperty.Value -isnot [string] -or
+                  [string]::IsNullOrWhiteSpace($statusProperty.Value)) {
+                  throw ('previous-state.json stage {0} has no string status' -f
+                      $stageProperty.Value)
+              }
+              if (-not $stageNames.Add($stageProperty.Value)) {
+                  throw ('previous-state.json contains duplicate stage {0}' -f
+                      $stageProperty.Value)
+              }
+          }
+
+          $requiredStages = @(
+              'sysprepSpecialize',
+              'boot',
+              'network',
+              'preReady',
+              'postReady'
+          )
+          foreach ($requiredStage in $requiredStages) {
+              $stageMatches = @($stages | Where-Object { $_.stage -ceq $requiredStage })
+              if ($stageMatches.Count -ne 1 -or $stageMatches[0].status -cne 'success') {
+                  throw ('previous-state.json does not have one successful {0} stage' -f
+                      $requiredStage)
+              }
+          }
+
+          $otherNonSuccess = @(
+              $stages |
+                  Where-Object {
+                      $_.stage -cne 'postReadyUserData' -and $_.status -cne 'success'
+                  } |
+                  ForEach-Object { [string]$_.stage }
+          )
+          if ($otherNonSuccess.Count -ne 0) {
+              throw ('previous-state.json has other non-success stages: {0}' -f
+                  ($otherNonSuccess -join ', '))
+          }
+
+          $userDataStages = @(
+              $stages | Where-Object { $_.stage -ceq 'postReadyUserData' }
+          )
+          $userDataStatus = 'absent'
+          if ($userDataStages.Count -eq 1) {
+              $userDataStatus = [string]$userDataStages[0].status
+              if ($userDataStatus -ceq 'success') {
+                  throw 'postReadyUserData is successful'
+              }
+          }
+
+          $currentRunLines = @($logLines | Select-Object -Skip ($lastStart + 1))
+          $userDataFailureMessage =
+              'Failing user data stage and running remaining stages: Failed to get user data'
+          $userDataFailures = [System.Collections.Generic.List[string]]::new()
+          $otherErrors = [System.Collections.Generic.List[string]]::new()
+          foreach ($line in $currentRunLines) {
+              $recordMatch = [regex]::Match([string]$line, $recordPattern)
+              if (-not $recordMatch.Success -or
+                  $recordMatch.Groups['severity'].Value -cne 'Error') {
+                  continue
+              }
+
+              $message = $recordMatch.Groups['message'].Value
+              if ($message.StartsWith(
+                      $userDataFailureMessage,
+                      [System.StringComparison]::Ordinal
+                  )) {
+                  [void]$userDataFailures.Add([string]$line)
+              }
+              else {
+                  [void]$otherErrors.Add([string]$line)
+              }
+          }
+          if ($userDataFailures.Count -lt 1) {
+              throw 'the current agent.log run has no user-data-stage failure'
+          }
+          if ($otherErrors.Count -ne 0) {
+              throw 'the current agent.log run has another error'
+          }
+
+          [ordered]@{
+              run_once = $runOncePredatesRun
+              userdata_status = $userDataStatus
+              other_non_success = [string[]]$otherNonSuccess
+          } | ConvertTo-Json -Compress
+      }
+      catch {
+          [Console]::Error.WriteLine(
+              ('EC2Launch state probe failed: {0}' -f $_.Exception.Message)
+          )
+          exit 1
+      }
+  when:
+    - (__host_readiness_ec2launch_status__.rc | default(-1)) == 1
+    - host_readiness_ec2launch_accept_once_userdata_failure | bool
+
+  ansible.builtin.raw: >-
+    powershell -NoProfile -NonInteractive -EncodedCommand
+    {{ __host_readiness_ec2launch_probe__
+       | ansible.builtin.b64encode(encoding='utf-16-le') }}
+
+- name: 'PROCESS | Require That EC2Launch Provisioned The Host'
+  vars:
+    __ec2launch_rc__: "{{ __host_readiness_ec2launch_status__.rc | default(-1) }}"
+    __ec2launch_probe_rc__: >-
+      {{ __host_readiness_ec2launch_probe_result__.rc | default(-1) }}
+    __ec2launch_state__: >-
+      {{ (__host_readiness_ec2launch_probe_result__.stdout
+          | default('{}', true)
+          | trim
+          | ansible.builtin.from_json)
+         if (__host_readiness_ec2launch_probe_result__.rc | default(-1) | int) == 0
+         else {} }}
+  ansible.builtin.assert:
+    fail_msg: >-
+      '{{ inventory_hostname }}' is not ready to be configured: EC2Launch {% if not
+      (host_readiness_ec2launch_accept_once_userdata_failure | bool) %}reported failure and
+      host_readiness_ec2launch_accept_once_userdata_failure is false.{% elif
+      (__ec2launch_probe_rc__ | int) != 0 %}reported failure and its current-run state probe
+      failed: {{ __host_readiness_ec2launch_probe_result__.stderr | default('no probe error')
+      | trim }}.{% elif not (__ec2launch_state__.run_once | default(false) | bool) %}reported
+      failure and .run-once was absent or was not written before the current run began.{% endif %}
+      Inspect
+      C:\ProgramData\Amazon\EC2Launch\log\agent.log.
+    quiet: true
+    success_msg: 'EC2Launch completed or had only the opted-in later-run user-data read error.'
+    that:
+      - >-
+        (__ec2launch_rc__ | int) == 0
+        or ((__ec2launch_rc__ | int) == 1
+            and (host_readiness_ec2launch_accept_once_userdata_failure | bool)
+            and (__ec2launch_probe_rc__ | int) == 0
+            and (__ec2launch_state__.run_once | default(false) | bool))
 
 # EC2Launch reporting 'complete' is not the same as the machine having finished starting.
 # Measured on a Server 2025 image, 2026-09-11: the blocking status call returned in one second

@@ -1,8 +1,8 @@
 # ============================================================================================= #
 # File: '{{ role_path }}/defaults/main.yml' | Version 1.0.0                                     #
 # --- [ Description ] ------------------------------------------------------------------------- #
-# Bounds, not behaviour: how long the role may wait, never what it waits for -- with one
-# exception, below, for a host that must not be restarted by a converge. They live here rather
+# Bounds plus two behaviour inputs: whether the role may restart a host that owes one, and whether
+# the EC2Launch gate may accept the narrow later-run user-data failure below. They live here rather
 # than in vars/ so a play can change them -- role vars outrank play vars, defaults do not.
 #
 # The two multiply: the wait runs for at most attempts x (pause + however long a refused
@@ -32,3 +32,8 @@ host_readiness_platform: ''
 # owing a restart at once would all restart together -- and the role then stops and says the
 # restart is owed.
 host_readiness_restart_when_owed: true
+
+# Whether a later EC2Launch run may fail only because once-only user data could not be read. Off
+# by default; .run-once must predate the failed run, and a caller must know that its user data is
+# not configured to persist or run on every boot. The exception requires the PowerShell shell.
+host_readiness_ec2launch_accept_once_userdata_failure: false

@@ -31,7 +31,7 @@ Either way it selects `tasks/checks_<platform>_<os>.yml`. Ships today:
 
 | File | Waits for |
 |---|---|
-| `checks_aws_windows.yml` | EC2Launch to report provisioning complete, then the machine to stop restarting itself -- restarting it once if Windows owes a restart |
+| `checks_aws_windows.yml` | EC2Launch to finish, optionally accepting a later run whose correlated state is complete, whose `.run-once` predates that run, and whose only error is reading once-only user data, then the machine to stop restarting itself -- restarting it once if Windows owes a restart |
 
 A vendor this framework has no name for, a host with no SMBIOS, a shell that answers oddly, or a
 pair that ships no file all resolve the same way: the probe runs, nothing else does. Most platforms
@@ -101,6 +101,7 @@ All optional, declared as **play** variables (never as `vars:` on the include).
 | `host_readiness_attempts` | `60` | How many times the probe may run before the wait fails. |
 | `host_readiness_pause_seconds` | `15` | Pause between attempts. |
 | `host_readiness_restart_when_owed` | `true` | Restart a Windows host once when it owes a restart -- a servicing mark with the Windows Modules Installer stopped, or the Windows Update reboot flag -- instead of failing. Turn off where a converge must never restart the machine. |
+| `host_readiness_ec2launch_accept_once_userdata_failure` | `false` | Accept an EC2Launch failure only when `.run-once` predates the current run, complete state was written after it began, and its sole error is the documented user-data read failure. Enable only for once-only user data and a PowerShell shell. |
 
 The two multiply: the wait runs for at most `attempts × (pause + however long a refused connection
 takes to give up)`. The defaults allow roughly fifteen minutes of pauses, which covers a Windows
