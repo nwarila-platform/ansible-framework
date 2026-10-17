@@ -32,3 +32,8 @@ host_readiness_platform: ''
 # owing a restart at once would all restart together -- and the role then stops and says the
 # restart is owed.
 host_readiness_restart_when_owed: true
+
+# Whether a later EC2Launch run may fail only because once-only user data could not be read. Off
+# by default because .run-once proves only that once-frequency tasks completed on an earlier run;
+# a caller must know that its user data is not configured to persist or run on every boot.
+host_readiness_ec2launch_accept_once_userdata_failure: false
